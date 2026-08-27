@@ -1,0 +1,28 @@
+.home {
+  max-width: 560px;
+  margin: 48px auto;
+  padding: 0 16px;
+  text-align: center;
+  color: #212121;
+}
+
+.home h1 {
+  margin: 12px 0 8px;
+  font-size: 22px;
+}
+
+.home p,
+.home li {
+  font-size: 14px;
+  color: #475161;
+  line-height: 1.5;
+}
+
+.home ul {
+  display: inline-block;
+  text-align: left;
+}
+
+.home a {
+  color: #6c5ce7;
+}

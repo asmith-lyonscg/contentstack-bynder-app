@@ -1,0 +1,78 @@
+.app-config {
+  max-width: 560px;
+  padding: 16px;
+  color: #212121;
+}
+
+.app-config h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.lede,
+.help,
+.notice {
+  font-size: 13px;
+  color: #475161;
+  line-height: 1.5;
+}
+
+.app-config label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 16px 0 8px;
+}
+
+.app-config label.checkbox {
+  flex-direction: row;
+  align-items: center;
+  font-weight: 600;
+}
+
+.app-config input {
+  font: 14px Inter, system-ui, sans-serif;
+  border: 1px solid #d4d4e8;
+  border-radius: 4px;
+  padding: 8px 10px;
+}
+
+.app-config button {
+  margin-top: 8px;
+  background: #6c5ce7;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-config button:disabled {
+  opacity: 0.7;
+}
+
+.help code {
+  display: block;
+  margin-top: 6px;
+  background: #f4f4fb;
+  padding: 8px;
+  border-radius: 4px;
+  font-weight: 400;
+}
+
+.status {
+  margin-left: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.status.ok {
+  color: #1f8a4c;
+}
+
+.status.err {
+  color: #c0392b;
+}

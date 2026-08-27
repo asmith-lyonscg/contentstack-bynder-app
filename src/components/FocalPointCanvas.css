@@ -1,0 +1,44 @@
+.focal-canvas {
+  position: relative;
+  width: 100%;
+  height: 240px;
+  border: 1px solid #d4d4e8;
+  border-radius: 6px;
+  background: repeating-conic-gradient(#eef0f5 0% 25%, #ffffff 0% 50%) 50% / 16px 16px;
+  overflow: hidden;
+  cursor: crosshair;
+  outline: none;
+  user-select: none;
+  touch-action: none;
+}
+
+.focal-canvas:focus-visible {
+  box-shadow: 0 0 0 2px #6c5ce7;
+}
+
+.focal-canvas.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.focal-canvas img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+
+.focal-crosshair {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border-radius: 50%;
+  background: #e03131;
+  border: 2.5px solid #fff;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    0 1px 4px rgba(0, 0, 0, 0.35);
+}
