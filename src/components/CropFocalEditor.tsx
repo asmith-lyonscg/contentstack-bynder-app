@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import type { FocalPoint, TransformSettings } from "../lib/types";
-import { fitPreviewBox } from "../lib/bynder/composeDatUrl";
+import { fitPreviewBox, previewIsToScale } from "../lib/bynder/composeDatUrl";
 import {
   clampOffset,
   coverLayout,
@@ -33,6 +33,11 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
 
   const box = fitPreviewBox(transform, maxWidth, 360);
+  const toScale = previewIsToScale(box);
+
+  useEffect(() => {
+    setNatural({ w: 0, h: 0 });
+  }, [src]);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -156,7 +161,7 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
             aria-hidden
           />
         </div>
-        <div className="crop-scale-note">Not to scale</div>
+        {!toScale && <div className="crop-scale-note">Not to scale</div>}
       </div>
     </div>
   );

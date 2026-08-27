@@ -198,7 +198,7 @@ export function liveSiblingRaw(uid: string, liveEntry: unknown): { present: bool
 /**
  * Sibling Bynder JSON is often missing/empty on entry.onChange when THIS
  * custom field saves. Those empties must never unmount an existing preview.
- * Only a direct sibling field event (or first load with no asset) may clear.
+ * Real removes are delivered as $extensionFieldChange / field.onChange.
  */
 export type SiblingAssetResult =
   | { type: "apply"; asset: ParsedBynderAsset }

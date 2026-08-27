@@ -107,6 +107,16 @@ export function fitPreviewBox(
   };
 }
 
+/** True when the on-screen crop frame is 1:1 with the configured width/height. */
+export function previewIsToScale(fitted: {
+  width: number;
+  height: number;
+  sourceWidth: number;
+  sourceHeight: number;
+}): boolean {
+  return fitted.width === fitted.sourceWidth && fitted.height === fitted.sourceHeight;
+}
+
 function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }

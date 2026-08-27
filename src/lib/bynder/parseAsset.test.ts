@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inferTransformBaseUrl, parseBynderAsset } from "./parseAsset";
+import { inferTransformBaseUrl, parseBynderAsset, pickBynderAsset } from "./parseAsset";
 
 describe("inferTransformBaseUrl", () => {
   it("strips query params from a DAT URL", () => {
@@ -78,5 +78,22 @@ describe("parseBynderAsset", () => {
     expect(parseBynderAsset(null)).toBeNull();
     expect(parseBynderAsset([])).toBeNull();
     expect(parseBynderAsset({})).toBeNull();
+  });
+});
+
+describe("pickBynderAsset", () => {
+  const asset = (id: string, name: string) => ({
+    id,
+    name,
+    files: { webImage: { url: `https://cdn.example/${id}.jpg` } },
+  });
+
+  it("prefers the replacement when the previous asset is still in the array", () => {
+    const picked = pickBynderAsset([asset("a", "Old"), asset("b", "New")], "a");
+    expect(picked).toMatchObject({ id: "b", name: "New" });
+  });
+
+  it("uses the first asset when replacing in a single-item payload", () => {
+    expect(pickBynderAsset([asset("b", "New")], "a")).toMatchObject({ id: "b", name: "New" });
   });
 });

@@ -59,6 +59,24 @@ function additionalInfo(asset: Record<string, unknown>): Record<string, unknown>
 }
 
 /**
+ * When the picker replaces an image, the payload may briefly include both
+ * the previous asset and the new one. Prefer the asset that is not current.
+ */
+export function pickBynderAsset(raw: unknown, currentId?: string): ParsedBynderAsset | null {
+  const items = Array.isArray(raw) ? raw : raw == null || raw === "" ? [] : [raw];
+  const parsed: ParsedBynderAsset[] = [];
+  for (const item of items) {
+    const next = parseBynderAsset(item);
+    if (next) parsed.push(next);
+  }
+  if (parsed.length === 0) return null;
+  if (currentId && parsed.some((item) => item.id === currentId)) {
+    return parsed.find((item) => item.id !== currentId) ?? parsed[0];
+  }
+  return parsed[0];
+}
+
+/**
  * Normalizes official Bynder Marketplace field JSON (object or array)
  * into the subset this companion app needs.
  */

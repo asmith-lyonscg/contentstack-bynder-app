@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composeDatUrl, cssCropBox, fitPreviewBox, lockToAspect, parseAspect, resolveDimensions } from "./composeDatUrl";
+import { composeDatUrl, cssCropBox, fitPreviewBox, lockToAspect, parseAspect, previewIsToScale, resolveDimensions } from "./composeDatUrl";
 import { DEFAULT_TRANSFORM } from "../types";
 
 describe("parseAspect", () => {
@@ -54,6 +54,10 @@ describe("css crop box", () => {
     expect(wide.width).toBeGreaterThan(wide.height);
     expect(tall.sourceWidth).toBe(1200);
     expect(wide.sourceHeight).toBe(675);
+    expect(previewIsToScale(wide)).toBe(false);
+    expect(
+      previewIsToScale(fitPreviewBox({ operation: "fill", width: 320, height: 180, aspect: "16:9" }, 520, 360))
+    ).toBe(true);
   });
 });
 
