@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyCropConfig, resolveBynderFieldUid, resolveCropConfig, resolveEnableDat, resolveSiblingAsset } from "./fieldConfig";
+import { applyCropConfig, resolveBynderFieldUid, resolveBynderPortalUrl, resolveCompactViewConfig, resolveCropConfig, resolveEnableDat, resolveSiblingAsset } from "./fieldConfig";
 
 describe("resolveBynderFieldUid", () => {
   it("prefers per-field config over app config", () => {
@@ -14,6 +14,47 @@ describe("resolveBynderFieldUid", () => {
     ).toBe("grouped.hero");
     expect(resolveBynderFieldUid({}, { bynderFieldUid: "og_image" })).toBe("og_image");
     expect(resolveBynderFieldUid({}, {})).toBeUndefined();
+  });
+});
+
+describe("resolveBynderPortalUrl", () => {
+  it("strips protocol and trailing slash, and prefers field config", () => {
+    expect(resolveBynderPortalUrl({ bynderPortalUrl: "https://acme.getbynder.com/" }, {})).toBe(
+      "acme.getbynder.com"
+    );
+    expect(
+      resolveBynderPortalUrl(
+        { bynderPortalUrl: "field.getbynder.com" },
+        { bynderPortalUrl: "https://app.getbynder.com" }
+      )
+    ).toBe("field.getbynder.com");
+    expect(resolveBynderPortalUrl({}, { bynderPortalUrl: "https://app.getbynder.com" })).toBe(
+      "app.getbynder.com"
+    );
+    expect(resolveBynderPortalUrl({}, {})).toBeUndefined();
+  });
+});
+
+describe("resolveCompactViewConfig", () => {
+  it("defaults to SingleSelectFile and en_US", () => {
+    expect(resolveCompactViewConfig({}, { bynderPortalUrl: "acme.getbynder.com" })).toEqual({
+      portalUrl: "acme.getbynder.com",
+      language: "en_US",
+      mode: "SingleSelectFile",
+    });
+  });
+
+  it("accepts SingleSelect and language overrides from field config", () => {
+    expect(
+      resolveCompactViewConfig(
+        { compactMode: "SingleSelect", compactLanguage: "nl_NL" },
+        { bynderPortalUrl: "acme.getbynder.com", compactMode: "SingleSelectFile" }
+      )
+    ).toMatchObject({
+      portalUrl: "acme.getbynder.com",
+      language: "nl_NL",
+      mode: "SingleSelect",
+    });
   });
 });
 

@@ -1,26 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CompactPicker } from "../../components/CompactPicker";
 import { CropFocalEditor } from "../../components/CropFocalEditor";
 import { InfoTooltip } from "../../components/InfoTooltip";
 import { LivePreview } from "../../components/LivePreview";
 import { TransformForm } from "../../components/TransformForm";
 import { useAppConfig, useAppSdk } from "../../common/hooks/useAppSdk";
-import { pickBynderAsset } from "../../lib/bynder/parseAsset";
+import { COMPACT_PICKER_HEIGHT } from "../../lib/bynder/compactView";
+import { assetFromSettings, normalizeCompactAssets, pickBynderAsset } from "../../lib/bynder/parseAsset";
 import { roundCoord } from "../../lib/bynder/composeDatUrl";
-import {
-  applyCropConfig,
-  liveSiblingRaw,
-  readSiblingFieldData,
-  resolveBynderFieldUid,
-  resolveCropConfig,
-  resolveEnableDat,
-  resolveSiblingAsset,
-} from "../../lib/fieldConfig";
-import {
-  isEmptyBynderValue,
-  parseAutoUpdateEntry,
-  parseExtensionFieldChange,
-  shouldApplyHostFieldData,
-} from "../../lib/hostEvents";
+import { applyCropConfig, resolveCompactViewConfig, resolveCropConfig, resolveEnableDat } from "../../lib/fieldConfig";
 import { buildSettingsPayload, parseSavedSettings } from "../../lib/settings";
 import { focalPointToObjectPosition } from "../../delivery/composeBynderImageUrl";
 import type { BynderImageSettings, FocalPoint, ParsedBynderAsset } from "../../lib/types";
@@ -50,8 +38,8 @@ export default function CustomField() {
   const appConfig = useAppConfig();
   const customField = sdk?.location.CustomField;
   const fieldConfig = readFieldConfig(customField);
-  const fieldUid = useMemo(
-    () => resolveBynderFieldUid(fieldConfig, appConfig),
+  const compact = useMemo(
+    () => resolveCompactViewConfig(fieldConfig, appConfig),
     [fieldConfig, appConfig]
   );
   const configAllowsDat = useMemo(
@@ -63,7 +51,7 @@ export default function CustomField() {
     [fieldConfig, appConfig]
   );
 
-  const [settings, setSettings] = useState<BynderImageSettings>(() => parseSavedSettings(null, fieldUid ?? ""));
+  const [settings, setSettings] = useState<BynderImageSettings>(() => parseSavedSettings(null));
   const [asset, setAsset] = useState<ParsedBynderAsset | null>(null);
   const [assetReady, setAssetReady] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | undefined>();
@@ -71,11 +59,6 @@ export default function CustomField() {
   const lastSaved = useRef("");
   const previousAssetId = useRef<string | undefined>(undefined);
   const assetRef = useRef<ParsedBynderAsset | null>(null);
-  const writingSelf = useRef(false);
-  const lastSiblingJson = useRef<string | undefined>(undefined);
-  const syncAssetRef = useRef<(liveEntry?: Record<string, unknown>, fieldEventData?: unknown) => void>(
-    () => undefined
-  );
   const hydrated = useRef(false);
 
   const persist = useCallback((next: BynderImageSettings) => {
@@ -88,12 +71,8 @@ export default function CustomField() {
   }, [cropConfig]);
 
   const commitAsset = useCallback(
-    (parsed: ParsedBynderAsset | null, allowClear: boolean) => {
-      if (!parsed && !allowClear && assetRef.current) {
-        setAssetReady(true);
-        return;
-      }
-      if (assetKey(parsed) === assetKey(assetRef.current)) {
+    (parsed: ParsedBynderAsset | null, assets?: unknown[]) => {
+      if (assetKey(parsed) === assetKey(assetRef.current) && parsed) {
         setAssetReady(true);
         return;
       }
@@ -106,8 +85,9 @@ export default function CustomField() {
         const sameSnapshot =
           (parsed?.id ?? undefined) === current.assetId &&
           (parsed?.sourceUrl ?? undefined) === current.sourceUrl &&
-          (parsed?.transformBaseUrl ?? undefined) === current.transformBaseUrl;
-        if (sameSnapshot && Boolean(parsed) === Boolean(current.assetId || current.sourceUrl)) {
+          (parsed?.transformBaseUrl ?? undefined) === current.transformBaseUrl &&
+          Boolean(parsed) === Boolean(current.assetId || current.sourceUrl || current.assets?.length);
+        if (sameSnapshot && parsed) {
           return current;
         }
 
@@ -126,239 +106,71 @@ export default function CustomField() {
             focalPoint: assetChanged ? { x: 0.5, y: 0.5 } : current.focalPoint,
           },
           {
-            sourceFieldUid: fieldUid ?? current.sourceFieldUid,
             assetId: parsed?.id,
             transformBaseUrl: parsed?.transformBaseUrl,
             sourceUrl: parsed?.sourceUrl,
             datEnabled,
+            assets: parsed ? assets ?? current.assets : undefined,
           }
         );
       });
     },
-    [configAllowsDat, cropConfig, fieldUid]
+    [configAllowsDat, cropConfig]
   );
 
-  const applySiblingRaw = useCallback(
-    (raw: unknown, allowClear: boolean) => {
-      const serialized = JSON.stringify(raw ?? null);
-      const parsed = pickBynderAsset(raw, assetRef.current?.id);
-
-      if (parsed) {
-        if (lastSiblingJson.current === serialized) {
-          setAssetReady(true);
-          return;
-        }
-        lastSiblingJson.current = serialized;
-        commitAsset(parsed, false);
-        return;
-      }
-
-      if (!allowClear && assetRef.current) {
-        setAssetReady(true);
-        return;
-      }
-
-      if (lastSiblingJson.current === serialized) {
-        setAssetReady(true);
-        return;
-      }
-      lastSiblingJson.current = serialized;
-      commitAsset(null, true);
+  const onCompactSelect = useCallback(
+    (rawAssets: unknown[], additionalInfo?: unknown) => {
+      const assets = normalizeCompactAssets(rawAssets, additionalInfo);
+      const parsed = pickBynderAsset(assets);
+      if (!parsed) return;
+      commitAsset(parsed, assets);
     },
     [commitAsset]
   );
 
-  const syncAsset = useCallback(
-    (liveEntry?: Record<string, unknown>, fieldEventData?: unknown) => {
-      if (!fieldUid) {
-        commitAsset(null, true);
-        return;
-      }
+  const onCompactRemove = useCallback(() => {
+    commitAsset(null, []);
+  }, [commitAsset]);
 
-      if (fieldEventData !== undefined) {
-        if (!shouldApplyHostFieldData(fieldEventData)) return;
-        applySiblingRaw(fieldEventData, true);
+  const onPickerOpenChange = useCallback(
+    (open: boolean) => {
+      const frame = customField?.frame as
+        | { updateHeight?: (height: number) => void; enableAutoResizing?: () => void }
+        | undefined;
+      if (open) {
+        frame?.updateHeight?.(COMPACT_PICKER_HEIGHT);
         return;
       }
-
-      const live = liveSiblingRaw(fieldUid, liveEntry);
-      if (live.present) {
-        const parsed = pickBynderAsset(live.value, assetRef.current?.id);
-        if (parsed) {
-          applySiblingRaw(live.value, false);
-          return;
-        }
-        // $autoUpdateEntry / entry.onChange is the only iframe-reachable
-        // remove signal. Ignore empties while our own setData is in flight.
-        applySiblingRaw(live.value, !writingSelf.current);
-        return;
-      }
-
-      const result = resolveSiblingAsset({
-        uid: fieldUid,
-        liveEntry,
-        fieldData: readSiblingFieldData(customField?.entry, fieldUid),
-        writingSelf: writingSelf.current,
-        current: assetRef.current,
-      });
-
-      if (result.type === "apply") {
-        lastSiblingJson.current = JSON.stringify(readSiblingFieldData(customField?.entry, fieldUid) ?? null);
-        commitAsset(result.asset, false);
-        return;
-      }
-      if (result.type === "keep") {
-        setAssetReady(true);
-        return;
-      }
-      commitAsset(null, !assetRef.current);
+      frame?.enableAutoResizing?.();
     },
-    [applySiblingRaw, commitAsset, customField, fieldUid]
+    [customField]
   );
-
-  syncAssetRef.current = syncAsset;
 
   useEffect(() => {
     if (!customField || hydrated.current) return;
-    const saved = parseSavedSettings(customField.field.getData(), fieldUid ?? "");
-    const isNew = !saved.assetId && !saved.sourceUrl;
+    const saved = parseSavedSettings(customField.field.getData());
+    const isNew = !saved.assetId && !saved.sourceUrl && !saved.assets?.length;
     saved.transform = applyCropConfig(saved.transform, cropConfig, isNew ? "defaults" : "locks");
     lastSaved.current = JSON.stringify(saved);
     previousAssetId.current = saved.assetId;
     setSettings(saved);
     setPreviewUrl(saved.url);
+    const parsed = assetFromSettings(saved);
+    assetRef.current = parsed;
+    setAsset(parsed);
+    setAssetReady(true);
     hydrated.current = true;
-    syncAssetRef.current();
-  }, [customField, fieldUid, cropConfig]);
-
-  useEffect(() => {
-    const entry = customField?.entry as
-      | {
-          onChange?: (cb: (unresolved?: Record<string, unknown>) => void) => unknown;
-          getDraftData?: () => Promise<unknown>;
-        }
-      | undefined;
-    if (!fieldUid || !customField || !entry) return undefined;
-
-    const unsubs: Array<() => void> = [];
-
-    // Documented App SDK: entry.onChange ← host $autoUpdateEntry / entryChange.
-    const fromEntryChange = entry.onChange?.((unresolved) => {
-      syncAssetRef.current(unresolved);
-      const fromEvent = liveSiblingRaw(fieldUid, unresolved);
-      const eventParsed = fromEvent.present ? pickBynderAsset(fromEvent.value, assetRef.current?.id) : null;
-      if (eventParsed || (fromEvent.present && isEmptyBynderValue(fromEvent.value))) return;
-      void entry.getDraftData?.().then((draft) => {
-        const live = liveSiblingRaw(fieldUid, draft);
-        if (!live.present) return;
-        if (pickBynderAsset(live.value, assetRef.current?.id)) {
-          applySiblingRaw(live.value, false);
-          return;
-        }
-        applySiblingRaw(live.value, !writingSelf.current);
-      });
-    });
-    if (typeof fromEntryChange === "function") unsubs.push(fromEntryChange as () => void);
-
-    // Documented App SDK: field.onChange ← host $extensionFieldChange.
-    // entry.getField(uid).onChange is stripped by the SDK, so we must subscribe
-    // on THIS field. That also registers the iframe so the host forwards the
-    // Bynder picker’s events (the window CustomEvents stay on the parent page).
-    const selfField = customField.field as {
-      onChange?: (cb: (data: unknown) => void) => unknown;
-      _data?: unknown;
-      _resolvedData?: unknown;
-    };
-    const fromSelfFieldChange = selfField.onChange?.((data) => {
-      if (!shouldApplyHostFieldData(data)) return;
-      try {
-        const restored = lastSaved.current ? JSON.parse(lastSaved.current) : undefined;
-        if (restored) {
-          selfField._data = restored;
-          selfField._resolvedData = restored;
-        }
-      } catch {
-        /* keep host payload */
-      }
-      applySiblingRaw(data, true);
-    });
-    if (typeof fromSelfFieldChange === "function") unsubs.push(fromSelfFieldChange as () => void);
-
-    const emitter = (
-      entry as {
-        _emitter?: {
-          on: (name: string, cb: (payload: { data?: unknown }) => void) => void;
-          emitEvent: (name: string, args: unknown[]) => void;
-        };
-      }
-    )._emitter;
-    if (emitter?.on && emitter.emitEvent) {
-      const onExt = (payload: { data?: unknown }) => {
-        if (!shouldApplyHostFieldData(payload?.data)) return;
-        applySiblingRaw(payload.data, true);
-      };
-      emitter.on("extensionFieldChange", onExt);
-      emitter.emitEvent("_eventRegistration", [{ name: "extensionFieldChange" }]);
-    }
-
-    const ourExtensionUid = sdk?.locationUID ?? sdk?.ids?.locationUID;
-
-    const onExtensionFieldChange = (event: Event) => {
-      const parsed = parseExtensionFieldChange(event);
-      if (!parsed) return;
-      if (ourExtensionUid && parsed.extensionUid === ourExtensionUid) return;
-      if (!shouldApplyHostFieldData(parsed.data)) return;
-      applySiblingRaw(parsed.data, true);
-    };
-
-    const onAutoUpdateEntry = (event: Event) => {
-      const entryData = parseAutoUpdateEntry(event);
-      if (!entryData) return;
-      syncAssetRef.current(entryData);
-    };
-
-    const targets: EventTarget[] = [window];
-    try {
-      if (window.parent && window.parent !== window) targets.push(window.parent);
-    } catch {
-      /* cross-origin parent */
-    }
-
-    for (const target of targets) {
-      try {
-        target.addEventListener("$extensionFieldChange", onExtensionFieldChange);
-        target.addEventListener("$autoUpdateEntry", onAutoUpdateEntry);
-        unsubs.push(() => {
-          target.removeEventListener("$extensionFieldChange", onExtensionFieldChange);
-          target.removeEventListener("$autoUpdateEntry", onAutoUpdateEntry);
-        });
-      } catch {
-        /* parent may be cross-origin */
-      }
-    }
-
-    return () => {
-      unsubs.forEach((unsubscribe) => unsubscribe());
-    };
-  }, [applySiblingRaw, customField, fieldUid, sdk]);
+  }, [customField, cropConfig]);
 
   useEffect(() => {
     if (!customField?.field) return undefined;
     const serialized = JSON.stringify(settings);
     if (serialized === lastSaved.current) return undefined;
     const timer = window.setTimeout(() => {
-      writingSelf.current = true;
       const done = customField.field.setData(settings);
       lastSaved.current = serialized;
-      const release = () => {
-        window.setTimeout(() => {
-          writingSelf.current = false;
-        }, 2000);
-      };
       if (done && typeof (done as Promise<unknown>).then === "function") {
-        (done as Promise<unknown>).then(release, release);
-      } else {
-        release();
+        void (done as Promise<unknown>).catch(() => undefined);
       }
     }, 300);
     return () => window.clearTimeout(timer);
@@ -411,16 +223,16 @@ export default function CustomField() {
     return <p className="notice">This view only works as a Custom Field location.</p>;
   }
 
-  if (!fieldUid) {
+  if (!compact.portalUrl) {
     return (
       <div className="notice-card">
-        <h3>Connect a Bynder field</h3>
+        <h3>Connect a Bynder portal</h3>
         <p>
-          Set <code>bynderFieldUid</code> on this field’s Config Parameter, or as the default in App
-          Configuration.
+          Set <code>bynderPortalUrl</code> in App Configuration, or override it on this field’s Config
+          Parameter.
         </p>
         <pre>{`{
-  "bynderFieldUid": "hero_image",
+  "bynderPortalUrl": "acme.getbynder.com",
   "aspect": "16:9",
   "width": 1200,
   "lockAspect": true
@@ -433,17 +245,6 @@ export default function CustomField() {
     return <p className="notice">Loading…</p>;
   }
 
-  if (!previewSrc) {
-    return (
-      <div className="notice-card">
-        <h3>Assign an image first</h3>
-        <p>
-          You must first assign an image to <code>{fieldUid}</code>.
-        </p>
-      </div>
-    );
-  }
-
   const objectPosition = focalPointToObjectPosition(settings.focalPoint);
 
   return (
@@ -451,9 +252,7 @@ export default function CustomField() {
       <header className="header">
         <div>
           <h2>Bynder image settings</h2>
-          <p>
-            {asset?.name ? asset.name : "Bynder image"} · source field <code>{fieldUid}</code>
-          </p>
+          <p>{asset?.name ? asset.name : "Pick a Bynder image, then set crop and focal point."}</p>
         </div>
         {configAllowsDat && hasDatUrl && (
           <label className="dat-toggle">
@@ -467,115 +266,130 @@ export default function CustomField() {
         )}
       </header>
 
+      <CompactPicker
+        portalUrl={compact.portalUrl}
+        language={compact.language}
+        mode={compact.mode}
+        selected={asset}
+        onSelect={onCompactSelect}
+        onRemove={onCompactRemove}
+        onOpenChange={onPickerOpenChange}
+      />
+
       {datMissing && (
         <div className="notice-card warning">
           <h3>DAT is unavailable for this image</h3>
           <p>
             DAT is enabled in config, but this Bynder payload has no <code>files.transformBaseUrl</code>.
-            Add that key to the official Bynder saved keys. Using CSS crop and focal point until then.
+            Using CSS crop and focal point until then. Compact View File mode can supply a DAT URL as{" "}
+            <code>selectedFile</code>.
           </p>
         </div>
       )}
 
-      <div className="editor-row">
-        <aside className="editor-fields">
-          <div className="field-group">
-            <div className="panel-title">
-              Crop &amp; focal point
-              <InfoTooltip>
-                Click or drag the red dot, or anywhere on the image, to set the focal point. Saved as
-                CSS <code>object-position</code>. If this panel is smaller than the crop size, the
-                preview shrinks.
-              </InfoTooltip>
-            </div>
-            <label className="field">
-              <span>X %</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={0.1}
-                value={percent(settings.focalPoint.x)}
-                onChange={(event) => onPercentChange("x", event.target.value)}
+      {previewSrc ? (
+        <>
+          <div className="editor-row">
+            <aside className="editor-fields">
+              <div className="field-group">
+                <div className="panel-title">
+                  Crop &amp; focal point
+                  <InfoTooltip>
+                    Click or drag the red dot, or anywhere on the image, to set the focal point. Saved as
+                    CSS <code>object-position</code>. If this panel is smaller than the crop size, the
+                    preview shrinks.
+                  </InfoTooltip>
+                </div>
+                <label className="field">
+                  <span>X %</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={percent(settings.focalPoint.x)}
+                    onChange={(event) => onPercentChange("x", event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Y %</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={percent(settings.focalPoint.y)}
+                    onChange={(event) => onPercentChange("y", event.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="linkish"
+                  onClick={() => onFocalChange({ x: 0.5, y: 0.5 })}
+                >
+                  Reset center
+                </button>
+              </div>
+              <div className="field-group">
+                <div className="panel-title">
+                  {datActive ? "Transforms" : "Crop frame"}
+                  <InfoTooltip>
+                    {datActive ? (
+                      <>
+                        Bynder DAT size, operation, format, and quality. Fill crops to the box; Fit scales
+                        without cropping.
+                      </>
+                    ) : (
+                      <>
+                        Width, height, and aspect are saved for your site’s CSS crop box (
+                        <code>object-fit: cover</code>). The image is that box, not the delivery size.
+                      </>
+                    )}
+                  </InfoTooltip>
+                </div>
+                <TransformForm
+                  value={settings.transform}
+                  datEnabled={datActive}
+                  aspectPresets={cropConfig.aspectPresets}
+                  locks={{
+                    aspect: cropConfig.lockAspect,
+                    width: cropConfig.lockWidth,
+                    height: cropConfig.lockHeight,
+                  }}
+                  onChange={(transform) => persist({ ...settings, transform })}
+                />
+              </div>
+            </aside>
+            <section className="editor-preview">
+              <CropFocalEditor
+                key={`${asset?.id ?? ""}:${previewSrc}`}
+                src={previewSrc}
+                alt={asset?.name}
+                focalPoint={settings.focalPoint}
+                transform={settings.transform}
+                onChange={onFocalChange}
               />
-            </label>
-            <label className="field">
-              <span>Y %</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={0.1}
-                value={percent(settings.focalPoint.y)}
-                onChange={(event) => onPercentChange("y", event.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              className="linkish"
-              onClick={() => onFocalChange({ x: 0.5, y: 0.5 })}
-            >
-              Reset center
-            </button>
+            </section>
           </div>
-          <div className="field-group">
-            <div className="panel-title">
-              {datActive ? "Transforms" : "Crop frame"}
-              <InfoTooltip>
-                {datActive ? (
-                  <>
-                    Bynder DAT size, operation, format, and quality. Fill crops to the box; Fit scales
-                    without cropping.
-                  </>
-                ) : (
-                  <>
-                    Width, height, and aspect are saved for your site’s CSS crop box (
-                    <code>object-fit: cover</code>). The image is that box, not the delivery size.
-                  </>
-                )}
-              </InfoTooltip>
-            </div>
-            <TransformForm
-              value={settings.transform}
-              datEnabled={datActive}
-              aspectPresets={cropConfig.aspectPresets}
-              locks={{
-                aspect: cropConfig.lockAspect,
-                width: cropConfig.lockWidth,
-                height: cropConfig.lockHeight,
-              }}
-              onChange={(transform) => persist({ ...settings, transform })}
-            />
-          </div>
-        </aside>
-        <section className="editor-preview">
-          <CropFocalEditor
-            key={`${asset?.id ?? ""}:${previewSrc}`}
-            src={previewSrc}
-            alt={asset?.name}
-            focalPoint={settings.focalPoint}
-            transform={settings.transform}
-            onChange={onFocalChange}
-          />
-        </section>
-      </div>
 
-      {datActive && (
-        <section className="panel">
-          <div className="panel-title">
-            Transformed preview
-            <InfoTooltip>
-              Live Bynder DAT URL using the current focal point, size, format, and quality.
-            </InfoTooltip>
-          </div>
-          <LivePreview
-            mode="dat"
-            url={previewUrl}
-            loading={previewUpdating}
-            objectPosition={objectPosition}
-          />
-        </section>
-      )}
+          {datActive && (
+            <section className="panel">
+              <div className="panel-title">
+                Transformed preview
+                <InfoTooltip>
+                  Live Bynder DAT URL using the current focal point, size, format, and quality.
+                </InfoTooltip>
+              </div>
+              <LivePreview
+                mode="dat"
+                url={previewUrl}
+                loading={previewUpdating}
+                objectPosition={objectPosition}
+              />
+            </section>
+          )}
+        </>
+      ) : null}
     </div>
   );
 }

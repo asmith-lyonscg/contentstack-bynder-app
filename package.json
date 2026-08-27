@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Contentstack Marketplace App: Bynder focal point + DAT transforms companion field",
+  "description": "Contentstack Marketplace App: Bynder Compact View picker plus focal point and crop in one JSON field",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -16,6 +16,7 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@bynder/compact-view": "^6.0.1",
     "@contentstack/app-sdk": "^2.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -76,6 +76,52 @@ export function pickBynderAsset(raw: unknown, currentId?: string): ParsedBynderA
   return parsed[0];
 }
 
+/** Hydrate the editor from saved JSON (`assets[]`, or companion-era sourceUrl). */
+export function assetFromSettings(settings: {
+  assets?: unknown[];
+  assetId?: string;
+  sourceUrl?: string;
+  transformBaseUrl?: string;
+}): ParsedBynderAsset | null {
+  const fromAssets = pickBynderAsset(settings.assets);
+  if (fromAssets) return fromAssets;
+  if (!settings.sourceUrl) return null;
+  return {
+    id: settings.assetId ?? settings.sourceUrl,
+    sourceUrl: settings.sourceUrl,
+    transformBaseUrl: settings.transformBaseUrl,
+  };
+}
+
+/**
+ * Compact View often returns `derivatives.webImage` as a string and DAT on
+ * `additionalInfo.selectedFile`. Persist a shape `parseBynderAsset` already understands.
+ */
+export function normalizeCompactAssets(assets: unknown[], additionalInfo?: unknown): unknown[] {
+  const extra = asRecord(additionalInfo);
+  const selectedFile = extra?.selectedFile;
+  return assets.map((raw, index) => {
+    const asset = asRecord(raw);
+    if (!asset) return raw;
+    const files = { ...filesMap(asset) };
+    const derivatives = asRecord(asset.derivatives);
+    if (!pickUrl(files.webImage)) {
+      const fromDeriv = pickUrl(derivatives?.webImage) ?? pickUrl(derivatives?.thumbnail);
+      if (fromDeriv) files.webImage = { url: fromDeriv };
+    }
+    if (index === 0 && selectedFile && !files.transformBaseUrl) {
+      const selectedUrl = pickUrl(selectedFile);
+      const inferred = inferTransformBaseUrl(selectedUrl);
+      if (inferred) files.transformBaseUrl = inferred;
+    }
+    const next: Record<string, unknown> = { ...asset, files };
+    if (index === 0 && selectedFile) {
+      next.additionalInfo = { ...(asRecord(asset.additionalInfo) ?? {}), selectedFile };
+    }
+    return next;
+  });
+}
+
 /**
  * Normalizes official Bynder Marketplace field JSON (object or array)
  * into the subset this companion app needs.
@@ -88,10 +134,9 @@ export function parseBynderAsset(raw: unknown): ParsedBynderAsset | null {
   const extra = additionalInfo(asset);
   const selectedFile = asRecord(extra.selectedFile);
 
-  const id =
-    pickString(asset.databaseId) ??
-    pickString(asset.id) ??
-    pickString(asset.assetId);
+  const graphqlId = pickString(asset.id);
+  const databaseId = pickString(asset.databaseId);
+  const id = databaseId ?? graphqlId ?? pickString(asset.assetId);
   if (!id) return null;
 
   const webImage = files.webImage ?? files.webimage;
@@ -108,18 +153,23 @@ export function parseBynderAsset(raw: unknown): ParsedBynderAsset | null {
     ? asset.previewUrls.map((item) => pickUrl(item)).filter((item): item is string => Boolean(item))
     : [];
 
+  const derivatives = asRecord(asset.derivatives);
   const sourceUrl =
     webImageUrl ??
+    pickUrl(derivatives?.webImage) ??
+    pickUrl(derivatives?.thumbnail) ??
     previewUrls[0] ??
     pickUrl(selectedFile) ??
     transformBaseUrl ??
-    pickString(asset.url);
+    pickString(asset.url) ??
+    pickString(asset.originalUrl);
 
   if (!sourceUrl) return null;
 
   return {
     id,
-    databaseId: pickString(asset.databaseId),
+    databaseId,
+    pickerId: graphqlId ?? databaseId ?? id,
     name: pickString(asset.name) ?? pickString(asset.title),
     type: pickString(asset.type),
     transformBaseUrl,

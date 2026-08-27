@@ -1,4 +1,4 @@
-import type { CropFieldConfig, ParsedBynderAsset, TransformSettings } from "./types";
+import type { CompactSelectionMode, CompactViewConfig, CropFieldConfig, ParsedBynderAsset, TransformSettings } from "./types";
 import { ASPECT_PRESETS } from "./types";
 import { lockToAspect, parseAspect, resolveDimensions } from "./bynder/composeDatUrl";
 import { parseBynderAsset } from "./bynder/parseAsset";
@@ -98,6 +98,32 @@ function pickAspectPresets(value: unknown): string[] | undefined {
 
 export function resolveBynderFieldUid(fieldConfig: unknown, appConfig: unknown): string | undefined {
   return pickUid(fieldConfig) ?? pickUid(appConfig);
+}
+
+export function normalizeBynderPortalUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  return value
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/+$/, "");
+}
+
+export function resolveBynderPortalUrl(fieldConfig: unknown, appConfig: unknown): string | undefined {
+  return (
+    normalizeBynderPortalUrl(pickString(fieldConfig, "bynderPortalUrl")) ??
+    normalizeBynderPortalUrl(pickString(appConfig, "bynderPortalUrl"))
+  );
+}
+
+export function resolveCompactViewConfig(fieldConfig: unknown, appConfig: unknown): CompactViewConfig {
+  const modeRaw =
+    pickString(fieldConfig, "compactMode") ?? pickString(appConfig, "compactMode") ?? "SingleSelectFile";
+  const mode: CompactSelectionMode = modeRaw === "SingleSelect" ? "SingleSelect" : "SingleSelectFile";
+  return {
+    portalUrl: resolveBynderPortalUrl(fieldConfig, appConfig),
+    language: pickString(fieldConfig, "compactLanguage") ?? pickString(appConfig, "compactLanguage") ?? "en_US",
+    mode,
+  };
 }
 
 /** Field Config Parameter wins over App Configuration. Default: DAT off. */

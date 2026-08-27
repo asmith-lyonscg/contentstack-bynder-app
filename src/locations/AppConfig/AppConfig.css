@@ -32,7 +32,8 @@
   font-weight: 600;
 }
 
-.app-config input {
+.app-config input,
+.app-config select {
   font: 14px Inter, system-ui, sans-serif;
   border: 1px solid #d4d4e8;
   border-radius: 4px;
@@ -54,12 +55,19 @@
   opacity: 0.7;
 }
 
-.help code {
+.help code.example {
   display: block;
   margin-top: 6px;
   background: #f4f4fb;
   padding: 8px;
   border-radius: 4px;
+  font-weight: 400;
+}
+
+.help code {
+  background: #f4f4fb;
+  padding: 1px 4px;
+  border-radius: 3px;
   font-weight: 400;
 }
 

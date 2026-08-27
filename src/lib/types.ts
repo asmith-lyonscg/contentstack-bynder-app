@@ -18,11 +18,13 @@ export interface TransformSettings {
 
 export interface BynderImageSettings {
   v: 1;
-  sourceFieldUid: string;
+  sourceFieldUid?: string;
   assetId?: string;
   transformBaseUrl?: string;
   sourceUrl?: string;
   datEnabled?: boolean;
+  /** Official-shaped Bynder Compact View assets (usually one). */
+  assets?: unknown[];
   focalPoint: FocalPoint;
   transform: TransformSettings;
   url?: string;
@@ -31,12 +33,22 @@ export interface BynderImageSettings {
 export interface ParsedBynderAsset {
   id: string;
   databaseId?: string;
+  /** Compact View GraphQL `id` for `selectedAssets` (may differ from `databaseId`). */
+  pickerId?: string;
   name?: string;
   type?: string;
   transformBaseUrl?: string;
   sourceUrl: string;
   width?: number;
   height?: number;
+}
+
+export type CompactSelectionMode = "SingleSelect" | "SingleSelectFile";
+
+export interface CompactViewConfig {
+  portalUrl?: string;
+  language: string;
+  mode: CompactSelectionMode;
 }
 
 export interface CropFieldConfig {
@@ -50,6 +62,10 @@ export interface CropFieldConfig {
 }
 
 export interface AppInstallationConfig {
+  /** Bynder portal host, e.g. acme.getbynder.com */
+  bynderPortalUrl?: string;
+  compactLanguage?: string;
+  compactMode?: CompactSelectionMode;
   bynderFieldUid?: string;
   /** When false (default), focal point uses CSS object-position. DAT URL composition is skipped. */
   enableDat?: boolean;

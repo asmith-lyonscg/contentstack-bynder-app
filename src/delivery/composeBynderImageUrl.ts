@@ -1,5 +1,10 @@
 import type { BynderImageSettings, DatFormat, FocalPoint, TransformSettings } from "../lib/types";
 import { composeDatUrl, normalizeFocalPoint } from "../lib/bynder/composeDatUrl";
+import { pickBynderAsset } from "../lib/bynder/parseAsset";
+
+function assetFromSaved(settings: BynderImageSettings) {
+  return pickBynderAsset(settings.assets);
+}
 
 export interface ComposeOverrides {
   width?: number;
@@ -18,10 +23,10 @@ export interface ComposeOverrides {
 export function composeBynderImageUrl(
   settings: BynderImageSettings,
   overrides?: ComposeOverrides,
-  transformBaseUrl = settings.transformBaseUrl
+  transformBaseUrl = settings.transformBaseUrl ?? assetFromSaved(settings)?.transformBaseUrl
 ): string {
   if (settings.datEnabled === false || !transformBaseUrl) {
-    return settings.sourceUrl ?? settings.url ?? "";
+    return settings.sourceUrl ?? assetFromSaved(settings)?.sourceUrl ?? settings.url ?? "";
   }
 
   const widthOverridden = overrides?.width != null;

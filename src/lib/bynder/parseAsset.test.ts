@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { inferTransformBaseUrl, parseBynderAsset, pickBynderAsset } from "./parseAsset";
+import {
+  assetFromSettings,
+  inferTransformBaseUrl,
+  normalizeCompactAssets,
+  parseBynderAsset,
+  pickBynderAsset,
+} from "./parseAsset";
 
 describe("inferTransformBaseUrl", () => {
   it("strips query params from a DAT URL", () => {
@@ -74,6 +80,21 @@ describe("parseBynderAsset", () => {
     expect(parsed?.transformBaseUrl).toBeUndefined();
   });
 
+  it("reads Compact View derivatives.webImage as a string", () => {
+    const parsed = parseBynderAsset({
+      id: "ucv-1",
+      name: "UCV",
+      derivatives: {
+        webImage: "https://cdn.example/web.jpg",
+        thumbnail: "https://cdn.example/thumb.jpg",
+      },
+    });
+    expect(parsed).toMatchObject({
+      id: "ucv-1",
+      sourceUrl: "https://cdn.example/web.jpg",
+    });
+  });
+
   it("returns null for empty payloads", () => {
     expect(parseBynderAsset(null)).toBeNull();
     expect(parseBynderAsset([])).toBeNull();
@@ -95,5 +116,56 @@ describe("pickBynderAsset", () => {
 
   it("uses the first asset when replacing in a single-item payload", () => {
     expect(pickBynderAsset([asset("b", "New")], "a")).toMatchObject({ id: "b", name: "New" });
+  });
+
+  it("returns null for an empty assets array", () => {
+    expect(pickBynderAsset([])).toBeNull();
+  });
+});
+
+describe("normalizeCompactAssets", () => {
+  it("maps UCV derivatives and selectedFile onto files.webImage / transformBaseUrl", () => {
+    const [normalized] = normalizeCompactAssets(
+      [
+        {
+          id: "ucv-1",
+          name: "UCV",
+          derivatives: { webImage: "https://cdn.example/web.jpg" },
+        },
+      ],
+      {
+        selectedFile: {
+          url: "https://portal.bynder.com/transform/abc/hero.jpg?io=transform:fill,width:100",
+        },
+      }
+    );
+    expect(parseBynderAsset(normalized)).toMatchObject({
+      id: "ucv-1",
+      sourceUrl: "https://cdn.example/web.jpg",
+      transformBaseUrl: "https://portal.bynder.com/transform/abc/hero.jpg",
+    });
+  });
+});
+
+describe("assetFromSettings", () => {
+  it("reads assets[] and treats empty assets as no selection", () => {
+    expect(
+      assetFromSettings({
+        assets: [
+          { id: "a", files: { webImage: { url: "https://cdn.example/a.jpg" } } },
+        ],
+      })
+    ).toMatchObject({ id: "a", sourceUrl: "https://cdn.example/a.jpg" });
+    expect(assetFromSettings({ assets: [] })).toBeNull();
+    expect(assetFromSettings({})).toBeNull();
+  });
+
+  it("falls back to companion-era sourceUrl", () => {
+    expect(
+      assetFromSettings({
+        assetId: "legacy",
+        sourceUrl: "https://cdn.example/legacy.jpg",
+      })
+    ).toMatchObject({ id: "legacy", sourceUrl: "https://cdn.example/legacy.jpg" });
   });
 });

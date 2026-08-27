@@ -21,6 +21,15 @@ describe("composeBynderImageUrl", () => {
     expect(focalPointToObjectPosition({ x: 0.35, y: 0.42 })).toBe("35% 42%");
   });
 
+  it("falls back to assets[0] when sourceUrl is missing", () => {
+    const settings = emptySettings();
+    settings.datEnabled = false;
+    settings.assets = [
+      { id: "a", files: { webImage: { url: "https://cdn.example/from-assets.jpg" } } },
+    ];
+    expect(composeBynderImageUrl(settings)).toBe("https://cdn.example/from-assets.jpg");
+  });
+
   it("returns sourceUrl when DAT is disabled", () => {
     const settings = emptySettings("hero_image");
     settings.datEnabled = false;

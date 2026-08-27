@@ -44,16 +44,17 @@ export function defaultTransform(): TransformSettings {
 }
 
 export function emptySettings(sourceFieldUid = ""): BynderImageSettings {
-  return {
+  const next: BynderImageSettings = {
     v: 1,
-    sourceFieldUid,
     datEnabled: false,
     focalPoint: { ...DEFAULT_FOCAL_POINT },
     transform: defaultTransform(),
   };
+  if (sourceFieldUid) next.sourceFieldUid = sourceFieldUid;
+  return next;
 }
 
-export function parseSavedSettings(raw: unknown, sourceFieldUid: string): BynderImageSettings {
+export function parseSavedSettings(raw: unknown, sourceFieldUid = ""): BynderImageSettings {
   const base = emptySettings(sourceFieldUid);
   if (!isRecord(raw) || Object.keys(raw).length === 0) return base;
 
@@ -70,11 +71,12 @@ export function parseSavedSettings(raw: unknown, sourceFieldUid: string): Bynder
 
   return {
     v: 1,
-    sourceFieldUid: typeof raw.sourceFieldUid === "string" && raw.sourceFieldUid ? raw.sourceFieldUid : sourceFieldUid,
+    sourceFieldUid: typeof raw.sourceFieldUid === "string" && raw.sourceFieldUid ? raw.sourceFieldUid : sourceFieldUid || undefined,
     assetId: typeof raw.assetId === "string" ? raw.assetId : undefined,
     transformBaseUrl: typeof raw.transformBaseUrl === "string" ? raw.transformBaseUrl : undefined,
     sourceUrl: typeof raw.sourceUrl === "string" ? raw.sourceUrl : undefined,
     datEnabled: typeof raw.datEnabled === "boolean" ? raw.datEnabled : false,
+    assets: Array.isArray(raw.assets) ? raw.assets : undefined,
     focalPoint: asFocalPoint(raw.focalPoint),
     transform,
     url: typeof raw.url === "string" ? raw.url : undefined,
@@ -84,10 +86,10 @@ export function parseSavedSettings(raw: unknown, sourceFieldUid: string): Bynder
 export function buildSettingsPayload(
   settings: BynderImageSettings,
   extras?: Partial<
-    Pick<BynderImageSettings, "assetId" | "transformBaseUrl" | "sourceFieldUid" | "sourceUrl" | "datEnabled">
+    Pick<BynderImageSettings, "assetId" | "transformBaseUrl" | "sourceFieldUid" | "sourceUrl" | "datEnabled" | "assets">
   >
 ): BynderImageSettings {
-  type ExtraKey = "assetId" | "transformBaseUrl" | "sourceFieldUid" | "sourceUrl" | "datEnabled";
+  type ExtraKey = "assetId" | "transformBaseUrl" | "sourceFieldUid" | "sourceUrl" | "datEnabled" | "assets";
   const pick = <K extends ExtraKey>(key: K, fallback: BynderImageSettings[K]) =>
     extras && Object.prototype.hasOwnProperty.call(extras, key) ? extras[key] : fallback;
 
@@ -95,14 +97,17 @@ export function buildSettingsPayload(
   const transformBaseUrl = pick("transformBaseUrl", settings.transformBaseUrl) || undefined;
   const sourceUrl = pick("sourceUrl", settings.sourceUrl) || undefined;
   const assetId = pick("assetId", settings.assetId) || undefined;
+  const assets = pick("assets", settings.assets);
+  const sourceFieldUid = pick("sourceFieldUid", settings.sourceFieldUid) || undefined;
 
   const next: BynderImageSettings = {
     v: 1,
-    sourceFieldUid: pick("sourceFieldUid", settings.sourceFieldUid) || settings.sourceFieldUid,
+    sourceFieldUid,
     assetId,
     transformBaseUrl,
     sourceUrl,
     datEnabled,
+    assets: Array.isArray(assets) && assets.length ? assets : undefined,
     focalPoint: normalizeFocalPoint(settings.focalPoint),
     transform: { ...settings.transform },
   };
@@ -119,6 +124,8 @@ export function buildSettingsPayload(
   if (!next.assetId) delete next.assetId;
   if (!next.transformBaseUrl) delete next.transformBaseUrl;
   if (!next.sourceUrl) delete next.sourceUrl;
+  if (!next.sourceFieldUid) delete next.sourceFieldUid;
+  if (!next.assets?.length) delete next.assets;
 
   return next;
 }
