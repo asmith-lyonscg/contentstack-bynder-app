@@ -1,16 +1,48 @@
-/** GraphQL fields Compact View should return for crop + optional DAT. */
+/** GraphQL fields Compact View should return on confirm (getAsset / getAssets). */
 export const COMPACT_ASSET_FIELD_SELECTION = `
   id
   name
+  description
   databaseId
-  url
+  createdAt
   originalUrl
+  publishedAt
+  tags
   type
+  updatedAt
+  url
+  extensions
+  metaproperties {
+    nodes {
+      name
+      type
+      options {
+        name
+        displayLabel
+      }
+    }
+  }
+  textMetaproperties {
+    name
+    value
+    label
+  }
   derivatives {
     thumbnail
     webImage
   }
+  ... on Video {
+    previewUrls
+    streamingLinks {
+      dash
+      hls
+      embedCode
+    }
+    videoPresets {
+      presetId
+      name
+      format
+      previewUrl
+    }
+  }
 `;
-
-/** Contentstack iframe height while Compact View’s modal is open. */
-export const COMPACT_PICKER_HEIGHT = 720;

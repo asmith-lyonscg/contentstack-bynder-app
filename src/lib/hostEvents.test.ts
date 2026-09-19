@@ -11,8 +11,7 @@ describe("isOwnSettingsPayload", () => {
     expect(
       isOwnSettingsPayload({
         v: 1,
-        sourceFieldUid: "bynder_logo",
-        focalPoint: { x: 0.5, y: 0.5 },
+        assets: [{ id: "a", webImage: { url: "https://cdn.example/a.jpg" } }],
       })
     ).toBe(true);
     expect(isOwnSettingsPayload([])).toBe(false);
@@ -43,8 +42,7 @@ describe("shouldApplyHostFieldData", () => {
     expect(
       shouldApplyHostFieldData({
         v: 1,
-        sourceFieldUid: "bynder_logo",
-        focalPoint: { x: 0.5, y: 0.5 },
+        assets: [{ id: "a", webImage: { url: "https://cdn.example/a.jpg" } }],
       })
     ).toBe(false);
     expect(shouldApplyHostFieldData({ unrelated: true })).toBe(false);

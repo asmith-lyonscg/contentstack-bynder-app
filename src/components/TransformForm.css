@@ -36,6 +36,40 @@
   background: #fff;
 }
 
+.field-commit {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.field-commit input {
+  width: 88px;
+  flex: 0 0 88px;
+}
+
+.field-commit-status {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.field-commit-check {
+  display: inline-flex;
+  color: #1f8a4c;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
+.field-commit-check.is-fading {
+  opacity: 0;
+}
+
 .field input:disabled,
 .field select:disabled {
   background: #f4f4fb;

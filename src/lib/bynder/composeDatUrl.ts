@@ -48,11 +48,15 @@ export function resolveDimensions(transform: TransformSettings): { width?: numbe
   return { width, height };
 }
 
-/** Authoritative CSS crop box: aspect wins for shape; width (then height) sets size. */
+/** Crop box from width × height. Aspect only fills a missing side. */
 export function cssCropBox(transform: TransformSettings): { width: number; height: number } {
   const aspect = parseAspect(transform.aspect);
   let width = POSITIVE(transform.width);
   let height = POSITIVE(transform.height);
+
+  if (width && height) {
+    return { width, height };
+  }
 
   if (aspect) {
     if (width) {
@@ -89,6 +93,21 @@ export function lockToAspect(transform: TransformSettings, aspect: string | null
     ...next,
     width: defaultWidth,
     height: Math.round((defaultWidth * parsed.h) / parsed.w),
+  };
+}
+
+/** Scale a box so the shorter side is at least `minSide`; the longer side stays proportional. */
+export function scaleToMinSide(
+  width: number,
+  height: number,
+  minSide = 64
+): { width: number; height: number } {
+  const w = Math.max(1, width);
+  const h = Math.max(1, height);
+  const scale = minSide / Math.min(w, h);
+  return {
+    width: Math.max(minSide, Math.round(w * scale)),
+    height: Math.max(minSide, Math.round(h * scale)),
   };
 }
 

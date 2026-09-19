@@ -2,35 +2,126 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CompactPicker } from "../../components/CompactPicker";
 import { CropFocalEditor } from "../../components/CropFocalEditor";
 import { InfoTooltip } from "../../components/InfoTooltip";
-import { LivePreview } from "../../components/LivePreview";
 import { TransformForm } from "../../components/TransformForm";
 import { useAppConfig, useAppSdk } from "../../common/hooks/useAppSdk";
-import { COMPACT_PICKER_HEIGHT } from "../../lib/bynder/compactView";
-import { assetFromSettings, normalizeCompactAssets, pickBynderAsset } from "../../lib/bynder/parseAsset";
+import { useFieldFrameHeight } from "../../common/hooks/useFieldFrameHeight";
+import {
+  applyPickerSelection,
+  assetFromSettings,
+  normalizeCompactAssets,
+  parseBynderAsset,
+  parseBynderAssets,
+  slimPersistedAssets,
+} from "../../lib/bynder/parseAsset";
+import { listThumbForAsset, LIST_THUMB_DESKTOP, LIST_THUMB_MOBILE } from "../../lib/bynder/assetUi";
 import { roundCoord } from "../../lib/bynder/composeDatUrl";
-import { applyCropConfig, resolveCompactViewConfig, resolveCropConfig, resolveEnableDat } from "../../lib/fieldConfig";
-import { buildSettingsPayload, parseSavedSettings } from "../../lib/settings";
-import { focalPointToObjectPosition } from "../../delivery/composeBynderImageUrl";
-import type { BynderImageSettings, FocalPoint, ParsedBynderAsset } from "../../lib/types";
+import {
+  applyCropConfig,
+  applyCropConfigToAssetCrop,
+  applyCropConfigToAssets,
+  cropPreset,
+  readFieldConfig,
+  resolveCompactViewConfig,
+  resolveCropConfig,
+  resolveEnableDat,
+  seedAssetCrop,
+} from "../../lib/fieldConfig";
+import { fetchBypassAccessToken, reportAssetUsage } from "../../lib/oauth/client";
+import { resolvePersistKeys } from "../../lib/persistKeys";
+import {
+  asSavedAssets,
+  buildSettingsPayload,
+  defaultTransform,
+  parseSavedSettings,
+  persistedPayload,
+  stashActiveCrop,
+} from "../../lib/settings";
+import type { BynderImageSettings, FocalPoint, ParsedBynderAsset, SavedBynderAsset, ViewportKind } from "../../lib/types";
+import {
+  cropSliceForAsset,
+  resolveActiveViewport,
+  savedAssetById,
+  viewportCrop,
+  withoutDesktopMobile,
+  withoutMobileCrop,
+} from "../../lib/viewportCrop";
 import "./CustomField.css";
-
-function readFieldConfig(customField: unknown): unknown {
-  if (!customField || typeof customField !== "object") return undefined;
-  const location = customField as Record<string, unknown>;
-  if (location.fieldConfig) return location.fieldConfig;
-  const field = location.field as Record<string, unknown> | undefined;
-  if (field?.config) return field.config;
-  const schema = field?.schema as Record<string, unknown> | undefined;
-  return schema?.config ?? schema?.field_metadata;
-}
 
 function percent(value: number): string {
   return String(Math.round(value * 1000) / 10);
 }
 
-function assetKey(asset: ParsedBynderAsset | null): string {
-  if (!asset) return "";
-  return `${asset.id}\0${asset.sourceUrl}\0${asset.transformBaseUrl ?? ""}`;
+function LinkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path
+        d="M10 13a5 5 0 0 0 7.54.54l1.96-1.96a5 5 0 0 0-7.07-7.07L11.17 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 11a5 5 0 0 0-7.54-.54L4.5 12.42a5 5 0 0 0 7.07 7.07L13 18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function UnlinkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path
+        d="M10 13a5 5 0 0 0 7.54.54l1.96-1.96a5 5 0 1 0-7.07-7.07"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 11a5 5 0 0 0-7.54-.54L4.5 12.42a5 5 0 0 0 7.07 7.07"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 4l16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function openTransformedPreview(url: string) {
+  const popup = window.open(url, "bynder-dat-preview", "popup=yes,width=1280,height=860");
+  if (!popup) window.open(url, "_blank", "noopener");
+}
+
+function pruneAssets(settings: BynderImageSettings, ids: string[]): SavedBynderAsset[] | undefined {
+  if (!settings.assets?.length) return undefined;
+  const keep = new Set(ids);
+  const next = settings.assets.filter((asset) => keep.has(asset.id));
+  return next.length ? next : undefined;
+}
+
+function safeJsonStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
 }
 
 export default function CustomField() {
@@ -52,134 +143,381 @@ export default function CustomField() {
   );
 
   const [settings, setSettings] = useState<BynderImageSettings>(() => parseSavedSettings(null));
-  const [asset, setAsset] = useState<ParsedBynderAsset | null>(null);
+  const [assets, setAssets] = useState<ParsedBynderAsset[]>([]);
   const [assetReady, setAssetReady] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | undefined>();
   const [previewUpdating, setPreviewUpdating] = useState(false);
+  const [panelAsset, setPanelAsset] = useState<ParsedBynderAsset | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
   const lastSaved = useRef("");
-  const previousAssetId = useRef<string | undefined>(undefined);
-  const assetRef = useRef<ParsedBynderAsset | null>(null);
   const hydrated = useRef(false);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  const focused = assets.find((item) => item.id === settings.activeAssetId) ?? null;
+  const desktopMobileMode = cropConfig.desktopMobileMode !== false;
+  const activeViewport = desktopMobileMode ? resolveActiveViewport(settings) : "desktop";
+  const focusedSaved = savedAssetById(settings, focused?.id);
+  const mobileDiverged = Boolean(desktopMobileMode && focusedSaved?.mobile);
+
+  useEffect(() => {
+    if (focused) {
+      setPanelAsset(focused);
+      return;
+    }
+    setPanelAsset((current) =>
+      current && assets.some((item) => item.id === current.id) ? current : null
+    );
+  }, [assets, focused]);
+  useFieldFrameHeight(sdk, shellRef, focused?.id, assets.length);
+  const fallbackTransform = useMemo(
+    () => applyCropConfig(defaultTransform(), cropConfig, "defaults", "desktop"),
+    [cropConfig]
+  );
+  const fallbackMobileTransform = useMemo(
+    () => applyCropConfig(defaultTransform(), cropConfig, "defaults", "mobile"),
+    [cropConfig]
+  );
+  const viewportLocks = cropPreset(cropConfig, activeViewport);
+  const thumbs = useMemo(() => {
+    const next: Record<string, { desktop: ReturnType<typeof listThumbForAsset>; mobile: ReturnType<typeof listThumbForAsset> }> =
+      {};
+    for (const asset of assets) {
+      const desktop = cropSliceForAsset(settings, asset.id, "desktop", fallbackTransform);
+      const thumb = listThumbForAsset({
+        asset,
+        live: desktop,
+        datAllowed: configAllowsDat,
+        fallbackTransform,
+        slot: LIST_THUMB_DESKTOP,
+      });
+      if (!desktopMobileMode) {
+        next[asset.id] = { desktop: thumb, mobile: thumb };
+        continue;
+      }
+      const mobile = cropSliceForAsset(settings, asset.id, "mobile", fallbackMobileTransform);
+      next[asset.id] = {
+        desktop: thumb,
+        mobile: listThumbForAsset({
+          asset,
+          live: mobile,
+          datAllowed: configAllowsDat,
+          fallbackTransform: fallbackMobileTransform,
+          slot: LIST_THUMB_MOBILE,
+        }),
+      };
+    }
+    return next;
+  }, [assets, configAllowsDat, desktopMobileMode, fallbackMobileTransform, fallbackTransform, settings]);
+
+  const persistKeys = useMemo(() => resolvePersistKeys(appConfig?.persistAssetKeys), [appConfig]);
 
   const persist = useCallback((next: BynderImageSettings) => {
-    const payload = buildSettingsPayload({
-      ...next,
-      transform: applyCropConfig(next.transform, cropConfig),
-    });
-    setSettings(payload);
-    return payload;
-  }, [cropConfig]);
+    const viewport = desktopMobileMode ? resolveActiveViewport(next) : "desktop";
+    const payload = buildSettingsPayload(
+      {
+        ...next,
+        transform: applyCropConfig(next.transform, cropConfig, "locks", viewport),
+        assets: applyCropConfigToAssets(next.assets, cropConfig, "locks"),
+      },
+      { persistAssetKeys: persistKeys, enableDat: configAllowsDat }
+    );
+    const prepared = desktopMobileMode ? payload : withoutDesktopMobile(payload);
+    settingsRef.current = prepared;
+    setSettings(prepared);
+    return prepared;
+  }, [configAllowsDat, cropConfig, desktopMobileMode, persistKeys]);
 
-  const commitAsset = useCallback(
-    (parsed: ParsedBynderAsset | null, assets?: unknown[]) => {
-      if (assetKey(parsed) === assetKey(assetRef.current) && parsed) {
-        setAssetReady(true);
-        return;
-      }
-
-      assetRef.current = parsed;
-      setAsset(parsed);
-      setAssetReady(true);
-
-      setSettings((current) => {
-        const sameSnapshot =
-          (parsed?.id ?? undefined) === current.assetId &&
-          (parsed?.sourceUrl ?? undefined) === current.sourceUrl &&
-          (parsed?.transformBaseUrl ?? undefined) === current.transformBaseUrl &&
-          Boolean(parsed) === Boolean(current.assetId || current.sourceUrl || current.assets?.length);
-        if (sameSnapshot && parsed) {
-          return current;
+  const applyAssets = useCallback(
+    (rawAssets: unknown[], nextFocusedId?: string) => {
+      const source = settingsRef.current;
+      const parsedList = parseBynderAssets(rawAssets);
+      const ids = parsedList.map((item) => item.id);
+      const focusedId =
+        (nextFocusedId && ids.includes(nextFocusedId) ? nextFocusedId : undefined) ??
+        (source.activeAssetId && ids.includes(source.activeAssetId) ? source.activeAssetId : undefined);
+      const focusedAsset = focusedId ? parsedList.find((item) => item.id === focusedId) ?? null : null;
+      const slimmed = slimPersistedAssets(rawAssets, persistKeys);
+      const incoming = asSavedAssets(slimmed) ?? [];
+      const previous = pruneAssets(stashActiveCrop(source, source.activeAssetId), ids) ?? [];
+      const previousById = new Map(previous.map((asset) => [asset.id, asset]));
+      const nextAssets: SavedBynderAsset[] = incoming.map((identity) => {
+        const existing = previousById.get(identity.id);
+        if (existing) {
+          return applyCropConfigToAssetCrop(
+            {
+              ...existing,
+              name: identity.name ?? existing.name,
+              transformBaseUrl: identity.transformBaseUrl ?? existing.transformBaseUrl,
+              webImage: identity.webImage ?? existing.webImage,
+            },
+            cropConfig,
+            "locks"
+          );
         }
-
-        const assetChanged =
-          previousAssetId.current !== undefined && parsed?.id !== previousAssetId.current;
-        if (parsed?.id) previousAssetId.current = parsed.id;
-        else previousAssetId.current = undefined;
-
-        const hasDatUrl = Boolean(parsed?.transformBaseUrl);
-        const datEnabled = Boolean(configAllowsDat && hasDatUrl && (current.datEnabled ?? false));
-
-        return buildSettingsPayload(
-          {
-            ...current,
-            transform: applyCropConfig(current.transform, cropConfig),
-            focalPoint: assetChanged ? { x: 0.5, y: 0.5 } : current.focalPoint,
-          },
-          {
-            assetId: parsed?.id,
-            transformBaseUrl: parsed?.transformBaseUrl,
-            sourceUrl: parsed?.sourceUrl,
-            datEnabled,
-            assets: parsed ? assets ?? current.assets : undefined,
-          }
-        );
+        const parsed = parsedList.find((item) => item.id === identity.id);
+        return {
+          ...identity,
+          ...seedAssetCrop(cropConfig, { width: parsed?.width, height: parsed?.height }),
+          alt: identity.alt ?? parsed?.alt ?? "",
+        };
       });
+      const isNewAsset = Boolean(focusedAsset && focusedId && !previousById.has(focusedId));
+      const isFirstPick = !source.assets?.length;
+      const viewport =
+        desktopMobileMode && focusedAsset && !isNewAsset && !nextFocusedId
+          ? resolveActiveViewport(source)
+          : "desktop";
+      const savedCrop = focusedId ? viewportCrop(nextAssets.find((asset) => asset.id === focusedId), viewport) : undefined;
+      const storedAlt = focusedId ? nextAssets.find((asset) => asset.id === focusedId)?.alt : undefined;
+      const alt = focusedAsset
+        ? typeof storedAlt === "string"
+          ? storedAlt
+          : focusedAsset.alt ?? ""
+        : undefined;
+
+      const payload = buildSettingsPayload(
+        {
+          ...source,
+          alt,
+          transform: focusedAsset
+            ? applyCropConfig(
+                savedCrop?.transform ?? source.transform,
+                cropConfig,
+                isFirstPick || isNewAsset ? "defaults" : "locks",
+                viewport
+              )
+            : source.transform,
+          focalPoint: focusedAsset
+            ? savedCrop?.focalPoint ?? (isNewAsset ? { x: 0.5, y: 0.5 } : source.focalPoint)
+            : source.focalPoint,
+        },
+        {
+          assets: nextAssets,
+          activeAssetId: focusedAsset?.id,
+          activeViewport: focusedAsset && viewport === "mobile" ? "mobile" : undefined,
+          persistAssetKeys: persistKeys,
+          enableDat: configAllowsDat,
+        }
+      );
+      const next = desktopMobileMode ? payload : withoutDesktopMobile(payload);
+      settingsRef.current = next;
+      setAssets(parsedList);
+      setAssetReady(true);
+      setSettings(next);
     },
-    [configAllowsDat, cropConfig]
+    [configAllowsDat, cropConfig, desktopMobileMode, persistKeys]
   );
 
   const onCompactSelect = useCallback(
     (rawAssets: unknown[], additionalInfo?: unknown) => {
-      const assets = normalizeCompactAssets(rawAssets, additionalInfo);
-      const parsed = pickBynderAsset(assets);
-      if (!parsed) return;
-      commitAsset(parsed, assets);
+      if (!rawAssets.length) return;
+      const incoming = normalizeCompactAssets(rawAssets, additionalInfo, persistKeys);
+      const current = settingsRef.current;
+      const previousIds = new Set(parseBynderAssets(current.assets ?? []).map((item) => item.id));
+      const incomingParsed = parseBynderAssets(incoming);
+      const firstNew = incomingParsed.find((item) => !previousIds.has(item.id)) ?? incomingParsed[0];
+      const nextRaw = applyPickerSelection({
+        current: current.assets ?? [],
+        incoming,
+        mode: compact.mode,
+        focusedId: focused?.id,
+        maxLimit: compact.maxLimit,
+      });
+      applyAssets(nextRaw, firstNew?.id);
     },
-    [commitAsset]
+    [applyAssets, compact.maxLimit, compact.mode, focused?.id, persistKeys]
   );
 
-  const onCompactRemove = useCallback(() => {
-    commitAsset(null, []);
-  }, [commitAsset]);
+  const onCompactRemove = useCallback(
+    (id: string) => {
+      const remaining = (settingsRef.current.assets ?? []).filter((raw) => {
+        const parsed = parseBynderAssets([raw])[0];
+        return parsed && parsed.id !== id;
+      });
+      applyAssets(remaining);
+    },
+    [applyAssets]
+  );
 
-  const onPickerOpenChange = useCallback(
-    (open: boolean) => {
-      const frame = customField?.frame as
-        | { updateHeight?: (height: number) => void; enableAutoResizing?: () => void }
-        | undefined;
-      if (open) {
-        frame?.updateHeight?.(COMPACT_PICKER_HEIGHT);
+  const onFocusAsset = useCallback(
+    (id: string, viewport?: ViewportKind) => {
+      const parsed = assets.find((item) => item.id === id);
+      if (!parsed) return;
+      const source = settingsRef.current;
+      const currentViewport = resolveActiveViewport(source);
+      const nextViewport = desktopMobileMode ? viewport ?? (id === focused?.id ? currentViewport : "desktop") : "desktop";
+      const sameThumb =
+        id === focused?.id && (viewport == null || nextViewport === currentViewport);
+      if (sameThumb) {
+        persist({
+          ...stashActiveCrop(source, focused.id),
+          activeAssetId: undefined,
+          activeViewport: undefined,
+        });
         return;
       }
-      frame?.enableAutoResizing?.();
+      const sameAsset = id === focused?.id;
+      const stashed = stashActiveCrop(source, focused?.id);
+      const crop = viewportCrop(savedAssetById(stashed, id), nextViewport);
+      const storedAlt = savedAssetById(stashed, id)?.alt;
+      persist({
+        ...stashed,
+        activeAssetId: id,
+        activeViewport: nextViewport === "mobile" ? "mobile" : undefined,
+        alt: sameAsset
+          ? (typeof stashed.alt === "string" ? stashed.alt : storedAlt ?? parsed.alt ?? "")
+          : (typeof storedAlt === "string" ? storedAlt : parsed.alt ?? ""),
+        focalPoint: crop?.focalPoint ?? { x: 0.5, y: 0.5 },
+        transform: sameAsset
+          ? (crop?.transform ?? source.transform)
+          : applyCropConfig(crop?.transform ?? source.transform, cropConfig, "locks", nextViewport),
+      });
     },
-    [customField]
+    [assets, cropConfig, desktopMobileMode, focused?.id, persist]
+  );
+
+  const onMatchDesktopCrop = useCallback(() => {
+    if (!focused) return;
+    const source = settingsRef.current;
+    const stashed = stashActiveCrop(source, focused.id);
+    const current = savedAssetById(stashed, focused.id);
+    const desktop = viewportCrop(current, "desktop");
+    const nextAssets = (stashed.assets ?? []).map((asset) => {
+      if (asset.id !== focused.id) return asset;
+      const cleared = withoutMobileCrop(asset);
+      return (cleared ?? asset) as SavedBynderAsset;
+    });
+    persist({
+      ...stashed,
+      assets: nextAssets,
+      activeViewport: "mobile",
+      focalPoint: desktop?.focalPoint ?? { x: 0.5, y: 0.5 },
+      transform: applyCropConfig(desktop?.transform ?? source.transform, cropConfig, "locks", "mobile"),
+    });
+  }, [cropConfig, focused, persist]);
+
+  const onCompactReorder = useCallback(
+    (ids: string[]) => {
+      const current = settingsRef.current.assets ?? [];
+      const byId = new Map<string, unknown>();
+      for (const raw of current) {
+        const parsed = parseBynderAsset(raw);
+        if (parsed) byId.set(parsed.id, raw);
+      }
+      const next = ids.map((id) => byId.get(id)).filter((item): item is unknown => item != null);
+      if (next.length !== current.length) return;
+      applyAssets(next);
+    },
+    [applyAssets]
   );
 
   useEffect(() => {
     if (!customField || hydrated.current) return;
-    const saved = parseSavedSettings(customField.field.getData());
-    const isNew = !saved.assetId && !saved.sourceUrl && !saved.assets?.length;
-    saved.transform = applyCropConfig(saved.transform, cropConfig, isNew ? "defaults" : "locks");
-    lastSaved.current = JSON.stringify(saved);
-    previousAssetId.current = saved.assetId;
-    setSettings(saved);
-    setPreviewUrl(saved.url);
-    const parsed = assetFromSettings(saved);
-    assetRef.current = parsed;
-    setAsset(parsed);
-    setAssetReady(true);
-    hydrated.current = true;
-  }, [customField, cropConfig]);
+    try {
+      const raw = customField.field.getData();
+      const saved = parseSavedSettings(raw);
+      const isNew = !saved.assets?.length;
+      saved.transform = applyCropConfig(
+        saved.transform,
+        cropConfig,
+        isNew ? "defaults" : "locks",
+        desktopMobileMode ? resolveActiveViewport(saved) : "desktop"
+      );
+      saved.assets = applyCropConfigToAssets(saved.assets, cropConfig, isNew ? "defaults" : "locks");
+      const originalAssets = saved.assets;
+      const slimmed = slimPersistedAssets(saved.assets, persistKeys);
+      if (slimmed) saved.assets = asSavedAssets(slimmed);
+      const prepared = desktopMobileMode ? saved : withoutDesktopMobile(saved);
+      const serialized = safeJsonStringify(persistedPayload(prepared));
+      const assetsNeedRewrite =
+        Array.isArray(originalAssets) &&
+        safeJsonStringify(originalAssets) !== safeJsonStringify(prepared.assets);
+      const viewportNeedRewrite = !desktopMobileMode && serialized !== safeJsonStringify(persistedPayload(saved));
+      lastSaved.current = assetsNeedRewrite || viewportNeedRewrite ? "" : serialized;
+      settingsRef.current = prepared;
+      setSettings(prepared);
+      const parsedList = parseBynderAssets(prepared.assets);
+      if (parsedList.length) setAssets(parsedList);
+      else {
+        const legacy = assetFromSettings(prepared);
+        setAssets(legacy ? [legacy] : []);
+      }
+    } catch (error) {
+      console.error("Bynder Image Settings hydrate failed", error);
+    } finally {
+      hydrated.current = true;
+      setAssetReady(true);
+    }
+  }, [customField, cropConfig, desktopMobileMode, persistKeys]);
 
   useEffect(() => {
-    if (!customField?.field) return undefined;
-    const serialized = JSON.stringify(settings);
-    if (serialized === lastSaved.current) return undefined;
+    if (!assetReady || !customField?.field) return undefined;
+    const payload = persistedPayload(settings);
+    const serialized = safeJsonStringify(payload);
+    if (!serialized || serialized === lastSaved.current) return undefined;
     const timer = window.setTimeout(() => {
-      const done = customField.field.setData(settings);
-      lastSaved.current = serialized;
-      if (done && typeof (done as Promise<unknown>).then === "function") {
-        void (done as Promise<unknown>).catch(() => undefined);
+      try {
+        const done = customField.field.setData(payload);
+        lastSaved.current = serialized;
+        if (done && typeof (done as Promise<unknown>).then === "function") {
+          void (done as Promise<unknown>).catch((error) => {
+            console.error("Bynder Image Settings setData failed", error);
+          });
+        }
+      } catch (error) {
+        console.error("Bynder Image Settings setData failed", error);
       }
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [customField, settings]);
+  }, [assetReady, customField, settings]);
 
-  const hasDatUrl = Boolean(asset?.transformBaseUrl);
-  const datMissing = Boolean(asset && configAllowsDat && !hasDatUrl);
-  const datActive = Boolean(configAllowsDat && hasDatUrl && settings.datEnabled);
-  const previewSrc = asset?.sourceUrl;
+  useEffect(() => {
+    if (!assetReady || !appConfig?.enableAssetTracker || !compact.loginBypass || !sdk?.ids?.installationUID) {
+      return undefined;
+    }
+    const report = () => {
+      const assetIds = parseBynderAssets(settingsRef.current.assets)
+        .map((item) => item.id)
+        .filter(Boolean);
+      const ids = sdk.ids as { installationUID?: string; entry?: string; contentType?: string; stack?: string };
+      if (!assetIds.length || !ids.entry) return;
+      void reportAssetUsage({
+        installationUid: ids.installationUID ?? "",
+        assetIds,
+        uri: `contentstack://${ids.stack ?? "stack"}/${ids.contentType ?? "entry"}/${ids.entry}`,
+      }).catch(() => undefined);
+    };
+    try {
+      const entry = customField?.entry as
+        | {
+            on?: (event: string, cb: () => void) => unknown;
+            off?: (event: string, cb: () => void) => unknown;
+          }
+        | undefined;
+      if (typeof entry?.on !== "function") return undefined;
+      entry.on("save", report);
+      return () => {
+        try {
+          entry.off?.("save", report);
+        } catch {
+          /* ignore */
+        }
+      };
+    } catch (error) {
+      console.error("Bynder Image Settings asset tracker hook failed", error);
+      return undefined;
+    }
+  }, [appConfig?.enableAssetTracker, assetReady, compact.loginBypass, customField, sdk]);
+
+  const panel = focused ?? panelAsset;
+  const hasDatUrl = Boolean(panel?.transformBaseUrl);
+  const datMissing = Boolean(focused && configAllowsDat && !hasDatUrl);
+  const datActive = Boolean(configAllowsDat && hasDatUrl);
+  const previewSrc = panel?.sourceUrl;
+  const activeDatUrl = datActive
+    ? cropSliceForAsset(settings, panel?.id, activeViewport, settings.transform).url
+    : undefined;
 
   useEffect(() => {
     if (!datActive) {
@@ -187,23 +525,28 @@ export default function CustomField() {
       setPreviewUrl(undefined);
       return undefined;
     }
-    if (settings.url === previewUrl) {
+    if (activeDatUrl === previewUrl) {
       setPreviewUpdating(false);
       return undefined;
     }
     setPreviewUpdating(true);
     const timer = window.setTimeout(() => {
-      setPreviewUrl(settings.url);
+      setPreviewUrl(activeDatUrl);
       setPreviewUpdating(false);
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [datActive, settings.url, previewUrl]);
+  }, [datActive, activeDatUrl, previewUrl]);
 
   const onFocalChange = (focalPoint: FocalPoint) => {
-    persist({
-      ...settings,
-      focalPoint: { x: roundCoord(focalPoint.x), y: roundCoord(focalPoint.y) },
-    });
+    persist(
+      stashActiveCrop(
+        {
+          ...settings,
+          focalPoint: { x: roundCoord(focalPoint.x), y: roundCoord(focalPoint.y) },
+        },
+        focused?.id
+      )
+    );
   };
 
   const onPercentChange = (axis: "x" | "y", raw: string) => {
@@ -212,92 +555,148 @@ export default function CustomField() {
     onFocalChange({ ...settings.focalPoint, [axis]: n / 100 });
   };
 
-  const onToggleDat = (enabled: boolean) => {
-    persist({
-      ...settings,
-      datEnabled: enabled && configAllowsDat && hasDatUrl,
-    });
-  };
-
   if (!customField) {
-    return <p className="notice">This view only works as a Custom Field location.</p>;
+    return (
+      <div className="bynder-settings" ref={shellRef}>
+        <p className="notice">This view only works as a Custom Field location.</p>
+      </div>
+    );
   }
 
   if (!compact.portalUrl) {
     return (
-      <div className="notice-card">
-        <h3>Connect a Bynder portal</h3>
-        <p>
-          Set <code>bynderPortalUrl</code> in App Configuration, or override it on this field’s Config
-          Parameter.
-        </p>
-        <pre>{`{
+      <div className="bynder-settings" ref={shellRef}>
+        <div className="notice-card">
+          <h3>Connect a Bynder portal</h3>
+          <p>
+            Set <code>bynderPortalUrl</code> in App Configuration, or override it on this field’s Config
+            Parameter.
+          </p>
+          <pre>{`{
   "bynderPortalUrl": "acme.getbynder.com",
-  "aspect": "16:9",
-  "width": 1200,
+  "desktopMobileMode": true,
+  "aspect": { "desktop": "16:9", "mobile": "9:16" },
+  "width": { "desktop": 1200, "mobile": 390 },
   "lockAspect": true
 }`}</pre>
+        </div>
       </div>
     );
   }
 
   if (!assetReady) {
-    return <p className="notice">Loading…</p>;
+    return (
+      <div className="bynder-settings" ref={shellRef}>
+        <p className="notice">Loading…</p>
+      </div>
+    );
   }
 
-  const objectPosition = focalPointToObjectPosition(settings.focalPoint);
-
   return (
-    <div className="bynder-settings">
+    <div className="bynder-settings" ref={shellRef}>
       <header className="header">
         <div>
           <h2>Bynder image settings</h2>
-          <p>{asset?.name ? asset.name : "Pick a Bynder image, then set crop and focal point."}</p>
+          <p>
+            {focused?.name
+              ? `${focused.name}${assets.length > 1 ? ` · ${assets.length} assets` : ""}`
+              : assets.length
+                ? `${assets.length} asset${assets.length === 1 ? "" : "s"}`
+                : "Pick a Bynder image, then set crop and focal point."}
+          </p>
         </div>
-        {configAllowsDat && hasDatUrl && (
-          <label className="dat-toggle">
-            <input
-              type="checkbox"
-              checked={datActive}
-              onChange={(event) => onToggleDat(event.target.checked)}
-            />
-            DAT transforms
-          </label>
-        )}
       </header>
 
       <CompactPicker
+        compact={compact}
         portalUrl={compact.portalUrl}
-        language={compact.language}
-        mode={compact.mode}
-        selected={asset}
+        assets={assets}
+        thumbs={thumbs}
+        focusedId={focused?.id}
+        activeViewport={activeViewport}
+        onFocus={onFocusAsset}
         onSelect={onCompactSelect}
         onRemove={onCompactRemove}
-        onOpenChange={onPickerOpenChange}
+        onReorder={onCompactReorder}
+        getAccessToken={
+          compact.loginBypass && sdk?.ids?.installationUID
+            ? () => fetchBypassAccessToken(sdk.ids.installationUID)
+            : undefined
+        }
+        desktopMobileMode={desktopMobileMode}
       />
 
-      {datMissing && (
-        <div className="notice-card warning">
-          <h3>DAT is unavailable for this image</h3>
-          <p>
-            DAT is enabled in config, but this Bynder payload has no <code>files.transformBaseUrl</code>.
-            Using CSS crop and focal point until then. Compact View File mode can supply a DAT URL as{" "}
-            <code>selectedFile</code>.
-          </p>
-        </div>
-      )}
-
+      <div
+        className={`crop-editor-collapse${focused ? " is-open" : ""}`}
+        aria-hidden={!focused}
+      >
+        <div className="crop-editor-collapse-inner">
       {previewSrc ? (
-        <>
+        <div className="crop-editor-frame">
+          {datMissing ? (
+            <div className="notice-card warning">
+              <h3>DAT is unavailable for this image</h3>
+              <p>
+                DAT is enabled in config, but this Bynder payload has no <code>transformBaseUrl</code>.
+                Using CSS crop and focal point until then.
+              </p>
+            </div>
+          ) : null}
+
+          {desktopMobileMode ? (
+          <div className="viewport-toolbar">
+            <div className="viewport-tabs" role="tablist" aria-label="Crop viewport">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeViewport === "desktop"}
+                className={activeViewport === "desktop" ? "is-active" : ""}
+                onClick={() => focused && onFocusAsset(focused.id, "desktop")}
+              >
+                Desktop
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeViewport === "mobile"}
+                className={activeViewport === "mobile" ? "is-active" : ""}
+                onClick={() => focused && onFocusAsset(focused.id, "mobile")}
+              >
+                <span
+                  className={mobileDiverged ? "viewport-link-icon is-broken" : "viewport-link-icon"}
+                  title={mobileDiverged ? "Mobile does not match desktop" : "Mobile matches desktop"}
+                  aria-hidden
+                >
+                  {mobileDiverged ? <UnlinkIcon /> : <LinkIcon />}
+                </span>
+                Mobile
+              </button>
+            </div>
+            <p className="viewport-hint">
+              {mobileDiverged ? (
+                <>
+                  <strong>Mobile does not match desktop.</strong>{" "}
+                  <button type="button" className="linkish viewport-match" onClick={onMatchDesktopCrop}>
+                    Revert mobile to match desktop
+                  </button>
+                </>
+              ) : (
+                <>
+                  <strong>Mobile matches desktop</strong> unless you edit it on the Mobile tab.
+                </>
+              )}
+            </p>
+          </div>
+          ) : null}
+
           <div className="editor-row">
             <aside className="editor-fields">
               <div className="field-group">
                 <div className="panel-title">
-                  Crop &amp; focal point
+                  <span className="panel-title-label">Crop &amp; focal point</span>
                   <InfoTooltip>
-                    Click or drag the red dot, or anywhere on the image, to set the focal point. Saved as
-                    CSS <code>object-position</code>. If this panel is smaller than the crop size, the
-                    preview shrinks.
+                    Drag the red dot, or click the image, to choose what stays in view when the image is
+                    cropped. With more than one asset, this applies only to the highlighted thumbnail.
                   </InfoTooltip>
                 </div>
                 <label className="field">
@@ -332,17 +731,17 @@ export default function CustomField() {
               </div>
               <div className="field-group">
                 <div className="panel-title">
-                  {datActive ? "Transforms" : "Crop frame"}
+                  <span className="panel-title-label">{datActive ? "Transforms" : "Crop frame"}</span>
                   <InfoTooltip>
                     {datActive ? (
                       <>
-                        Bynder DAT size, operation, format, and quality. Fill crops to the box; Fit scales
-                        without cropping.
+                        Width and Height define the output box Bynder generates. When the image is cropped to
+                        that box, the focal point decides which part of the photo is kept.
                       </>
                     ) : (
                       <>
-                        Width, height, and aspect are saved for your site’s CSS crop box (
-                        <code>object-fit: cover</code>). The image is that box, not the delivery size.
+                        Width and Height define the crop box your site should use. When the image is cropped to
+                        that box, the focal point decides which part of the photo is kept.
                       </>
                     )}
                   </InfoTooltip>
@@ -351,20 +750,47 @@ export default function CustomField() {
                   value={settings.transform}
                   datEnabled={datActive}
                   aspectPresets={cropConfig.aspectPresets}
+                  datPresets={compact.datPresets}
+                  hideFormat={cropConfig.hideFormat}
+                  showOperation={cropConfig.showOperation}
+                  showAspect={cropConfig.showAspect}
+                  showQuality={cropConfig.showQuality}
+                  showAdvancedQuery={cropConfig.showAdvancedQuery}
+                  showDatPreset={cropConfig.showDatPreset}
                   locks={{
-                    aspect: cropConfig.lockAspect,
-                    width: cropConfig.lockWidth,
-                    height: cropConfig.lockHeight,
+                    aspect: viewportLocks.lockAspect,
+                    width: viewportLocks.lockWidth,
+                    height: viewportLocks.lockHeight,
+                    format: cropConfig.lockFormat,
                   }}
-                  onChange={(transform) => persist({ ...settings, transform })}
+                  onChange={(transform) => persist(stashActiveCrop({ ...settings, transform }, focused?.id))}
+                />
+              </div>
+              <div className="field-group">
+                <div className="panel-title">
+                  <span className="panel-title-label">Alt text</span>
+                  <InfoTooltip>
+                    Prefills from Bynder metadata in this order: alt_text, alttext, alt, then description. You
+                    can overwrite it for this entry.
+                  </InfoTooltip>
+                </div>
+                <textarea
+                  className="alt-input"
+                  rows={3}
+                  value={settings.alt ?? ""}
+                  disabled={!focused}
+                  placeholder={focused ? "Describe the image" : "Pick an asset first"}
+                  onChange={(event) =>
+                    persist(stashActiveCrop({ ...settings, alt: event.target.value }, focused?.id))
+                  }
                 />
               </div>
             </aside>
             <section className="editor-preview">
               <CropFocalEditor
-                key={`${asset?.id ?? ""}:${previewSrc}`}
+                key={`${panel?.id ?? ""}:${activeViewport}:${previewSrc}`}
                 src={previewSrc}
-                alt={asset?.name}
+                alt={panel?.name}
                 focalPoint={settings.focalPoint}
                 transform={settings.transform}
                 onChange={onFocalChange}
@@ -372,24 +798,27 @@ export default function CustomField() {
             </section>
           </div>
 
-          {datActive && (
-            <section className="panel">
-              <div className="panel-title">
-                Transformed preview
-                <InfoTooltip>
-                  Live Bynder DAT URL using the current focal point, size, format, and quality.
-                </InfoTooltip>
-              </div>
-              <LivePreview
-                mode="dat"
-                url={previewUrl}
-                loading={previewUpdating}
-                objectPosition={objectPosition}
-              />
-            </section>
-          )}
-        </>
+          {datActive && previewUrl ? (
+            <div className="dat-preview-actions">
+              <button type="button" className="linkish" onClick={() => openTransformedPreview(previewUrl)}>
+                View transformed image
+              </button>
+              {previewUpdating ? <span className="dat-preview-status">Updating…</span> : null}
+              <button
+                type="button"
+                className="linkish"
+                onClick={() => {
+                  void navigator.clipboard.writeText(previewUrl).catch(() => undefined);
+                }}
+              >
+                Copy DAT URL
+              </button>
+            </div>
+          ) : null}
+        </div>
       ) : null}
+        </div>
+      </div>
     </div>
   );
 }

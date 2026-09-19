@@ -47,6 +47,13 @@ describe("css crop box", () => {
     });
   });
 
+  it("keeps explicit width and height even when a leftover aspect is present", () => {
+    expect(cssCropBox({ operation: "fill", width: 800, height: 1000, aspect: "16:9" })).toEqual({
+      width: 800,
+      height: 1000,
+    });
+  });
+
   it("scales the preview box into the field iframe", () => {
     const tall = fitPreviewBox({ operation: "fill", width: 1200, height: 1200, aspect: "1:1" });
     const wide = fitPreviewBox({ operation: "fill", width: 1200, height: 675, aspect: "16:9" });

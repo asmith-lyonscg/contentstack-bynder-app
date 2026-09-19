@@ -1,16 +1,14 @@
-import type { BynderImageSettings, DatFormat, FocalPoint, TransformSettings } from "../lib/types";
+import type { BynderImageSettings, DatFormat, FocalPoint, TransformSettings, ViewportKind } from "../lib/types";
 import { composeDatUrl, normalizeFocalPoint } from "../lib/bynder/composeDatUrl";
 import { pickBynderAsset } from "../lib/bynder/parseAsset";
-
-function assetFromSaved(settings: BynderImageSettings) {
-  return pickBynderAsset(settings.assets);
-}
+import { cropSliceForAsset, savedAssetById } from "../lib/viewportCrop";
 
 export interface ComposeOverrides {
   width?: number;
   height?: number;
   format?: DatFormat | null;
   quality?: number | null;
+  viewport?: ViewportKind;
 }
 
 /**
@@ -19,23 +17,45 @@ export interface ComposeOverrides {
  *
  * Copy this helper into a website codebase, or import the same logic from
  * `src/lib/bynder/composeDatUrl.ts`.
+ *
+ * Defaults to the desktop crop (`assets[0]`). Pass `{ viewport: "mobile" }` for
+ * `assets[n].mobile` when present, otherwise the desktop crop.
+ *
+ * Presence of `url` means DAT was used at save time. If `url` is omitted, this
+ * returns `webImage.url` for CSS crop even when `transformBaseUrl` exists
+ * (`enableDat: false` on the field).
  */
 export function composeBynderImageUrl(
   settings: BynderImageSettings,
   overrides?: ComposeOverrides,
-  transformBaseUrl = settings.transformBaseUrl ?? assetFromSaved(settings)?.transformBaseUrl
+  transformBaseUrl?: string
 ): string {
-  if (settings.datEnabled === false || !transformBaseUrl) {
-    return settings.sourceUrl ?? assetFromSaved(settings)?.sourceUrl ?? settings.url ?? "";
-  }
+  const viewport = overrides?.viewport ?? "desktop";
+  const asset =
+    savedAssetById(settings, settings.activeAssetId) ??
+    settings.assets?.[0];
+  const slice = cropSliceForAsset(
+    settings,
+    asset?.id,
+    viewport,
+    settings.transform
+  );
+  const base = transformBaseUrl ?? asset?.transformBaseUrl;
+  const cssFallback =
+    asset?.webImage?.url ??
+    pickBynderAsset(settings.assets)?.sourceUrl ??
+    slice.url ??
+    "";
+  const datUrl = slice.url ?? asset?.url;
+  if (!base || !datUrl) return cssFallback;
 
   const widthOverridden = overrides?.width != null;
   const heightOverridden = overrides?.height != null;
 
   const transform: TransformSettings = {
-    ...settings.transform,
-    format: overrides?.format !== undefined ? overrides.format : settings.transform.format,
-    quality: overrides?.quality !== undefined ? overrides.quality : settings.transform.quality,
+    ...slice.transform,
+    format: overrides?.format !== undefined ? overrides.format : slice.transform.format,
+    quality: overrides?.quality !== undefined ? overrides.quality : slice.transform.quality,
   };
 
   if (widthOverridden && !heightOverridden) {
@@ -49,8 +69,8 @@ export function composeBynderImageUrl(
     if (heightOverridden) transform.height = overrides.height;
   }
 
-  return composeDatUrl(transformBaseUrl, {
-    focalPoint: settings.focalPoint,
+  return composeDatUrl(base, {
+    focalPoint: slice.focalPoint,
     transform,
   });
 }

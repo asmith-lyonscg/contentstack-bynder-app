@@ -16,24 +16,108 @@ export interface TransformSettings {
   extraQuery?: string | null;
 }
 
-export interface BynderImageSettings {
-  v: 1;
-  sourceFieldUid?: string;
-  assetId?: string;
-  transformBaseUrl?: string;
-  sourceUrl?: string;
-  datEnabled?: boolean;
-  /** Official-shaped Bynder Compact View assets (usually one). */
-  assets?: unknown[];
+export type CompactSelectionMode = "SingleSelect" | "SingleSelectFile" | "MultiSelect";
+
+export type CompactAssetType = "AUDIO" | "DOCUMENT" | "IMAGE" | "VIDEO" | "ARCHIVE";
+
+export interface CompactTheme {
+  colorPrimary?: string;
+  colorButtonPrimary?: string;
+  colorButtonPrimaryLabel?: string;
+  colorButtonPrimaryActive?: string;
+  colorButtonPrimaryHover?: string;
+  colorButtonPrimaryHoverLabel?: string;
+}
+
+export interface CompactAssetFilter {
+  predefinedAssetType?: CompactAssetType[];
+  collectionId?: string;
+  predefinedMetapropertiesOptions?: Record<string, Record<string, string>>;
+  searchTerm?: string;
+  predefinedTagNames?: string[];
+  isLimitedUse?: boolean;
+  showToolbar?: boolean;
+}
+
+export interface DatPresetSettings {
+  options: string[];
+  default?: string;
+  transformationOptions: Record<string, string>;
+}
+
+export interface CompactViewConfig {
+  portalUrl?: string;
+  language: string;
+  mode: CompactSelectionMode;
+  loginBypass: boolean;
+  assetTypes: CompactAssetType[];
+  defaultSearchTerm?: string;
+  theme?: CompactTheme;
+  hideExternalAccess?: boolean;
+  hideLimitedUse?: boolean;
+  hideSwitch?: boolean;
+  noCache?: boolean;
+  selectAllOption?: boolean;
+  defaultImageDerivativeName?: string;
+  defaultVideoDerivativeName?: string;
+  isPersonal?: boolean;
+  enableDASH?: boolean;
+  embedType?: "script" | "iframe";
+  assetFilter?: CompactAssetFilter;
+  maxLimit?: number;
+  datPresets?: DatPresetSettings;
+}
+
+export type ViewportKind = "desktop" | "mobile";
+
+export interface ViewportCropSettings {
   focalPoint: FocalPoint;
   transform: TransformSettings;
+  /** Composed DAT URL for this viewport. Omitted when DAT is unavailable or disabled. */
   url?: string;
+}
+
+export interface AssetCropSettings extends ViewportCropSettings {
+  /**
+   * Present only when mobile has been edited away from desktop.
+   * When omitted, mobile follows desktop — do not duplicate the crop.
+   */
+  mobile?: ViewportCropSettings;
+  /** Author-facing alt text for this asset. Prefills from Bynder, then can be overwritten. */
+  alt?: string;
+}
+
+/** Entry JSON for one picked asset: identity + crop + composed DAT URL. */
+export interface SavedBynderAsset extends AssetCropSettings {
+  id: string;
+  name?: string;
+  transformBaseUrl?: string;
+  /** Original/web image. Only persisted when DAT is off or the asset has no transformBaseUrl. */
+  webImage?: { url: string };
+  description?: string;
+  originalUrl?: string;
+  publishedAt?: string;
+  updatedAt?: string;
+  tags?: string[];
+}
+
+export interface BynderImageSettings {
+  v: 1;
+  assets?: SavedBynderAsset[];
+  /** UI-only: which thumb is focused. Not persisted; reopen has none selected. */
+  activeAssetId?: string;
+  /** UI-only: Desktop vs Mobile tab. Not persisted. */
+  activeViewport?: ViewportKind;
+  /** UI-only live editor snapshot for the focused asset + viewport. */
+  focalPoint: FocalPoint;
+  transform: TransformSettings;
+  alt?: string;
 }
 
 export interface ParsedBynderAsset {
   id: string;
   databaseId?: string;
-  /** Compact View GraphQL `id` for `selectedAssets` (may differ from `databaseId`). */
+  /** Compact View GraphQL `id`. Do not pass this as `selectedAssets` — UCV base64-encodes media UUIDs itself. */
   pickerId?: string;
   name?: string;
   type?: string;
@@ -41,45 +125,96 @@ export interface ParsedBynderAsset {
   sourceUrl: string;
   width?: number;
   height?: number;
+  fileSize?: number;
+  /** Original file type (jpg, png, webp) when Bynder exposes it. */
+  fileType?: string;
+  /** Resolved Bynder alt candidate (alt_text → alttext → alt → description). */
+  alt?: string;
 }
 
-export type CompactSelectionMode = "SingleSelect" | "SingleSelectFile";
-
-export interface CompactViewConfig {
-  portalUrl?: string;
-  language: string;
-  mode: CompactSelectionMode;
-}
-
-export interface CropFieldConfig {
+export interface ViewportCropPreset {
   aspect?: string;
   width?: number;
   height?: number;
   lockAspect: boolean;
   lockWidth: boolean;
   lockHeight: boolean;
+}
+
+export interface CropFieldConfig {
+  aspect?: string;
+  width?: number;
+  height?: number;
+  /** Dual-mode mobile presets. Omitted values inherit the desktop/single fields. */
+  mobileAspect?: string;
+  mobileWidth?: number;
+  mobileHeight?: number;
+  format?: DatFormat;
+  lockAspect: boolean;
+  lockWidth: boolean;
+  lockHeight: boolean;
+  /** Dual-mode mobile locks. `false` is distinct from omitted (omitted inherits desktop). */
+  lockAspectMobile?: boolean;
+  lockWidthMobile?: boolean;
+  lockHeightMobile?: boolean;
+  lockFormat: boolean;
+  hideFormat: boolean;
+  showOperation: boolean;
+  showAspect: boolean;
+  showQuality: boolean;
+  showAdvancedQuery: boolean;
+  showDatPreset: boolean;
   aspectPresets: string[];
+  /** Dual desktop/mobile crops. Default true. Set false for a single crop per asset. */
+  desktopMobileMode?: boolean;
 }
 
 export interface AppInstallationConfig {
   /** Bynder portal host, e.g. acme.getbynder.com */
   bynderPortalUrl?: string;
   compactLanguage?: string;
+  /** @deprecated Ignored. Compact View mode follows `maxNumberOfAssets`. Stripped on App Config save. */
   compactMode?: CompactSelectionMode;
   bynderFieldUid?: string;
-  /** When false (default), focal point uses CSS object-position. DAT URL composition is skipped. */
+  /** Authors skip Bynder login after App Config Fetch Code and Validate. */
+  loginBypass?: boolean;
+  oauthClientId?: string;
+  /** When false, DAT is unavailable and authors only get CSS crop. Default true. */
   enableDat?: boolean;
-  aspect?: string;
-  width?: number;
-  height?: number;
-  lockAspect?: boolean;
-  lockWidth?: boolean;
-  lockHeight?: boolean;
+  /** Report selected assets to Bynder Asset Tracker when the entry is saved. */
+  enableAssetTracker?: boolean;
+  /** Extra Bynder keys to keep on the entry JSON. Required keys are always saved. */
+  persistAssetKeys?: string[];
+  /** Dual desktop/mobile crops. Default true. */
+  desktopMobileMode?: boolean;
+  /** @deprecated Use `desktopMobileMode`. Still read from field/app JSON. */
+  desktopMobile?: boolean;
+  /** Cap on assets in this field. Default 1. Values above 1 use Compact View MultiSelect. */
+  maxNumberOfAssets?: number;
+  aspect?: string | { desktop?: string; mobile?: string };
+  width?: number | { desktop?: number; mobile?: number };
+  height?: number | { desktop?: number; mobile?: number };
+  /** DAT output file type. Default `webp`. */
+  format?: DatFormat;
+  lockAspect?: boolean | { desktop?: boolean; mobile?: boolean };
+  lockWidth?: boolean | { desktop?: boolean; mobile?: boolean };
+  lockHeight?: boolean | { desktop?: boolean; mobile?: boolean };
+  lockFormat?: boolean;
+  /** Hide the DAT file-type control. The configured `format` is still applied. */
+  hideFormat?: boolean;
   /** Dropdown options. Omit to use the built-in list (16:9, 1:1, 4:3, 4:5). */
   aspectPresets?: string[];
 }
 
 export const ASPECT_PRESETS = ["16:9", "1:1", "4:3", "4:5"] as const;
+
+export const DAT_FILE_TYPES: { value: Extract<DatFormat, "jpg" | "png" | "webp">; label: string }[] = [
+  { value: "jpg", label: "JPG" },
+  { value: "png", label: "PNG" },
+  { value: "webp", label: "WebP" },
+];
+
+export const DEFAULT_COMPACT_ASSET_TYPES: CompactAssetType[] = ["IMAGE", "VIDEO"];
 
 export const DEFAULT_FOCAL_POINT: FocalPoint = { x: 0.5, y: 0.5 };
 

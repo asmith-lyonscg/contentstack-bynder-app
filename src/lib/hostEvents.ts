@@ -9,11 +9,11 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
-/** Our saved JSON always has v:1 and a focalPoint. Bynder field values do not. */
+/** Our saved JSON is `{ v: 1, assets }`. Bynder field values are asset arrays. */
 export function isOwnSettingsPayload(data: unknown): boolean {
   const record = asRecord(data);
   if (!record || record.v !== 1) return false;
-  return Boolean(asRecord(record.focalPoint));
+  return Array.isArray(record.assets) || Boolean(asRecord(record.focalPoint));
 }
 
 export function isEmptyBynderValue(data: unknown): boolean {

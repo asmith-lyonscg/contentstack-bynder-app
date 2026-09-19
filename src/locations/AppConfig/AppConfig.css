@@ -4,9 +4,29 @@
   color: #212121;
 }
 
-.app-config h2 {
-  margin: 0 0 8px;
-  font-size: 20px;
+.app-config h3 {
+  margin: 28px 0 0;
+  font-size: 16px;
+}
+
+.app-config .advanced {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid #d4d4e8;
+  border-radius: 8px;
+  background: #fafafc;
+}
+
+.app-config .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+
+.app-config .actions button {
+  margin-top: 0;
 }
 
 .lede,
@@ -83,4 +103,36 @@
 
 .status.err {
   color: #c0392b;
+}
+
+.key-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid #d4d4e8;
+  border-radius: 8px;
+  background: #fafafc;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.key-list li {
+  margin: 0;
+}
+
+.key-list .checkbox {
+  margin: 4px 0;
+  font-weight: 500;
+}
+
+.key-list .checkbox input:disabled {
+  opacity: 0.7;
+}
+
+.key-flag {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b8ba3;
+  text-transform: uppercase;
 }
