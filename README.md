@@ -7,18 +7,33 @@ This field does **not** require the official Bynder Marketplace app. The officia
 ## Install
 
 1. **Build or run the app**
-   - Local (typical while developing): `npm install` then `npm run dev` (Vite at `http://localhost:3000`). Contentstack iframes need HTTPS, so tunnel that origin (ngrok, Cloudflare Tunnel, etc.).
-   - **Author Bynder login** (default, **Enable login bypass** off): any static host of `dist` is enough, including a tunnel to Vite. No Launch project and no Bynder OAuth app.
-   - **Login bypass** on: the process must also serve `/api/oauth` (`npm run dev`, or `npm run build` then `npm run start`). Register the Bynder OAuth redirect as that **public HTTPS** origin + `/oauth/callback`, not `localhost`.
+   - Local: `npm install` then `npm run dev` (Vite at `http://localhost:3000`). Contentstack iframes need HTTPS, so tunnel that origin (ngrok, Cloudflare Tunnel, etc.).
+   - Production: `npm run build` and host the static `dist` folder (GitHub Pages, Launch, any CDN). Authors sign into Bynder in Compact View. There is no login bypass and no Node OAuth server on this branch.
 2. **Developer Hub** → create a Standard / private app.
-3. **Hosting:** Custom Hosting → your tunnel or Node origin.
+3. **Hosting:** Custom Hosting → your HTTPS origin (GitHub Pages, Launch, or tunnel). For the repo [asmith-lyonscg/contentstack-bynder-app](https://github.com/asmith-lyonscg/contentstack-bynder-app) that is `https://asmith-lyonscg.github.io/contentstack-bynder-app` (no trailing slash).
 4. **UI Locations**
    - Custom Field: name `Bynder Image Settings`, path `/custom-field`, data type **JSON**
    - App Configuration: path `/app-configuration`
 5. Install the app on the stack.
-6. Open **App Configuration**, set the Bynder **portal URL**, leave **Show login-bypass setup** off, **Save**. Authors sign into Bynder in Compact View.
+6. Open **App Configuration**, set the Bynder **portal URL**, **Save**.
 
-The official marketplace Bynder app works the same way: **Enable login bypass** is optional and stays off until Client ID / Secret are validated. This app matches that. Do not reuse Contentstack’s callback (`https://bynder.contentstackmarket.com/#/bynder/callback`).
+### GitHub Pages
+
+This branch is static. `npm run build` writes `dist/404.html` (copy of `index.html`) and `dist/.nojekyll` so `/custom-field`, `/app-configuration`, and `/picker` work.
+
+A GitHub **project** site lives at `https://<user>.github.io/<repo>/`. This app’s Vite `base` and React Router basename follow that path in GitHub Actions (`GITHUB_REPOSITORY`). Local and Launch builds stay at `/`.
+
+Target for this repo: [https://asmith-lyonscg.github.io/contentstack-bynder-app/](https://asmith-lyonscg.github.io/contentstack-bynder-app/)
+
+1. Commit this branch and push it to `https://github.com/asmith-lyonscg/contentstack-bynder-app` (`main` or `feature/github-pages`).
+2. Repo **Settings → Pages → Build and deployment → Source:** GitHub Actions.
+3. The **Deploy GitHub Pages** workflow (`.github/workflows/pages.yml`) builds `dist` with base `/contentstack-bynder-app/` and publishes it.
+4. Developer Hub → **Hosting → Custom Hosting → App URL:** `https://asmith-lyonscg.github.io/contentstack-bynder-app` (no trailing slash).
+5. UI location paths stay `/custom-field` and `/app-configuration`. Contentstack loads `https://asmith-lyonscg.github.io/contentstack-bynder-app/custom-field`.
+
+Local check of the Pages base: `npm run build:pages`, then `$env:VITE_BASE_PATH="/contentstack-bynder-app/"; npm run preview` and open `/contentstack-bynder-app/`.
+
+A custom domain on Pages can use base `/` again (leave `VITE_BASE_PATH` unset). Bitbucket `*.bitbucket.io` sends `X-Frame-Options: DENY` and cannot be iframed by Contentstack. GitHub Pages does not.
 
 | Location | Path |
 |---|---|
@@ -100,8 +115,6 @@ Field **Config Parameter** unless marked App Config. Types and examples:
 | `maxNumberOfAssets` | `number` | `3` | Cap on selected assets. Default `1` (Single Select). Values above 1 use Multi Select. Compact View has no max-select prop; this app caps the array Compact View returns. Alias: `advanced.max_limit` |
 | `compactLanguage` | `string` | `"en_US"` | Compact View locale. Default `en_US` |
 | `enableDat` | `boolean` | `true` | Default `true`. `false` forces CSS crop only (no composed DAT `url`) |
-| `loginBypass` | `boolean` | `true` | App Config after Validate. Authors skip Bynder login |
-| `enableAssetTracker` | `boolean` | `true` | App Config. Posts selected asset IDs to Bynder Asset Tracker on entry save. Needs login bypass and a STATISTICS-capable Bynder user |
 | `persistAssetKeys` | `string[]` | `["description","tags"]` | App Config. Extra Bynder keys besides `id` (media UUID), `name`, and `transformBaseUrl`. `webImage` is stored automatically only when DAT is unavailable. Allowed extras: `description`, `originalUrl`, `publishedAt`, `updatedAt`, `tags` |
 | `aspect` | `string` or `{ desktop?: string, mobile?: string }` | `"16:9"` or `{ "desktop": "16:9", "mobile": "9:16" }` | Preset for **new** entries; forced when `lockAspect` is true. In `desktopMobileMode`, an object sets desktop and mobile separately. A scalar applies to both (and is the only allowed form when `desktopMobileMode` is `false`) |
 | `width` | `number` or `{ desktop?: number, mobile?: number }` | `1200` or `{ "desktop": 1200, "mobile": 390 }` | Same as `aspect`. Dual objects are only used when `desktopMobileMode` is `true` |
@@ -202,20 +215,6 @@ Desktop seeds from the asset. Mobile starts at 390×693, 9:16, unmatched.
   }
 }
 ```
-
-### Login bypass (optional)
-
-Same control as the official marketplace Bynder app: **Enable login bypass** is a checkbox. **Off** (default) = each author signs into Bynder in the picker. **On** = shared OAuth token after **Fetch Code and Validate**.
-
-You do **not** need this for local hello-world. Leave Advanced settings off.
-
-When you do turn it on later:
-
-1. Host this app on a **public HTTPS** origin (tunnel or Node). Do not register `localhost` as the Bynder redirect.
-2. In Bynder: **OAuth Apps** → new app (not the official Contentstack Bynder app).
-3. Grant type: **Authorization Code + Refresh Token**.
-4. Redirect URL: the value shown under Advanced settings (`https://<this-app-host>/oauth/callback`).
-5. Paste Client ID and Secret, **Fetch Code and Validate**, then check **Enable login bypass** and **Save**.
 
 ### DAT
 
@@ -339,12 +338,10 @@ const objectPosition = focalPointToObjectPosition(entry.hero_image_settings.asse
 ```
 src/
   locations/CustomField/     Custom Field UI (picker + crop)
-  locations/AppConfig/       Portal URL, DAT, OAuth validate / login bypass
-  locations/OAuthCallback/   Bynder OAuth popup return
+  locations/AppConfig/       Portal URL, DAT, persist keys
   components/                Compact picker, crop + focal-point editor, transform form
   lib/bynder/                Parse Compact View JSON + compose DAT URLs
   delivery/                  Website helper
-server/                      Holds Client Secret + refresh token; mints access tokens
 ```
 
 Built from the [Marketplace App Boilerplate](https://github.com/contentstack/marketplace-app-boilerplate) (Vite, React, `@contentstack/app-sdk` ^2.4, `@bynder/compact-view`).

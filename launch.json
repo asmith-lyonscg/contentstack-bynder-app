@@ -2,7 +2,6 @@
   "rewrites": [
     { "source": "/custom-field", "destination": "/index.html" },
     { "source": "/app-configuration", "destination": "/index.html" },
-    { "source": "/oauth/callback", "destination": "/index.html" },
     { "source": "/picker", "destination": "/index.html" }
   ]
 }

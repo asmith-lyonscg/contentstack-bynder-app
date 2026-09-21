@@ -26,7 +26,6 @@ import {
   resolveEnableDat,
   seedAssetCrop,
 } from "../../lib/fieldConfig";
-import { fetchBypassAccessToken, reportAssetUsage } from "../../lib/oauth/client";
 import { resolvePersistKeys } from "../../lib/persistKeys";
 import {
   asSavedAssets,
@@ -472,44 +471,6 @@ export default function CustomField() {
     return () => window.clearTimeout(timer);
   }, [assetReady, customField, settings]);
 
-  useEffect(() => {
-    if (!assetReady || !appConfig?.enableAssetTracker || !compact.loginBypass || !sdk?.ids?.installationUID) {
-      return undefined;
-    }
-    const report = () => {
-      const assetIds = parseBynderAssets(settingsRef.current.assets)
-        .map((item) => item.id)
-        .filter(Boolean);
-      const ids = sdk.ids as { installationUID?: string; entry?: string; contentType?: string; stack?: string };
-      if (!assetIds.length || !ids.entry) return;
-      void reportAssetUsage({
-        installationUid: ids.installationUID ?? "",
-        assetIds,
-        uri: `contentstack://${ids.stack ?? "stack"}/${ids.contentType ?? "entry"}/${ids.entry}`,
-      }).catch(() => undefined);
-    };
-    try {
-      const entry = customField?.entry as
-        | {
-            on?: (event: string, cb: () => void) => unknown;
-            off?: (event: string, cb: () => void) => unknown;
-          }
-        | undefined;
-      if (typeof entry?.on !== "function") return undefined;
-      entry.on("save", report);
-      return () => {
-        try {
-          entry.off?.("save", report);
-        } catch {
-          /* ignore */
-        }
-      };
-    } catch (error) {
-      console.error("Bynder Image Settings asset tracker hook failed", error);
-      return undefined;
-    }
-  }, [appConfig?.enableAssetTracker, assetReady, compact.loginBypass, customField, sdk]);
-
   const panel = focused ?? panelAsset;
   const hasDatUrl = Boolean(panel?.transformBaseUrl);
   const datMissing = Boolean(focused && configAllowsDat && !hasDatUrl);
@@ -618,11 +579,6 @@ export default function CustomField() {
         onSelect={onCompactSelect}
         onRemove={onCompactRemove}
         onReorder={onCompactReorder}
-        getAccessToken={
-          compact.loginBypass && sdk?.ids?.installationUID
-            ? () => fetchBypassAccessToken(sdk.ids.installationUID)
-            : undefined
-        }
         desktopMobileMode={desktopMobileMode}
       />
 

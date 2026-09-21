@@ -1,30 +1,33 @@
+import { copyFileSync, existsSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
-import path from "node:path";
-import { handleApiRequest } from "./server/api.mjs";
+
+function resolveViteBase(): string {
+  const explicit = process.env.VITE_BASE_PATH?.trim();
+  if (explicit) {
+    if (explicit === "/") return "/";
+    return explicit.endsWith("/") ? explicit : `${explicit}/`;
+  }
+  const repo = process.env.GITHUB_REPOSITORY?.split("/")[1];
+  if (process.env.GITHUB_ACTIONS && repo && !repo.endsWith(".github.io")) {
+    return `/${repo}/`;
+  }
+  return "/";
+}
 
 export default defineConfig({
+  base: resolveViteBase(),
   plugins: [
     react(),
     {
-      name: "bynder-oauth-api",
-      configureServer(server) {
-        server.middlewares.use((req, res, next) => {
-          void handleApiRequest(req, res)
-            .then((handled) => {
-              if (!handled) next();
-            })
-            .catch(next);
-        });
-      },
-      configurePreviewServer(server) {
-        server.middlewares.use((req, res, next) => {
-          void handleApiRequest(req, res)
-            .then((handled) => {
-              if (!handled) next();
-            })
-            .catch(next);
-        });
+      name: "github-pages-spa",
+      closeBundle() {
+        const dist = path.resolve(__dirname, "dist");
+        const index = path.join(dist, "index.html");
+        if (!existsSync(index)) return;
+        copyFileSync(index, path.join(dist, "404.html"));
+        writeFileSync(path.join(dist, ".nojekyll"), "");
       },
     },
   ],
@@ -39,11 +42,10 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
-    // Cloudflare Tunnel / ngrok hostnames change each run.
     allowedHosts: true,
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "server/**/*.test.js"],
+    include: ["src/**/*.test.ts"],
   },
 });

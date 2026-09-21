@@ -275,7 +275,6 @@ export function resolveCompactViewConfig(fieldConfig: unknown, appConfig: unknow
   return {
     ...resolveCompactViewOptions(fieldConfig, appConfig),
     portalUrl: resolveBynderPortalUrl(fieldConfig, appConfig),
-    loginBypass: pickBool(fieldConfig, "loginBypass") ?? pickBool(appConfig, "loginBypass") ?? false,
   };
 }
 

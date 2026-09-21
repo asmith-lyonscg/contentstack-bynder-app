@@ -83,7 +83,6 @@ export default function PickerPopup() {
           <CompactViewHost
             compact={payload.compact}
             portalUrl={payload.portalUrl}
-            accessToken={payload.accessToken}
             selectedAssets={payload.selectedAssets}
             preselect={payload.preselect}
             onSuccess={(assets, additionalInfo) => {

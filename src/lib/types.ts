@@ -49,7 +49,6 @@ export interface CompactViewConfig {
   portalUrl?: string;
   language: string;
   mode: CompactSelectionMode;
-  loginBypass: boolean;
   assetTypes: CompactAssetType[];
   defaultSearchTerm?: string;
   theme?: CompactTheme;
@@ -176,12 +175,13 @@ export interface AppInstallationConfig {
   /** @deprecated Ignored. Compact View mode follows `maxNumberOfAssets`. Stripped on App Config save. */
   compactMode?: CompactSelectionMode;
   bynderFieldUid?: string;
-  /** Authors skip Bynder login after App Config Fetch Code and Validate. */
+  /** @deprecated Static/Pages build. Stripped on App Config save. */
   loginBypass?: boolean;
+  /** @deprecated Static/Pages build. Stripped on App Config save. */
   oauthClientId?: string;
   /** When false, DAT is unavailable and authors only get CSS crop. Default true. */
   enableDat?: boolean;
-  /** Report selected assets to Bynder Asset Tracker when the entry is saved. */
+  /** @deprecated Static/Pages build. Stripped on App Config save. */
   enableAssetTracker?: boolean;
   /** Extra Bynder keys to keep on the entry JSON. Required keys are always saved. */
   persistAssetKeys?: string[];

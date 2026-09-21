@@ -6,7 +6,6 @@ import { MarketplaceAppProvider } from "./common/providers/MarketplaceAppProvide
 const CustomField = lazy(() => import("./locations/CustomField/CustomField"));
 const AppConfig = lazy(() => import("./locations/AppConfig/AppConfig"));
 const Home = lazy(() => import("./locations/Home/Home"));
-const OAuthCallback = lazy(() => import("./locations/OAuthCallback/OAuthCallback"));
 const PickerPopup = lazy(() => import("./locations/PickerPopup/PickerPopup"));
 
 function App() {
@@ -15,7 +14,6 @@ function App() {
       <Suspense fallback={<div className="app-loading">Loading…</div>}>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/oauth/callback" element={<OAuthCallback />} />
           <Route path="/picker" element={<PickerPopup />} />
           <Route
             path="/custom-field"

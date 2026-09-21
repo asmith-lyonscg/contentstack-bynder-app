@@ -8,7 +8,6 @@ import type { CompactViewConfig } from "../lib/types";
 interface CompactViewHostProps {
   compact: CompactViewConfig;
   portalUrl: string;
-  accessToken?: string;
   selectedAssets?: string[];
   preselect?: CompactPreselectAsset[];
   onSuccess: (assets: unknown[], additionalInfo?: unknown) => void;
@@ -17,7 +16,6 @@ interface CompactViewHostProps {
 export function CompactViewHost({
   compact,
   portalUrl,
-  accessToken,
   selectedAssets,
   preselect,
   onSuccess,
@@ -46,9 +44,6 @@ export function CompactViewHost({
     <Login
       portal={{ url: portalUrl, editable: false }}
       language={compact.language}
-      authentication={
-        accessToken ? { getAccessToken: () => accessToken, hideLogout: true } : undefined
-      }
     >
       <CompactView
         language={compact.language}

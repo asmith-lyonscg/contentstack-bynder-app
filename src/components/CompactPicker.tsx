@@ -10,6 +10,7 @@ import {
   type PickerReadyMessage,
   type PickerResultMessage,
 } from "../lib/picker/protocol";
+import { appHref } from "../lib/appBase";
 import type { CompactViewConfig, ParsedBynderAsset, ViewportKind } from "../lib/types";
 import "./CompactPicker.css";
 
@@ -24,7 +25,6 @@ interface CompactPickerProps {
   onSelect: (assets: unknown[], additionalInfo?: unknown) => void;
   onRemove: (id: string) => void;
   onReorder: (ids: string[]) => void;
-  getAccessToken?: () => Promise<string>;
   desktopMobileMode?: boolean;
 }
 
@@ -95,10 +95,8 @@ export function CompactPicker({
   onSelect,
   onRemove,
   onReorder,
-  getAccessToken,
   desktopMobileMode = true,
 }: CompactPickerProps) {
-  const [opening, setOpening] = useState(false);
   const [openError, setOpenError] = useState<string>();
   const [dragId, setDragId] = useState<string>();
   const [ordered, setOrdered] = useState(assets);
@@ -179,21 +177,11 @@ export function CompactPicker({
     }, 0);
   };
 
-  const openPicker = async () => {
+  const openPicker = () => {
     setOpenError(undefined);
-    let accessToken: string | undefined;
-    if (getAccessToken) {
-      setOpening(true);
-      try {
-        accessToken = await getAccessToken();
-      } catch {
-        setOpenError("Login bypass is unavailable, so the Bynder sign-in screen will appear.");
-      }
-      setOpening(false);
-    }
 
     const id = crypto.randomUUID();
-    const url = `${window.location.origin}/picker?id=${encodeURIComponent(id)}`;
+    const url = appHref(`picker?id=${encodeURIComponent(id)}`);
     const width = 1280;
     const height = 860;
     const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
@@ -212,7 +200,6 @@ export function CompactPicker({
             compact,
             selectedAssets,
             preselect,
-            accessToken,
           },
         },
         window.location.origin
@@ -306,8 +293,8 @@ export function CompactPicker({
       {ordered.length === 0 ? (
         <>
           <p className="compact-empty">No assets have been added</p>
-          <button type="button" className="compact-choose" onClick={() => void openPicker()} disabled={opening}>
-            {opening ? "Connecting…" : `+ Choose ${assetWord}`}
+          <button type="button" className="compact-choose" onClick={openPicker}>
+            {`+ Choose ${assetWord}`}
           </button>
         </>
       ) : (
@@ -443,7 +430,7 @@ export function CompactPicker({
                     >
                       <ExternalIcon />
                     </IconButton>
-                    <IconButton label={reselectLabel} onClick={() => void openPicker()}>
+                    <IconButton label={reselectLabel} onClick={openPicker}>
                       <SwapIcon />
                     </IconButton>
                     <IconButton label="Remove" danger onClick={() => onRemove(asset.id)}>
@@ -462,7 +449,6 @@ export function CompactPicker({
         </p>
       ) : null}
       {openError ? <p className="compact-open-error">{openError}</p> : null}
-      {opening && ordered.length ? <p className="compact-limit-hint">Opening Bynder…</p> : null}
     </div>
   );
 }

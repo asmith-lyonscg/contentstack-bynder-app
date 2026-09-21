@@ -190,7 +190,6 @@ export function resolveCompactViewConfig(fieldConfig: unknown, appConfig: unknow
       pickString(app, "compactLanguage") ??
       "en_US",
     mode,
-    loginBypass: pickBool(field, "loginBypass") ?? pickBool(app, "loginBypass") ?? false,
     assetTypes,
     defaultSearchTerm: pickString(options, "defaultSearchTerm") ?? pickedFilter?.searchTerm,
     theme: pickTheme(options),

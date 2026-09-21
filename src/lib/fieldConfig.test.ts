@@ -41,7 +41,6 @@ describe("resolveCompactViewConfig", () => {
       portalUrl: "acme.getbynder.com",
       language: "en_US",
       mode: "SingleSelect",
-      loginBypass: false,
       assetTypes: ["IMAGE", "VIDEO"],
       maxLimit: 1,
     });
@@ -66,14 +65,13 @@ describe("resolveCompactViewConfig", () => {
   it("ignores compactMode and uses maxNumberOfAssets for Single vs Multi", () => {
     expect(
       resolveCompactViewConfig(
-        { compactLanguage: "nl_NL", loginBypass: true },
+        { compactLanguage: "nl_NL" },
         { bynderPortalUrl: "acme.getbynder.com", compactMode: "SingleSelectFile" }
       )
     ).toMatchObject({
       portalUrl: "acme.getbynder.com",
       language: "nl_NL",
       mode: "SingleSelect",
-      loginBypass: true,
     });
     expect(
       resolveCompactViewConfig(

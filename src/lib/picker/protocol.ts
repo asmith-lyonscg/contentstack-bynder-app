@@ -7,7 +7,6 @@ export interface PickerInitPayload {
   compact: import("../types").CompactViewConfig;
   selectedAssets: string[];
   preselect?: import("../bynder/preselect").CompactPreselectAsset[];
-  accessToken?: string;
 }
 
 export type PickerReadyMessage = { type: typeof PICKER_READY; id: string };

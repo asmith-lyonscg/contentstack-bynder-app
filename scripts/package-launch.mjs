@@ -20,7 +20,7 @@ const files = [
   ".env.example",
 ];
 
-const dirs = ["public", "src", "server"];
+const dirs = ["public", "src"];
 
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
@@ -58,4 +58,6 @@ Launch build settings:
   Node.js          : 22 if listed
 
 Do not include a port on the Launch app URL. Paths stay /custom-field and /app-configuration.
+
+This zip is static: authors sign into Bynder in Compact View. There is no OAuth token server.
 `);

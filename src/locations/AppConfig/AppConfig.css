@@ -9,26 +9,6 @@
   font-size: 16px;
 }
 
-.app-config .advanced {
-  margin-top: 8px;
-  padding: 12px;
-  border: 1px solid #d4d4e8;
-  border-radius: 8px;
-  background: #fafafc;
-}
-
-.app-config .actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0 4px;
-}
-
-.app-config .actions button {
-  margin-top: 0;
-}
-
 .lede,
 .help,
 .notice {

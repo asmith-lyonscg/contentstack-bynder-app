@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
+import { publicAsset } from "../../lib/appBase";
 import "./Home.css";
 
 export default function Home() {
   return (
     <div className="home">
-      <img src="/app-icon.svg" alt="" width={48} height={48} />
+      <img src={publicAsset("app-icon.svg")} alt="" width={48} height={48} />
       <h1>Bynder Image Settings</h1>
       <p>
         Contentstack Marketplace app. Contentstack loads this app at a UI location path, not the site
