@@ -1,5 +1,5 @@
 import { parseBynderAsset, slimPersistedAssets } from "./bynder/parseAsset";
-import { composeDatUrl, normalizeFocalPoint } from "./bynder/composeDatUrl";
+import { datQueriesForSlice, normalizeFocalPoint } from "./bynder/composeDatUrl";
 import { REQUIRED_PERSIST_KEYS, type PersistAssetKey } from "./persistKeys";
 import {
   DEFAULT_FOCAL_POINT,
@@ -8,6 +8,8 @@ import {
   type DatFormat,
   type DatOperation,
   type FocalPoint,
+  type MobileAssetIdentity,
+  type MobileViewportSettings,
   type SavedBynderAsset,
   type TransformSettings,
   type ViewportCropSettings,
@@ -63,13 +65,45 @@ function asTransform(value: unknown): TransformSettings {
   };
 }
 
+function asDatQueries(value: unknown): { "1x": string; "2x": string } | undefined {
+  if (!isRecord(value)) return undefined;
+  const one = typeof value["1x"] === "string" ? value["1x"] : undefined;
+  const two = typeof value["2x"] === "string" ? value["2x"] : undefined;
+  if (!one || !two) return undefined;
+  return { "1x": one, "2x": two };
+}
+
 function asViewportCrop(value: unknown): ViewportCropSettings | undefined {
   if (!isRecord(value)) return undefined;
   if (!isRecord(value.focalPoint) && !isRecord(value.transform)) return undefined;
   return {
     focalPoint: asFocalPoint(value.focalPoint),
     transform: asTransform(value.transform),
-    url: typeof value.url === "string" && value.url.includes("io=") ? value.url : undefined,
+    dat: asDatQueries(value.dat),
+  };
+}
+
+function asMobileAsset(value: unknown): MobileAssetIdentity | undefined {
+  if (!isRecord(value) || typeof value.id !== "string" || !value.id) return undefined;
+  const webImage = asWebImage(value.webImage);
+  const next: MobileAssetIdentity = { id: value.id };
+  if (typeof value.name === "string" && value.name) next.name = value.name;
+  if (typeof value.type === "string" && value.type) next.type = value.type;
+  if (typeof value.transformBaseUrl === "string" && value.transformBaseUrl) next.transformBaseUrl = value.transformBaseUrl;
+  if (webImage && !next.transformBaseUrl) next.webImage = webImage;
+  return next;
+}
+
+function asMobileViewport(value: unknown): MobileViewportSettings | undefined {
+  const crop = asViewportCrop(value);
+  const asset = isRecord(value) ? asMobileAsset(value.asset) : undefined;
+  if (!crop && !asset) return undefined;
+  return {
+    focalPoint: crop?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
+    transform: crop?.transform ?? { ...DEFAULT_TRANSFORM },
+    dat: crop?.dat,
+    asset,
+    alt: isRecord(value) && typeof value.alt === "string" ? value.alt : undefined,
   };
 }
 
@@ -86,7 +120,7 @@ export function asSavedAsset(raw: unknown): SavedBynderAsset | null {
   const record = isRecord(raw) ? raw : {};
   const files = isRecord(record.files) ? record.files : {};
   const crop = asViewportCrop(record);
-  const mobile = isRecord(record.mobile) ? asViewportCrop(record.mobile) : undefined;
+  const mobile = isRecord(record.mobile) ? asMobileViewport(record.mobile) : undefined;
   const webImage =
     asWebImage(record.webImage) ??
     asWebImage(files.webImage, parsed.transformBaseUrl ? undefined : parsed.sourceUrl);
@@ -97,13 +131,15 @@ export function asSavedAsset(raw: unknown): SavedBynderAsset | null {
   const next: SavedBynderAsset = {
     id: parsed.id,
     name: parsed.name,
+    type: parsed.type,
     alt: typeof record.alt === "string" ? record.alt : parsed.alt,
     transformBaseUrl,
     webImage,
     focalPoint: crop?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
     transform: crop?.transform ?? { ...DEFAULT_TRANSFORM },
-    url: crop?.url,
+    dat: crop?.dat,
     mobile,
+    differentMobileAsset: record.differentMobileAsset === true ? true : undefined,
   };
   if (typeof record.description === "string" && record.description) next.description = record.description;
   if (typeof record.originalUrl === "string" && record.originalUrl) next.originalUrl = record.originalUrl;
@@ -143,7 +179,14 @@ function liveFromAsset(asset: SavedBynderAsset | undefined, viewport: "desktop" 
     activeAssetId: asset?.id,
     focalPoint: slice?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
     transform: slice?.transform ?? defaultTransform(),
-    alt: typeof asset?.alt === "string" ? asset.alt : undefined,
+    alt:
+      viewport === "mobile" && asset?.mobile?.asset
+        ? typeof asset.mobile.alt === "string"
+          ? asset.mobile.alt
+          : undefined
+        : typeof asset?.alt === "string"
+          ? asset.alt
+          : undefined,
   };
 }
 
@@ -172,6 +215,7 @@ export function buildSettingsPayload(
   extras?: Partial<Pick<BynderImageSettings, "activeAssetId" | "activeViewport">> & {
     assets?: unknown[];
     persistAssetKeys?: readonly PersistAssetKey[];
+    omitWebImage?: boolean;
     enableDat?: boolean;
   }
 ): BynderImageSettings {
@@ -185,7 +229,9 @@ export function buildSettingsPayload(
   const activeAssetId = pick("activeAssetId", settings.activeAssetId) || undefined;
   const activeViewport = pick("activeViewport", settings.activeViewport) === "mobile" ? "mobile" : undefined;
   const incoming = extras && Object.prototype.hasOwnProperty.call(extras, "assets") ? extras.assets : settings.assets;
-  const slimIdentity = Array.isArray(incoming) && incoming.length ? slimPersistedAssets(incoming, persistKeys) : undefined;
+  const slimIdentity = Array.isArray(incoming) && incoming.length
+    ? slimPersistedAssets(incoming, persistKeys, { omitWebImage: extras?.omitWebImage })
+    : undefined;
   const merged = mergeIdentityAndCrops(slimIdentity, incoming);
   const stashed = stashActiveCrop(
     {
@@ -242,6 +288,7 @@ function mergeIdentityAndCrops(
             ...existing,
             id: identity.id,
             name: identity.name ?? existing.name,
+            type: identity.type ?? existing.type,
             transformBaseUrl: identity.transformBaseUrl ?? existing.transformBaseUrl,
             webImage: identity.webImage ?? existing.webImage,
             alt: existing.alt ?? identity.alt,
@@ -252,9 +299,9 @@ function mergeIdentityAndCrops(
   return next.length ? next : undefined;
 }
 
-function composeViewportUrl(baseUrl: string | undefined, slice: ViewportCropSettings, enableDat: boolean): string | undefined {
+function composeViewportUrl(baseUrl: string | undefined, slice: ViewportCropSettings, enableDat: boolean) {
   if (!enableDat || !baseUrl) return undefined;
-  return composeDatUrl(baseUrl, slice) || undefined;
+  return datQueriesForSlice(slice);
 }
 
 function attachAssetUrls(assets: SavedBynderAsset[] | undefined, enableDat: boolean): SavedBynderAsset[] | undefined {
@@ -262,19 +309,27 @@ function attachAssetUrls(assets: SavedBynderAsset[] | undefined, enableDat: bool
   return assets.map((asset) => {
     const datOn = Boolean(enableDat && asset.transformBaseUrl);
     const url = composeViewportUrl(asset.transformBaseUrl, asset, datOn);
-    const mobileUrl = asset.mobile ? composeViewportUrl(asset.transformBaseUrl, asset.mobile, datOn) : undefined;
+    const mobileBase = asset.mobile?.asset?.transformBaseUrl ?? (asset.differentMobileAsset ? undefined : asset.transformBaseUrl);
+    const mobileUrl = asset.mobile ? composeViewportUrl(mobileBase, asset.mobile, Boolean(enableDat && mobileBase)) : undefined;
     const next: SavedBynderAsset = { ...asset };
-    if (url) next.url = url;
-    else delete next.url;
+    if (url) next.dat = url;
+    else delete next.dat;
+    delete next.url;
     if (next.mobile) {
-      if (mobileUrl) next.mobile = { ...next.mobile, url: mobileUrl };
-      else {
-        const { url: _drop, ...mobile } = next.mobile;
+      if (mobileUrl) {
+        const { url: _legacy, ...mobile } = next.mobile;
+        next.mobile = { ...mobile, dat: mobileUrl };
+      } else {
+        const { dat: _drop, ...mobile } = next.mobile;
         next.mobile = mobile;
       }
     }
     if (datOn) delete next.webImage;
     else if (!next.webImage && asset.webImage) next.webImage = asset.webImage;
+    if (next.mobile?.asset?.transformBaseUrl) {
+      const { webImage: _mobileWebImage, ...mobileIdentity } = next.mobile.asset;
+      next.mobile = { ...next.mobile, asset: mobileIdentity };
+    }
     const transform = { ...next.transform };
     if (!transform.extraQuery) delete transform.extraQuery;
     next.transform = transform;
@@ -299,15 +354,22 @@ export function stashActiveCrop(settings: BynderImageSettings, assetId?: string)
     const existing = asset;
     const desktop: ViewportCropSettings =
       viewport === "mobile"
-        ? { focalPoint: existing.focalPoint, transform: existing.transform, url: existing.url }
+        ? { focalPoint: existing.focalPoint, transform: existing.transform, dat: existing.dat }
         : live;
+    const mobileLive: MobileViewportSettings = { ...live, asset: existing.mobile?.asset };
     const withLive: SavedBynderAsset =
       viewport === "mobile"
-        ? viewportCropsEqual(live, desktop)
-          ? { ...existing, ...desktop }
-          : { ...existing, ...desktop, mobile: live }
+        ? existing.differentMobileAsset || existing.mobile?.asset || !viewportCropsEqual(live, desktop)
+          ? { ...existing, ...desktop, mobile: mobileLive }
+          : { ...existing, ...desktop }
         : { ...existing, ...live, mobile: existing.mobile };
-    withLive.alt = typeof settings.alt === "string" ? settings.alt : existing.alt;
+    const separateMobile = Boolean(existing.differentMobileAsset || existing.mobile?.asset);
+    if (viewport === "mobile" && separateMobile) {
+      withLive.alt = existing.alt;
+      if (withLive.mobile && typeof settings.alt === "string") withLive.mobile = { ...withLive.mobile, alt: settings.alt };
+    } else {
+      withLive.alt = typeof settings.alt === "string" ? settings.alt : existing.alt;
+    }
     return stripMatchingMobile(withLive);
   });
   return { ...settings, assets };

@@ -312,7 +312,7 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
       pickBool(appConfig, "lockFileType") ??
       false,
     hideFormat: pickHideFormat(fieldConfig) ?? pickHideFormat(appConfig) ?? true,
-    showOperation: pickShowFlag(fieldConfig, appConfig, ["showOperation"], ["hideOperation"], false),
+    showOperation: pickShowFlag(fieldConfig, appConfig, ["showOperation"], ["hideOperation"], true),
     showAspect: pickShowFlag(fieldConfig, appConfig, ["showAspect"], ["hideAspect"], false),
     showQuality: pickShowFlag(fieldConfig, appConfig, ["showQuality"], ["hideQuality"], false),
     showAdvancedQuery: pickShowFlag(

@@ -69,11 +69,36 @@ export interface CompactViewConfig {
 
 export type ViewportKind = "desktop" | "mobile";
 
+export interface DatQueries {
+  "1x": string;
+  "2x": string;
+}
+
 export interface ViewportCropSettings {
   focalPoint: FocalPoint;
   transform: TransformSettings;
-  /** Composed DAT URL for this viewport. Omitted when DAT is unavailable or disabled. */
+  /**
+   * DAT query strings for this viewport. Join with the asset `transformBaseUrl`.
+   * `2x` is the single static image. A different mobile file uses `mobile.asset.transformBaseUrl`.
+   */
+  dat?: DatQueries;
+  /** @deprecated Older saves stored a full URL. New saves use `dat` plus `transformBaseUrl`. */
   url?: string;
+}
+
+/** Bynder file used only for the mobile crop. Absent means mobile uses the parent asset. */
+export interface MobileAssetIdentity {
+  id: string;
+  name?: string;
+  type?: string;
+  transformBaseUrl?: string;
+  webImage?: { url: string };
+}
+
+export interface MobileViewportSettings extends ViewportCropSettings {
+  asset?: MobileAssetIdentity;
+  /** Alt text for the separate mobile file. Omitted when mobile uses the desktop image. */
+  alt?: string;
 }
 
 export interface AssetCropSettings extends ViewportCropSettings {
@@ -81,7 +106,9 @@ export interface AssetCropSettings extends ViewportCropSettings {
    * Present only when mobile has been edited away from desktop.
    * When omitted, mobile follows desktop — do not duplicate the crop.
    */
-  mobile?: ViewportCropSettings;
+  mobile?: MobileViewportSettings;
+  /** Switch off: mobile is a different Bynder file. Kept even before that file is picked. */
+  differentMobileAsset?: boolean;
   /** Author-facing alt text for this asset. Prefills from Bynder, then can be overwritten. */
   alt?: string;
 }
@@ -90,6 +117,8 @@ export interface AssetCropSettings extends ViewportCropSettings {
 export interface SavedBynderAsset extends AssetCropSettings {
   id: string;
   name?: string;
+  /** Compact View media type, e.g. IMAGE or VIDEO. Always saved so video UI survives reopen. */
+  type?: string;
   transformBaseUrl?: string;
   /** Original/web image. Only persisted when DAT is off or the asset has no transformBaseUrl. */
   webImage?: { url: string };

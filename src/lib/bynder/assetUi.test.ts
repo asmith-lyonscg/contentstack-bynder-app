@@ -34,7 +34,7 @@ describe("listThumbForAsset", () => {
     height: 900,
   };
 
-  it("uses the DAT URL and crop aspect when a transform is available", () => {
+  it("uses the source image, focal position, and layout size", () => {
     const thumb = listThumbForAsset({
       asset,
       datAllowed: true,
@@ -44,11 +44,13 @@ describe("listThumbForAsset", () => {
         datEnabled: true,
       },
     });
-    expect(thumb.url).toContain("https://portal.bynder.com/transform/abc/hero.jpg");
-    expect(thumb.url).toContain("focuspoint=0.2,0.8");
+    expect(thumb.url).toBe(asset.sourceUrl);
     expect(thumb.height).toBe(200);
     expect(thumb.width).toBe(200);
-    expect(thumb.objectPosition).toBe("50% 50%");
+    expect(thumb.objectPosition).toBe("20% 80%");
+    expect(thumb.operation).toBe("fill");
+    expect(thumb.aspectW).toBe(1200);
+    expect(thumb.aspectH).toBe(675);
     expect(thumb.caption).toBe("1200 × 675 · WebP");
   });
 

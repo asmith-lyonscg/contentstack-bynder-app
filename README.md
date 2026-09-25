@@ -8,7 +8,7 @@ This field does **not** require the official Bynder Marketplace app. The officia
 
 1. **Build or run the app**
    - Local: `npm install` then `npm run dev` (Vite at `http://localhost:3000`). Contentstack iframes need HTTPS, so tunnel that origin (ngrok, Cloudflare Tunnel, etc.).
-   - Production: `npm run build` and host the static `dist` folder (GitHub Pages, Launch, any CDN). Authors sign into Bynder in Compact View. There is no login bypass and no Node OAuth server on this branch.
+   - Production: `npm run build` and host the static `dist` folder (GitHub Pages, Launch, any CDN). Authors sign into Bynder inside Compact View.
 2. **Developer Hub** → create a Standard / private app.
 3. **Hosting:** Custom Hosting → your HTTPS origin (GitHub Pages, Launch, or tunnel). For the repo [asmith-lyonscg/contentstack-bynder-app](https://github.com/asmith-lyonscg/contentstack-bynder-app) that is `https://asmith-lyonscg.github.io/contentstack-bynder-app` (no trailing slash).
 4. **UI Locations**
@@ -58,15 +58,19 @@ On **Bynder Image Settings**, set the field **Config Parameter** if you need to 
 ```json
 {
   "bynderPortalUrl": "acme.getbynder.com",
+  "accept": "image/video",
   "desktopMobileMode": true,
   "maxNumberOfAssets": 3,
   "enableDat": true,
+  "showOperation": true,
   "aspect": { "desktop": "16:9", "mobile": "9:16" },
   "width": { "desktop": 1200, "mobile": 390 },
   "lockAspect": true,
   "format": "webp"
 }
 ```
+
+`accept` is the simple media filter. Use `"image"`, `"video"`, `"pdf"`, or `"image/video"` (the default). `"desktopMobileMode": false` turns off the desktop/mobile split. `"suppressMetadata": true` stores only `id`, `type`, and `transformBaseUrl` so a large Bynder payload can stay under Contentstack’s 10KB field limit.
 
 With `"desktopMobileMode": false`, `aspect`, `width`, `height`, and the lock flags must be scalars (`"16:9"`, `1200`, `true`). Dual `{ "desktop", "mobile" }` objects are ignored except for the `desktop` value.
 
@@ -111,18 +115,20 @@ Field **Config Parameter** unless marked App Config. Types and examples:
 | Key | Type | Example | Meaning |
 |---|---|---|---|
 | `bynderPortalUrl` | `string` | `"acme.getbynder.com"` | Portal host. Required. Field config overrides App Configuration |
+| `accept` | `"image"` \| `"video"` \| `"pdf"` \| `"image/video"` | `"image"` | Which Bynder types Compact View can select. Default `image/video`. Alias: `media`. Field config wins over `compactViewConfig.assetTypes` |
 | `desktopMobileMode` | `boolean` | `false` | Dual desktop/mobile crops. Default `true`. `false` = one crop per asset; the UI never says desktop or mobile. Alias: `desktopMobile` |
-| `maxNumberOfAssets` | `number` | `3` | Cap on selected assets. Default `1` (Single Select). Values above 1 use Multi Select. Compact View has no max-select prop; this app caps the array Compact View returns. Alias: `advanced.max_limit` |
+| `suppressMetadata` | `boolean` | `true` | Drop Bynder metadata and `webImage` from the saved JSON. Keeps `id`, `type`, `transformBaseUrl`, crop fields, and alt text. Use this when an entry will not save because the JSON field is over 10KB |
+| `persistAssetKeys` | `string[]` | `["description","tags"]` | Extra Bynder keys besides `id`, `name`, `type`, and `transformBaseUrl`. Ignored when `suppressMetadata` is true. Field config wins over App Config. Allowed extras: `description`, `originalUrl`, `publishedAt`, `updatedAt`, `tags` |
+| `maxNumberOfAssets` | `number` | `3` | Cap on selected assets. Default `1` (Single Select). Values above 1 use Multi Select. Alias: `advanced.max_limit` |
 | `compactLanguage` | `string` | `"en_US"` | Compact View locale. Default `en_US` |
 | `enableDat` | `boolean` | `true` | Default `true`. `false` forces CSS crop only (no composed DAT `url`) |
-| `persistAssetKeys` | `string[]` | `["description","tags"]` | App Config. Extra Bynder keys besides `id` (media UUID), `name`, and `transformBaseUrl`. `webImage` is stored automatically only when DAT is unavailable. Allowed extras: `description`, `originalUrl`, `publishedAt`, `updatedAt`, `tags` |
 | `aspect` | `string` or `{ desktop?: string, mobile?: string }` | `"16:9"` or `{ "desktop": "16:9", "mobile": "9:16" }` | Preset for **new** entries; forced when `lockAspect` is true. In `desktopMobileMode`, an object sets desktop and mobile separately. A scalar applies to both (and is the only allowed form when `desktopMobileMode` is `false`) |
 | `width` | `number` or `{ desktop?: number, mobile?: number }` | `1200` or `{ "desktop": 1200, "mobile": 390 }` | Same as `aspect`. Dual objects are only used when `desktopMobileMode` is `true` |
 | `height` | `number` or `{ desktop?: number, mobile?: number }` | `675` or `{ "desktop": 675, "mobile": 844 }` | Same as `width`. If omitted, height is derived from aspect + width |
 | `lockAspect`, `lockWidth`, `lockHeight` | `boolean` or `{ desktop?: boolean, mobile?: boolean }` | `true` or `{ "desktop": true, "mobile": false }` | Disable those inputs. A scalar locks both viewports. An object can lock one viewport only (`desktopMobileMode: true`). Hidden fields are **not** locked: `showAspect: false` still lets width and height set the crop independently. When `desktopMobileMode` is `false`, only a boolean is used |
 | `format` | `"webp"` \| `"jpg"` \| `"png"` | `"webp"` | DAT file type for **new** entries. Default `webp`. Alias: `fileType` |
 | `showFormat` | `boolean` | `true` | Show the DAT file-type control. Hidden by default. Aliases: `showFileType`, `hideFormat: false` |
-| `showOperation`, `showAspect`, `showQuality`, `showAdvancedQuery`, `showDatPreset` | `boolean` | `true` | Show extra DAT fields. Hidden by default |
+| `showOperation` | `boolean` | `false` | Show **Transform type** (Fill, Fit, Crop). Shown by default. `showAspect`, `showQuality`, `showAdvancedQuery`, and `showDatPreset` stay hidden unless set to `true` |
 | `lockFormat` | `boolean` | `true` | Show the file-type control but disable it. Alias: `lockFileType` |
 | `aspectPresets` | `string[]` or comma-separated `string` | `["16:9","1:1"]` | Aspect dropdown options. Omit to keep `16:9`, `1:1`, `4:3`, `4:5` |
 | `compactViewConfig` | `object` | `{ "assetTypes": ["IMAGE","VIDEO"], "defaultSearchTerm": "hero" }` | [Universal Compact View](https://developers.bynder.com/universal-compact-view) props we pass through: `language`, `assetTypes`, `assetFilter`, `theme`, `hideExternalAccess`, `hideLimitedUse`, `hideSwitch`, `noCache`, `selectAllOption`, `defaultSearchTerm`, `defaultImageDerivativeName`, `defaultVideoDerivativeName`, `isPersonal`, `enableDASH`, `embedType`. Defaults to images and videos. Portal URL, callbacks, and `mode` are not taken from here. Alias: `custom_settings.compact_view_options` |
@@ -156,6 +162,35 @@ Paste one of these into the custom field’s **Config Parameter**. App Config st
 ```
 
 New picks open unmatched (desktop 1200×675, mobile 390×693). Height is derived from aspect + width.
+
+**Images only**
+
+```json
+{ "accept": "image", "desktopMobileMode": true }
+```
+
+**Video only** — one thumbnail, no mobile crop
+
+```json
+{ "accept": "video", "desktopMobileMode": false }
+```
+
+**PDF only**
+
+```json
+{ "accept": "pdf", "desktopMobileMode": false, "maxNumberOfAssets": 1 }
+```
+
+**Images and videos (default), metadata stripped so the entry can save**
+
+```json
+{
+  "accept": "image/video",
+  "desktopMobileMode": true,
+  "suppressMetadata": true,
+  "maxNumberOfAssets": 5
+}
+```
 
 **Same crop for every viewport (no desktop/mobile UI)**
 
@@ -229,21 +264,23 @@ If DAT is allowed but the selected asset has no `transformBaseUrl`, the field sh
 
 ## Author UI
 
-- Compact View strip: **300×200** desktop thumbs and **200×200** mobile thumbs. With `desktopMobileMode` (the default), each row has Desktop and Mobile thumbs. With `"desktopMobileMode": false`, one **Preview** column and one crop per asset; the UI never says desktop or mobile.
-- **+ Choose Asset** when `maxNumberOfAssets` is 1 (the default); **+ Choose Asset(s)** when the cap is above 1. **Change Asset(s)** matches that plurality.
-- Compact View is pre-filtered to images and videos unless `compactViewConfig.assetTypes` says otherwise.
+- Compact View strip: desktop and mobile thumbs share one scale, fitted inside a **300×200** box, with a **40px** minimum on each side. With `desktopMobileMode` (the default), each image row has Desktop and Mobile thumbs. A list of only videos and/or PDFs uses one **Thumbnail** column. Desktop and Mobile headers stay only when that list also contains an image; a video in that mixed list shows **Same as desktop** under Mobile. With `"desktopMobileMode": false`, one **Thumbnail** column and one crop per asset.
+- **+ Choose Asset** when `maxNumberOfAssets` is 1 (the default); **+ Choose Asset(s)** when the cap is above 1. **Change Asset(s)** matches that plurality. When the mobile file is the same as desktop, the mobile caption has its own change icon.
+- Compact View allows images and videos unless `accept` (or `compactViewConfig.assetTypes`) says otherwise. `accept` may be `image`, `video`, `pdf`, or `image/video`.
 - Cancel / close Compact View without a new confirm does not clear the current selection. Reopening Compact View passes the current media UUIDs as `selectedAssets` and restores them in Compact View’s footer. A checkmark in the grid only appears if that asset is on the current search page. If **Add asset** switches to **Retry**, leave the picker and report it — that means Compact View re-encoded ids on confirm.
-- MultiSelect: rows are selectable. Crop and focal controls appear only while a thumbnail is selected. Click the same thumb again to deselect it and collapse the editor.
-- The crop editor starts collapsed with no thumbnail selected whenever the entry opens. Confirming a picker selection expands the editor on the first newly added asset (Desktop, when dual viewports are on). The Contentstack field iframe grows and shrinks with that editor.
+- Crop and focal controls appear only while an image thumbnail is selected. Videos and PDFs are not selectable. With no image selected the editor is hidden — expanding an empty panel would have nothing to edit, and it does not auto-select the first asset. Click the same image thumb again to collapse the editor while keeping that asset selected. Use the accordion chevron to collapse/expand, or the × to close and deselect. Confirming a picker selection expands the editor on the first newly added image.
+- The crop editor starts with no thumbnail selected whenever the entry opens. Confirming an **image** expands the editor. **Videos** and **documents** (including PDFs) stay in the list with a **Video** or **Document** badge and are not selectable, so the crop editor does not open for them. Videos never show **No DAT**. Images with `transformBaseUrl` show **DAT capable**; images without it show **Not DAT capable**, a **No DAT** mark on both thumbs, and a red CSS-crop note.
+- **Use a different asset for mobile** is off by default: one Bynder file, two crops. Turn the switch on to pick a different file for mobile. That file is stored on `assets[n].mobile.asset` and does not count toward `maxNumberOfAssets`. Turning the switch off drops it from the saved entry; it stays in memory only until reload.
 - When dual viewports are on, click a desktop or mobile thumb to edit that crop. Desktop|Mobile stay one pill. A link icon sits just left of **Mobile**; it stays linked until you change a field on the Mobile tab. Then it becomes a broken link, the hint says **Mobile does not match desktop**, and **Revert mobile to match desktop** restores the pair. Switching tabs without edits does not unsync them. Unmatched mobile is stored as `assets[n].mobile`; matching mobile is omitted.
+- **Transform type** defaults to Fill. Fill covers the width and height and crops the overflow around the focal point. Fit keeps the whole image inside the box. Crop extracts a rectangle of that width and height from the original; the focal point picks the region (center, top-left, and the other Bynder gravity positions).
 - Width and height commit on Enter or blur. Enter keeps focus in the same field so you can keep typing. If the field config omits aspect/width/height for a viewport, those inputs start at the selected asset’s pixel size.
-- Controls (focal X/Y, aspect, width, height) are stacked to the left of the crop preview in a separate panel below the list.
+- Controls (width, height, then focal X/Y) are stacked to the left of the crop preview in a separate panel below the list. Those four short number fields share one width and left edge.
 - The preview is a crop-shape reference, labeled **Not to scale**.
 - Click or drag the red dot (or anywhere on the image) to set the focal point. The crop slides to match.
 
 ## Saved JSON
 
-Stored on the entry and returned by CDA / GraphQL. One `assets` array: identity, crop editor fields, and the composed DAT `url`. GraphQL ids, `databaseId`, type, dimensions, and Bynder’s files map are dropped. `webImage` is stored only when DAT is unavailable. Matching mobile is omitted; unmatched mobile is `assets[n].mobile`. Focused thumb and Desktop|Mobile tab are UI-only — reopen has no thumb selected and the crop editor collapsed.
+Stored on the entry and returned by CDA / GraphQL. One `assets` array: identity (`id`, `name`, `type`), crop editor fields, and the composed DAT `url`. GraphQL ids, `databaseId`, dimensions, and Bynder’s files map are dropped. `webImage` is stored only when DAT is unavailable. Matching mobile is omitted; unmatched mobile is `assets[n].mobile`. Focused thumb and Desktop|Mobile tab are UI-only — reopen has no thumb selected and the crop editor hidden.
 
 Every DAT crop gets a composed `url`. Three images with one unmatched pair is **four URLs**.
 

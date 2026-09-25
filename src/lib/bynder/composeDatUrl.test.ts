@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composeDatUrl, cssCropBox, fitPreviewBox, lockToAspect, parseAspect, previewIsToScale, resolveDimensions } from "./composeDatUrl";
+import { composeDatUrl, cssCropBox, datQueriesForSlice, fitPreviewBox, lockToAspect, parseAspect, previewIsToScale, resolveDimensions } from "./composeDatUrl";
 import { DEFAULT_TRANSFORM } from "../types";
 
 describe("parseAspect", () => {
@@ -111,11 +111,30 @@ describe("composeDatUrl", () => {
     expect(url).toContain("io=filter:grayscale");
   });
 
+  it("positions a crop with gravity from the focal point", () => {
+    const url = composeDatUrl(base, {
+      focalPoint: { x: 0.5, y: 0.5 },
+      transform: { operation: "crop", width: 50, height: 50 },
+    });
+    expect(url).toContain("io=transform:crop,width:50,height:50,gravity:center");
+  });
+
   it("clamps focal point into 0-1", () => {
     const url = composeDatUrl(base, {
       focalPoint: { x: 2, y: -1 },
       transform: { operation: "fill", width: 100, height: 100 },
     });
     expect(url).toContain("focuspoint=1,0");
+  });
+
+  it("builds 1x and 2x query strings from CSS layout size", () => {
+    const sources = datQueriesForSlice({
+      focalPoint: { x: 0.5, y: 0.5 },
+      transform: { ...DEFAULT_TRANSFORM, width: 1200, height: 675 },
+    });
+    expect(sources["1x"]).toContain("width:1200");
+    expect(sources["1x"]).not.toContain("https://");
+    expect(sources["2x"]).toContain("width:2400");
+    expect(sources["2x"]).toContain("height:1350");
   });
 });

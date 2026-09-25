@@ -146,10 +146,17 @@ function appendQuery(baseUrl: string, query: string): string {
   return `${baseUrl}${hasQuery ? "&" : "?"}${query}`;
 }
 
-function buildIoParam(operation: string, width?: number, height?: number): string {
+function gravityFromFocal(focal: FocalPoint): string {
+  const col = focal.x < 1 / 3 ? "left" : focal.x > 2 / 3 ? "right" : "";
+  const row = focal.y < 1 / 3 ? "top" : focal.y > 2 / 3 ? "bottom" : "";
+  return `${row}${col}` || "center";
+}
+
+function buildIoParam(operation: string, width?: number, height?: number, gravity?: string): string {
   const parts = [`transform:${operation}`];
   if (width) parts.push(`width:${width}`);
   if (height) parts.push(`height:${height}`);
+  if (gravity) parts.push(`gravity:${gravity}`);
   return `io=${parts.join(",")}`;
 }
 
@@ -159,6 +166,52 @@ function sanitizeExtraQuery(extra: string | null | undefined): string {
     .trim()
     .replace(/^[?&]+/, "")
     .replace(/^\/+/, "");
+}
+
+export function physicalTransform(transform: TransformSettings, dpr: number): TransformSettings {
+  const dims = resolveDimensions(transform);
+  return {
+    ...transform,
+    width: dims.width ? Math.round(dims.width * dpr) : null,
+    height: dims.height ? Math.round(dims.height * dpr) : null,
+  };
+}
+
+/** Query string only. Join with `transformBaseUrl` at delivery time. */
+export function composeDatQuery(options: {
+  focalPoint?: FocalPoint | null;
+  transform: TransformSettings;
+}): string {
+  const { width, height } = resolveDimensions(options.transform);
+  const operation = options.transform.operation || "fill";
+  const focal = options.focalPoint ? normalizeFocalPoint(options.focalPoint) : null;
+  const gravity = operation === "crop" && focal ? gravityFromFocal(focal) : undefined;
+  const fragments: string[] = [buildIoParam(operation, width, height, gravity)];
+  if (focal) fragments.push(`focuspoint=${focal.x},${focal.y}`);
+  const format = options.transform.format;
+  if (format) fragments.push(`format=${format}`);
+  const quality = POSITIVE(options.transform.quality);
+  if (quality && format !== "png") fragments.push(`quality=${Math.min(100, quality)}`);
+  const extra = sanitizeExtraQuery(options.transform.extraQuery);
+  if (extra) fragments.push(extra);
+  return fragments.join("&");
+}
+
+export function joinDatUrl(transformBaseUrl: string, query: string): string {
+  const base = stripTrailingSlash(transformBaseUrl.trim());
+  if (!base || !query) return base;
+  return appendQuery(base, query);
+}
+
+/** 1× is the CSS layout size. 2× is the single static image. */
+export function datQueriesForSlice(slice: {
+  focalPoint?: FocalPoint | null;
+  transform: TransformSettings;
+}): { "1x": string; "2x": string } {
+  return {
+    "1x": composeDatQuery({ focalPoint: slice.focalPoint, transform: physicalTransform(slice.transform, 1) }),
+    "2x": composeDatQuery({ focalPoint: slice.focalPoint, transform: physicalTransform(slice.transform, 2) }),
+  };
 }
 
 export function composeDatUrl(
@@ -173,9 +226,9 @@ export function composeDatUrl(
 
   const { width, height } = resolveDimensions(options.transform);
   const operation = options.transform.operation || "fill";
-  const fragments: string[] = [buildIoParam(operation, width, height)];
-
   const focal = options.focalPoint ? normalizeFocalPoint(options.focalPoint) : null;
+  const gravity = operation === "crop" && focal ? gravityFromFocal(focal) : undefined;
+  const fragments: string[] = [buildIoParam(operation, width, height, gravity)];
   if (focal) {
     fragments.push(`focuspoint=${focal.x},${focal.y}`);
   }

@@ -29,7 +29,7 @@ export function viewportCrop(
   return {
     focalPoint: crop.focalPoint,
     transform: crop.transform,
-    url: crop.url,
+    dat: crop.dat,
   };
 }
 
@@ -67,7 +67,7 @@ export function cropSliceForAsset(
 
 export function withoutMobileCrop(crop: AssetCropSettings | undefined): AssetCropSettings | undefined {
   if (!crop) return undefined;
-  const { mobile: _mobile, ...desktop } = crop;
+  const { mobile: _mobile, differentMobileAsset: _flag, ...desktop } = crop;
   return desktop;
 }
 
@@ -94,7 +94,9 @@ export function viewportCropsEqual(a: ViewportCropSettings, b: ViewportCropSetti
 
 /** Drop `mobile` when it still matches desktop. Presence of `mobile` means unmatched. */
 export function stripMatchingMobile<T extends AssetCropSettings>(crop: T): T {
-  if (crop.mobile && !viewportCropsEqual(crop, crop.mobile)) return crop;
+  const separate = Boolean(crop.differentMobileAsset || crop.mobile?.asset);
+  if (!crop.mobile) return crop;
+  if (separate || !viewportCropsEqual(crop, crop.mobile)) return crop;
   const { mobile: _mobile, ...desktop } = crop;
   return desktop as T;
 }
@@ -105,7 +107,7 @@ export function withoutDesktopMobile(settings: BynderImageSettings): BynderImage
   delete next.activeViewport;
   if (!settings.assets?.length) return next;
   next.assets = settings.assets.map((asset) => {
-    const { mobile: _mobile, ...rest } = asset;
+    const { mobile: _mobile, differentMobileAsset: _flag, ...rest } = asset;
     return rest;
   });
   return next;

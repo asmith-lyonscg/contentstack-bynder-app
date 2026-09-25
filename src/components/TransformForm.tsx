@@ -27,8 +27,8 @@ interface TransformFormProps {
 
 const OPERATIONS: { value: DatOperation; label: string }[] = [
   { value: "fill", label: "Fill (crop to box)" },
-  { value: "fit", label: "Fit (no crop)" },
-  { value: "crop", label: "Crop" },
+  { value: "fit", label: "Fit (no crop; scale only)" },
+  { value: "crop", label: "Crop (region of the original)" },
 ];
 
 const FORMATS = DAT_FILE_TYPES;
@@ -219,7 +219,15 @@ export function TransformForm({
     <div className="transform-form">
       {datEnabled && showOperation && (
         <label className="field">
-          <span>Operation</span>
+          <span>
+            Transform type
+            <InfoTooltip>
+              Fill scales the image to Width and Height, then crops whatever does not fit. The focal point
+              chooses the part that stays. Fit scales the whole image inside the box and does not crop. Crop
+              takes a rectangle of that width and height out of the original file. Leave the focal point in
+              the center for the middle of the image, or move it to choose another region.
+            </InfoTooltip>
+          </span>
           <select
             value={value.operation}
             onChange={(event) => patch({ operation: event.target.value as DatOperation })}
@@ -287,12 +295,12 @@ export function TransformForm({
       )}
 
       <label className="field">
-        <span>Width{widthLocked ? " (locked)" : ""}</span>
+        <span>Layout Width (CSS Pixels){widthLocked ? " (locked)" : ""}</span>
         <CommitNumberInput value={value.width} disabled={widthLocked} onCommit={commitWidth} />
       </label>
 
       <label className="field">
-        <span>Height{heightLocked ? " (locked)" : ""}</span>
+        <span>Layout Height (CSS Pixels){heightLocked ? " (locked)" : ""}</span>
         <CommitNumberInput value={value.height} disabled={heightLocked} onCommit={commitHeight} />
       </label>
 

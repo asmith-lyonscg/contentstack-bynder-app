@@ -47,6 +47,13 @@ describe("resolveCompactViewConfig", () => {
     expect(resolveCompactViewConfig({}, { bynderPortalUrl: "acme.getbynder.com" }).assetFilter).toBeUndefined();
   });
 
+  it("maps accept to Compact View asset types", () => {
+    expect(resolveCompactViewConfig({ accept: "image" }, {}).assetTypes).toEqual(["IMAGE"]);
+    expect(resolveCompactViewConfig({ accept: "video" }, {}).assetTypes).toEqual(["VIDEO"]);
+    expect(resolveCompactViewConfig({ accept: "pdf" }, {}).assetTypes).toEqual(["DOCUMENT"]);
+    expect(resolveCompactViewConfig({ accept: "image/video" }, {}).assetTypes).toEqual(["IMAGE", "VIDEO"]);
+  });
+
   it("defaults showToolbar on when a custom assetFilter is present", () => {
     expect(
       resolveCompactViewConfig(
@@ -242,7 +249,7 @@ describe("resolveCropConfig", () => {
       lockHeight: false,
       lockFormat: false,
       hideFormat: true,
-      showOperation: false,
+      showOperation: true,
       showAspect: false,
       showQuality: false,
       showAdvancedQuery: false,

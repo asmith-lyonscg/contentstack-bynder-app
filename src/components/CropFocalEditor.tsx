@@ -3,10 +3,10 @@ import type { FocalPoint, TransformSettings } from "../lib/types";
 import { fitPreviewBox, previewIsToScale } from "../lib/bynder/composeDatUrl";
 import {
   clampOffset,
-  coverLayout,
   focalFromOffset,
+  frameLayout,
   imagePointFromPointer,
-  offsetFromFocal,
+  offsetForOperation,
 } from "../lib/bynder/coverLayout";
 import "./FocalPointCanvas.css";
 import "./CropFocalEditor.css";
@@ -49,8 +49,9 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
     return () => observer.disconnect();
   }, []);
 
-  const layout = coverLayout(natural.w, natural.h, box.width, box.height);
-  const baseOffset = offsetFromFocal(focalPoint, layout, box.width, box.height);
+  const operation = transform.operation || "fill";
+  const layout = frameLayout(operation, natural.w, natural.h, box.width, box.height, transform.width, transform.height);
+  const baseOffset = offsetForOperation(operation, focalPoint, layout, box.width, box.height);
   const offset = dragOffset ?? baseOffset;
   const canPan = ALLOW_CROP_PAN && (layout.canPanX || layout.canPanY);
 

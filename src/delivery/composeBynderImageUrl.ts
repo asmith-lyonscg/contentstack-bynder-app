@@ -1,5 +1,5 @@
 import type { BynderImageSettings, DatFormat, FocalPoint, TransformSettings, ViewportKind } from "../lib/types";
-import { composeDatUrl, normalizeFocalPoint } from "../lib/bynder/composeDatUrl";
+import { composeDatUrl, joinDatUrl, normalizeFocalPoint, physicalTransform } from "../lib/bynder/composeDatUrl";
 import { pickBynderAsset } from "../lib/bynder/parseAsset";
 import { cropSliceForAsset, savedAssetById } from "../lib/viewportCrop";
 
@@ -40,17 +40,28 @@ export function composeBynderImageUrl(
     viewport,
     settings.transform
   );
-  const base = transformBaseUrl ?? asset?.transformBaseUrl;
+  const mobileAsset = viewport === "mobile" ? asset?.mobile?.asset : undefined;
+  const base =
+    transformBaseUrl ??
+    mobileAsset?.transformBaseUrl ??
+    (mobileAsset ? undefined : asset?.transformBaseUrl);
   const cssFallback =
+    mobileAsset?.webImage?.url ??
     asset?.webImage?.url ??
     pickBynderAsset(settings.assets)?.sourceUrl ??
-    slice.url ??
     "";
-  const datUrl = slice.url ?? asset?.url;
-  if (!base || !datUrl) return cssFallback;
+  const rawCrop = viewport === "mobile" ? asset?.mobile : asset;
+  const legacyUrl = rawCrop && typeof (rawCrop as { url?: unknown }).url === "string";
+  const datSaved = Boolean(slice.dat || legacyUrl);
+  if (!base || !datSaved) return cssFallback;
 
   const widthOverridden = overrides?.width != null;
   const heightOverridden = overrides?.height != null;
+  const formatOverridden = overrides?.format !== undefined;
+  const qualityOverridden = overrides?.quality !== undefined;
+  if (!widthOverridden && !heightOverridden && !formatOverridden && !qualityOverridden && slice.dat?.["2x"]) {
+    return joinDatUrl(base, slice.dat["2x"]);
+  }
 
   const transform: TransformSettings = {
     ...slice.transform,
@@ -64,9 +75,13 @@ export function composeBynderImageUrl(
   } else if (heightOverridden && !widthOverridden) {
     transform.height = overrides.height;
     transform.width = null;
-  } else {
+  } else if (widthOverridden || heightOverridden) {
     if (widthOverridden) transform.width = overrides.width;
     if (heightOverridden) transform.height = overrides.height;
+  } else {
+    const retina = physicalTransform(transform, 2);
+    transform.width = retina.width;
+    transform.height = retina.height;
   }
 
   return composeDatUrl(base, {
