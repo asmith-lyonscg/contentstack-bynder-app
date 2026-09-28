@@ -8,6 +8,7 @@ import {
   imagePointFromPointer,
   offsetForOperation,
 } from "../lib/bynder/coverLayout";
+import { ImageSpinner } from "./ImageSpinner";
 import "./FocalPointCanvas.css";
 import "./CropFocalEditor.css";
 
@@ -31,12 +32,21 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
   const [natural, setNatural] = useState({ w: 0, h: 0 });
   const [maxWidth, setMaxWidth] = useState(520);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const box = fitPreviewBox(transform, maxWidth, 360);
   const toScale = previewIsToScale(box);
 
   useEffect(() => {
     setNatural({ w: 0, h: 0 });
+    setLoaded(false);
+  }, [src]);
+
+  useEffect(() => {
+    const img = imageRef.current;
+    if (!img || !src || !img.complete || img.naturalWidth <= 0) return;
+    setLoaded(true);
+    setNatural({ w: img.naturalWidth, h: img.naturalHeight });
   }, [src]);
 
   useEffect(() => {
@@ -135,8 +145,9 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
+        {src && !loaded ? <ImageSpinner /> : null}
         <div
-          className="crop-image-layer"
+          className={`crop-image-layer${loaded ? "" : " is-loading"}`}
           style={{
             width: layout.dispW,
             height: layout.dispH,
@@ -148,12 +159,14 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
             src={src}
             alt={alt ?? "Bynder image"}
             draggable={false}
-            onLoad={(event) =>
+            onLoad={(event) => {
+              setLoaded(true);
               setNatural({
                 w: event.currentTarget.naturalWidth,
                 h: event.currentTarget.naturalHeight,
-              })
-            }
+              });
+            }}
+            onError={() => setLoaded(true)}
           />
           <div
             className="focal-crosshair is-handle"

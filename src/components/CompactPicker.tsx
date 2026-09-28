@@ -3,6 +3,7 @@ import { bynderMediaUrl, moveAsset, type AssetListThumbs, type ListThumb } from 
 import { frameLayout, offsetForOperation } from "../lib/bynder/coverLayout";
 import { compactAssetIds, isDocumentAsset, isVideoAsset } from "../lib/bynder/parseAsset";
 import { compactPreselectFromParsed } from "../lib/bynder/preselect";
+import { ImageSpinner } from "./ImageSpinner";
 import {
   isSameOrigin,
   PICKER_INIT,
@@ -43,6 +44,8 @@ interface CompactPickerProps {
   desktopMobileMode?: boolean;
   /** Row ids whose mobile thumb is a separate Bynder file (or an empty chooser). */
   separateMobileIds?: string[];
+  /** Row ids whose desktop and mobile file and crop still match. */
+  linkedIds?: string[];
   /** Separate mobile slots that do not have a file yet. */
   emptyMobileIds?: string[];
   /** Bump `nonce` to open Compact View for that row's mobile file only. */
@@ -83,6 +86,8 @@ function ThumbImage({
   const imgRef = useRef<HTMLImageElement>(null);
   const [natural, setNatural] = useState({ w: 0, h: 0 });
   const [frame, setFrame] = useState({ w: 0, h: 0 });
+  const [loadedSrc, setLoadedSrc] = useState("");
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (src === shownRef.current) return undefined;
@@ -92,6 +97,14 @@ function ThumbImage({
 
   useEffect(() => {
     setNatural({ w: 0, h: 0 });
+    setFailed(false);
+  }, [shown]);
+
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || !shown || !img.complete || img.naturalWidth <= 0) return;
+    setLoadedSrc(shown);
+    setNatural({ w: img.naturalWidth, h: img.naturalHeight });
   }, [shown]);
 
   useLayoutEffect(() => {
@@ -113,32 +126,43 @@ function ThumbImage({
     ? offsetForOperation("crop", focalFromPosition(objectPosition), cropLayout, frame.w, frame.h)
     : null;
 
+  const loading = Boolean(shown) && loadedSrc !== shown && !failed;
+
   return (
-    <img
-      ref={imgRef}
-      src={shown}
-      alt=""
-      draggable={false}
-      className={operation === "fit" ? "is-fit" : cropLayout ? "is-crop" : undefined}
-      style={
-        cropLayout && cropOffset
-          ? {
-              width: cropLayout.dispW,
-              height: cropLayout.dispH,
-              transform: `translate(${cropOffset.x}px, ${cropOffset.y}px)`,
-            }
-          : { objectPosition: operation === "fit" ? "50% 50%" : objectPosition }
-      }
-      onLoad={(event) =>
-        setNatural({ w: event.currentTarget.naturalWidth, h: event.currentTarget.naturalHeight })
-      }
-      onError={(event) => {
-        if (fallback && event.currentTarget.src !== fallback) {
-          event.currentTarget.src = fallback;
-          setShown(fallback);
+    <>
+      {loading ? <ImageSpinner /> : null}
+      <img
+        ref={imgRef}
+        src={shown}
+        alt=""
+        draggable={false}
+        className={[operation === "fit" ? "is-fit" : "", cropLayout ? "is-crop" : "", loading ? "is-loading" : ""]
+          .filter(Boolean)
+          .join(" ") || undefined}
+        style={
+          cropLayout && cropOffset
+            ? {
+                width: cropLayout.dispW,
+                height: cropLayout.dispH,
+                transform: `translate(${cropOffset.x}px, ${cropOffset.y}px)`,
+              }
+            : { objectPosition: operation === "fit" ? "50% 50%" : objectPosition }
         }
-      }}
-    />
+        onLoad={(event) => {
+          setLoadedSrc(shown);
+          setFailed(false);
+          setNatural({ w: event.currentTarget.naturalWidth, h: event.currentTarget.naturalHeight });
+        }}
+        onError={(event) => {
+          if (fallback && event.currentTarget.src !== fallback) {
+            event.currentTarget.src = fallback;
+            setShown(fallback);
+            return;
+          }
+          setFailed(true);
+        }}
+      />
+    </>
   );
 }
 
@@ -203,6 +227,15 @@ function AssetIconSet({
   );
 }
 
+function ThumbCaption({ caption, children }: { caption?: string; children: ReactNode }) {
+  return (
+    <figcaption className="asset-caption" title={caption || undefined}>
+      <span className="asset-caption-text">{caption}</span>
+      <span className="asset-caption-actions">{children}</span>
+    </figcaption>
+  );
+}
+
 function IconButton({
   label,
   onClick,
@@ -246,6 +279,7 @@ export function CompactPicker({
   onReorder,
   desktopMobileMode = true,
   separateMobileIds,
+  linkedIds,
   emptyMobileIds,
   mobilePickRequest,
   desktopPickRequest,
@@ -259,7 +293,6 @@ export function CompactPicker({
   const [ordered, setOrdered] = useState(assets);
   const popupRef = useRef<Window | null>(null);
   const orderedRef = useRef(ordered);
-  const skipClickRef = useRef(false);
   const itemRefs = useRef(new Map<string, HTMLLIElement>());
   const listRef = useRef<HTMLUListElement>(null);
   const firstRectsRef = useRef<Map<string, DOMRect>>(new Map());
@@ -314,13 +347,7 @@ export function CompactPicker({
     setOrdered(next);
   };
 
-  const onRowActivate = (id: string) => {
-    if (skipClickRef.current) return;
-    onFocus(id);
-  };
-
   const beginReorder = (event: DragEvent, id: string) => {
-    skipClickRef.current = true;
     setDragId(id);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", id);
@@ -329,9 +356,6 @@ export function CompactPicker({
   const endReorder = () => {
     commitReorder(orderedRef.current);
     setDragId(undefined);
-    window.setTimeout(() => {
-      skipClickRef.current = false;
-    }, 0);
   };
 
   const openPicker = (mobileForId?: string, replaceDesktopId?: string) => {
@@ -462,55 +486,53 @@ export function CompactPicker({
   const reselectLabel = `Change ${assetWord}`;
   const canReorder = ordered.length > 1;
   const hasImage = ordered.some((asset) => !isVideoAsset(asset) && !isDocumentAsset(asset));
-  const showMobileColumn = desktopMobileMode && hasImage;
-  const hasPairActions = Boolean(
-    separateMobileIds?.some((id) => mobileFiles?.[id] && !emptyMobileIds?.includes(id))
-  );
+  const acceptsImages = compact.assetTypes.includes("IMAGE");
+  const showMobileColumn = desktopMobileMode && (hasImage || (ordered.length === 0 && acceptsImages));
   const boardClass = [
     "compact-board",
     canReorder ? "is-multi" : "",
     showMobileColumn ? "" : "is-single-viewport",
-    hasPairActions ? "has-pair-actions" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
     <div className="compact-picker">
-      {ordered.length === 0 ? (
-        <>
-          <p className="compact-empty">No assets have been added</p>
-          <button type="button" className="compact-choose" onClick={() => openPicker()}>
-            {`+ Choose ${assetWord}`}
-          </button>
-        </>
-      ) : (
-        <div className={boardClass}>
-          <div className="compact-board-title">{countLabel}</div>
-          <div className="asset-list-head">
-            {canReorder ? <span className="asset-grab is-spacer" aria-hidden /> : null}
-            {showMobileColumn ? (
-              <>
-                <span className="asset-col-desktop">Desktop</span>
-                <span className="asset-col-mobile">Mobile</span>
-              </>
-            ) : (
-              <span className="asset-col-desktop">Thumbnail</span>
-            )}
-            <span className="asset-col-name">Name</span>
-            <span className="asset-col-type">Type</span>
-            <span className="asset-actions-label">Actions</span>
-          </div>
-          <ul
-            className="compact-assets"
-            ref={listRef}
-            onDragOver={onListDragOver}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragId(undefined);
-            }}
-          >
-            {ordered.map((asset) => {
+      <div className={boardClass}>
+        <div className="compact-board-title">{countLabel}</div>
+        <div className="asset-list-head">
+          {canReorder ? <span className="asset-grab is-spacer" aria-hidden /> : null}
+          {showMobileColumn ? (
+            <>
+              <span className="asset-col-desktop">Desktop</span>
+              <span className="asset-col-mobile">Mobile</span>
+            </>
+          ) : (
+            <span className="asset-col-desktop">Thumbnail</span>
+          )}
+          <span className="asset-col-name">Name</span>
+          <span className="asset-col-type">Type</span>
+        </div>
+        <ul
+          className="compact-assets"
+          ref={listRef}
+          onDragOver={onListDragOver}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragId(undefined);
+          }}
+        >
+          {ordered.length === 0 ? (
+            <li className="is-empty">
+              <button type="button" className="asset-choose" onClick={() => openPicker()}>
+                <span className="asset-choose-icon" aria-hidden>
+                  +
+                </span>
+                {`Choose ${assetWord}`}
+              </button>
+            </li>
+          ) : (
+          ordered.map((asset) => {
               const focused = asset.id === focusedId;
               const typeLabel = formatAssetType(asset.type);
               const pair = thumbs?.[asset.id];
@@ -523,6 +545,7 @@ export function CompactPicker({
               const showMobile = showMobileColumn && !document && !video;
               const videoSharesAsset = showMobileColumn && video;
               const separateMobile = Boolean(separateMobileIds?.includes(asset.id));
+              const linked = Boolean(showMobile && !separateMobile && linkedIds?.includes(asset.id));
               const emptyMobile = Boolean(emptyMobileIds?.includes(asset.id));
               const mobileFile = mobileFiles?.[asset.id];
               const pairActions = Boolean(separateMobile && !emptyMobile && mobileFile);
@@ -557,22 +580,7 @@ export function CompactPicker({
                   ]
                     .filter(Boolean)
                     .join(" ")}
-                  onClick={(event) => {
-                    if (!selectable) return;
-                    if ((event.target as HTMLElement).closest("button, .asset-grab")) return;
-                    onRowActivate(asset.id);
-                  }}
-                  onKeyDown={(event) => {
-                    if (!selectable) return;
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onRowActivate(asset.id);
-                    }
-                  }}
                   style={thumbScaleStyle(desktopThumb, mobileThumb)}
-                  role={selectable ? "button" : undefined}
-                  tabIndex={selectable ? (rowFocused ? -1 : 0) : undefined}
-                  aria-pressed={selectable ? rowFocused : undefined}
                   title={asset.name ?? "Bynder image"}
                 >
                   {canReorder ? (
@@ -587,18 +595,26 @@ export function CompactPicker({
                     <GripIcon />
                   </span>
                   ) : null}
-                  <figure
-                    className="asset-preview is-desktop"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (!selectable) return;
-                      onFocus(asset.id, showMobile ? "desktop" : undefined);
-                    }}
-                  >
+                  <figure className="asset-preview is-desktop">
                     <span
                       className={["asset-thumb", rowFocused && (!showMobile || activeViewport === "desktop") ? "is-active" : ""]
                         .filter(Boolean)
                         .join(" ")}
+                      role={selectable ? "button" : undefined}
+                      tabIndex={selectable ? 0 : undefined}
+                      aria-pressed={selectable ? rowFocused && (!showMobile || activeViewport === "desktop") : undefined}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!selectable) return;
+                        onFocus(asset.id, showMobile ? "desktop" : undefined);
+                      }}
+                      onKeyDown={(event) => {
+                        if (!selectable) return;
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onFocus(asset.id, showMobile ? "desktop" : undefined);
+                        }
+                      }}
                     >
                       <ThumbImage
                         src={desktopThumb?.url ?? asset.sourceUrl}
@@ -610,7 +626,34 @@ export function CompactPicker({
                       />
                       {thumbMark}
                     </span>
-                    {desktopThumb?.caption ? <figcaption className="asset-caption">{desktopThumb.caption}</figcaption> : null}
+                    {linked ? (
+                      <span className="thumb-link" title="Desktop and mobile match">
+                        <HorizontalLinkIcon />
+                      </span>
+                    ) : null}
+                    <ThumbCaption caption={desktopThumb?.caption}>
+                      <AssetIconSet
+                        previewUrl={asset.sourceUrl}
+                        bynderUrl={bynderMediaUrl(portalUrl, asset)}
+                        changeLabel={pairActions ? "Change desktop asset" : reselectLabel}
+                        onChange={() => (pairActions ? openPicker(undefined, asset.id) : openPicker())}
+                      />
+                      <IconButton
+                        label={pairActions ? "Remove desktop and mobile assets" : "Remove"}
+                        danger
+                        onClick={() =>
+                          pairActions
+                            ? confirmRemove(
+                                "This will remove both the desktop and mobile asset. Are you sure you want to remove both?",
+                                () => onRemove(asset.id),
+                                "Remove Both"
+                              )
+                            : confirmRemove("Are you sure you want to remove this asset?", () => onRemove(asset.id))
+                        }
+                      >
+                        <MinusIcon />
+                      </IconButton>
+                    </ThumbCaption>
                   </figure>
                   {showMobile && emptyMobile ? (
                     <button
@@ -624,13 +667,7 @@ export function CompactPicker({
                       Choose mobile image
                     </button>
                   ) : showMobile ? (
-                  <figure
-                    className="asset-preview is-mobile"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onFocus(asset.id, "mobile");
-                    }}
-                  >
+                  <figure className="asset-preview is-mobile">
                     <span
                       className={[
                         "asset-thumb",
@@ -638,6 +675,19 @@ export function CompactPicker({
                       ]
                         .filter(Boolean)
                         .join(" ")}
+                      role={selectable ? "button" : undefined}
+                      tabIndex={selectable ? 0 : undefined}
+                      aria-pressed={selectable ? focused && activeViewport === "mobile" : undefined}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onFocus(asset.id, "mobile");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onFocus(asset.id, "mobile");
+                        }
+                      }}
                     >
                       <ThumbImage
                         src={mobileThumb?.url ?? asset.sourceUrl}
@@ -649,16 +699,34 @@ export function CompactPicker({
                       />
                       {thumbMark}
                     </span>
-                    {mobileThumb?.caption || !separateMobile ? (
-                      <figcaption className={separateMobile ? "asset-caption" : "asset-caption is-with-action"}>
-                        {mobileThumb?.caption ? <span>{mobileThumb.caption}</span> : <span />}
-                        {!separateMobile ? (
-                          <IconButton label="Change mobile asset" onClick={() => openPicker(asset.id)}>
-                            <SwapIcon />
+                    <ThumbCaption caption={mobileThumb?.caption}>
+                      {separateMobile ? (
+                        <>
+                          <AssetIconSet
+                            previewUrl={mobileFile?.sourceUrl}
+                            bynderUrl={mobileFile ? bynderMediaUrl(portalUrl, { id: mobileFile.id }) : undefined}
+                            changeLabel="Change mobile asset"
+                            onChange={() => openPicker(asset.id)}
+                          />
+                          <IconButton
+                            label="Remove mobile asset"
+                            danger
+                            onClick={() =>
+                              confirmRemove(
+                                "Are you sure you want to remove the mobile asset? This will revert to using the same asset for both desktop and mobile.",
+                                () => onRemoveMobile?.(asset.id)
+                              )
+                            }
+                          >
+                            <MinusIcon />
                           </IconButton>
-                        ) : null}
-                      </figcaption>
-                    ) : null}
+                        </>
+                      ) : (
+                        <IconButton label="Change mobile asset" onClick={() => openPicker(asset.id)}>
+                          <SwapIcon />
+                        </IconButton>
+                      )}
+                    </ThumbCaption>
                   </figure>
                   ) : videoSharesAsset ? (
                     <p className="asset-preview is-mobile asset-same-note">Same as desktop</p>
@@ -693,81 +761,11 @@ export function CompactPicker({
                       typeLabel
                     )}
                   </span>
-                  <div className={pairActions ? "asset-actions is-pair" : "asset-actions"}>
-                    {pairActions ? (
-                      <>
-                        <div className="pair-stack">
-                          <div className="pair-line">
-                            <span className="pair-label">Desktop:</span>
-                            <AssetIconSet
-                              previewUrl={asset.sourceUrl}
-                              bynderUrl={bynderMediaUrl(portalUrl, asset)}
-                              changeLabel="Change desktop asset"
-                              onChange={() => openPicker(undefined, asset.id)}
-                            />
-                            <IconButton
-                              label="Remove desktop and mobile assets"
-                              danger
-                              onClick={() =>
-                                confirmRemove(
-                                  "This will remove BOTH the desktop and mobile assets. Are you sure you want to remove both?",
-                                  () => onRemove(asset.id),
-                                  "Remove Both"
-                                )
-                              }
-                            >
-                              <MinusIcon />
-                            </IconButton>
-                          </div>
-                          <div className="pair-line">
-                            <span className="pair-label">Mobile:</span>
-                            <AssetIconSet
-                              previewUrl={mobileFile?.sourceUrl}
-                              bynderUrl={mobileFile ? bynderMediaUrl(portalUrl, { id: mobileFile.id }) : undefined}
-                              changeLabel="Change mobile asset"
-                              onChange={() => openPicker(asset.id)}
-                            />
-                            <IconButton
-                              label="Remove mobile asset"
-                              danger
-                              onClick={() =>
-                                confirmRemove(
-                                  "Are you sure you want to remove the mobile asset? This will revert to using the same asset for both desktop and mobile.",
-                                  () => onRemoveMobile?.(asset.id)
-                                )
-                              }
-                            >
-                              <MinusIcon />
-                            </IconButton>
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <AssetIconSet
-                          previewUrl={asset.sourceUrl}
-                          bynderUrl={bynderMediaUrl(portalUrl, asset)}
-                          changeLabel={reselectLabel}
-                          onChange={() => openPicker()}
-                        />
-                        <IconButton
-                          label="Remove"
-                          danger
-                          onClick={() =>
-                            confirmRemove("Are you sure you want to remove this asset?", () => onRemove(asset.id))
-                          }
-                        >
-                          <MinusIcon />
-                        </IconButton>
-                      </>
-                    )}
-                  </div>
                 </li>
               );
-            })}
+            }))}
           </ul>
         </div>
-      )}
       {canPickMultiple ? (
         <p className="compact-limit-hint">
           Up to {compact.maxLimit} asset{compact.maxLimit === 1 ? "" : "s"}
@@ -812,6 +810,30 @@ function formatAssetType(type?: string): string {
   const label = type.trim().toLowerCase();
   if (!label) return "Image";
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function HorizontalLinkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path
+        d="M9 8H7.5a4 4 0 0 0 0 8H9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M15 8h1.5a4 4 0 0 1 0 8H15"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M8 12h8" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 function GripIcon() {

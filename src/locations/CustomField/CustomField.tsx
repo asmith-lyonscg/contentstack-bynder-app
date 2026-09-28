@@ -46,6 +46,7 @@ import {
   resolveActiveViewport,
   savedAssetById,
   viewportCrop,
+  viewportCropsEqual,
   withoutDesktopMobile,
   withoutMobileCrop,
 } from "../../lib/viewportCrop";
@@ -474,33 +475,16 @@ export default function CustomField() {
     (id: string, viewport?: ViewportKind) => {
       const parsed = assets.find((item) => item.id === id);
       if (!parsed || isVideoAsset(parsed) || isDocumentAsset(parsed)) return;
-      const document = isDocumentAsset(parsed);
       const source = settingsRef.current;
       const currentViewport = resolveActiveViewport(source);
       const nextViewport =
-        document || !desktopMobileMode
-          ? "desktop"
-          : viewport ?? (id === focused?.id ? currentViewport : "desktop");
-      const sameThumb =
-        id === focused?.id && (viewport == null || nextViewport === currentViewport);
+        !desktopMobileMode ? "desktop" : viewport ?? (id === focused?.id ? currentViewport : "desktop");
+      const sameThumb = id === focused?.id && nextViewport === currentViewport;
       if (sameThumb) {
-        if (document) {
-          persist({
-            ...stashActiveCrop(source, focused?.id),
-            activeAssetId: undefined,
-            activeViewport: undefined,
-          });
-          setEditorOpen(false);
-          return;
-        }
         setEditorOpen((open) => !open);
         return;
       }
-      if (document) {
-        setEditorOpen(false);
-      } else if (id !== focused?.id) {
-        setEditorOpen(!isVideoAsset(parsed));
-      }
+      setEditorOpen(true);
       const sameAsset = id === focused?.id;
       const stashed = stashActiveCrop(source, focused?.id);
       const crop = viewportCrop(savedAssetById(stashed, id), nextViewport);
@@ -921,6 +905,13 @@ export default function CustomField() {
         onReorder={onCompactReorder}
         desktopMobileMode={desktopMobileMode}
         separateMobileIds={settings.assets?.filter((asset) => asset.differentMobileAsset).map((asset) => asset.id)}
+        linkedIds={settings.assets
+          ?.filter((asset) => {
+            if (asset.differentMobileAsset || asset.mobile?.asset) return false;
+            if (!asset.mobile) return true;
+            return viewportCropsEqual(asset, asset.mobile);
+          })
+          .map((asset) => asset.id)}
         emptyMobileIds={settings.assets
           ?.filter((asset) => asset.differentMobileAsset && !asset.mobile?.asset)
           .map((asset) => asset.id)}
