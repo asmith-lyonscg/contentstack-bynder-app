@@ -4,18 +4,18 @@ A Contentstack Marketplace **Custom Field** that embeds Bynder Universal Compact
 
 This field does **not** require the official Bynder Marketplace app. The official picker can remain on a content type as leftover, but this app no longer reads a sibling Bynder field.
 
-## Install
+## Install in Contentstack
 
-1. **Build or run the app**
-   - Local: `npm install` then `npm run dev` (Vite at `http://localhost:3000`). Contentstack iframes need HTTPS, so tunnel that origin (ngrok, Cloudflare Tunnel, etc.).
-   - Production: `npm run build` and host the static `dist` folder (GitHub Pages, Launch, any CDN). Authors sign into Bynder inside Compact View.
-2. **Developer Hub** → create a Standard / private app.
-3. **Hosting:** Custom Hosting → your HTTPS origin (GitHub Pages, Launch, or tunnel). For the repo [asmith-lyonscg/contentstack-bynder-app](https://github.com/asmith-lyonscg/contentstack-bynder-app) that is `https://asmith-lyonscg.github.io/contentstack-bynder-app` (no trailing slash).
-4. **UI Locations**
-   - Custom Field: name `Bynder Image Settings`, path `/custom-field`, data type **JSON**
+The hosted app is [https://asmith-lyonscg.github.io/contentstack-bynder-app](https://asmith-lyonscg.github.io/contentstack-bynder-app) (no trailing slash). Authors sign into Bynder inside Compact View. You do not need to build or host it yourself.
+
+1. **Developer Hub** → create a Standard / private app (or open the existing one).
+2. **Hosting → Custom Hosting → App URL:** `https://asmith-lyonscg.github.io/contentstack-bynder-app`
+3. **UI Locations**
+   - Custom Field: name `Bynder Asset Settings`, path `/custom-field`, data type **JSON**
    - App Configuration: path `/app-configuration`
-5. Install the app on the stack.
-6. Open **App Configuration**, set the Bynder **portal URL**, **Save**.
+4. Install the app on the stack.
+5. Open **App Configuration**, set the Bynder **portal URL** (`acme.getbynder.com`, no `https://`), **Save**.
+6. On a content type, add this app’s JSON Custom Field. Paste a [Config Parameter](#field-config-parameter-samples) if the field should differ from App Configuration. Field config wins.
 
 ### GitHub Pages
 
@@ -118,7 +118,16 @@ Field **Config Parameter** unless marked App Config. Types and examples:
 | `accept` | `"image"` \| `"video"` \| `"pdf"` \| `"image/video"` | `"image"` | Which Bynder types Compact View can select. Default `image/video`. Alias: `media`. Field config wins over `compactViewConfig.assetTypes` |
 | `desktopMobileMode` | `boolean` | `false` | Dual desktop/mobile crops. Default `true`. `false` = one crop per asset; the UI never says desktop or mobile. Alias: `desktopMobile` |
 | `suppressMetadata` | `boolean` | `true` | Drop Bynder metadata and `webImage` from the saved JSON. Keeps `id`, `type`, `transformBaseUrl`, crop fields, and alt text. Use this when an entry will not save because the JSON field is over 10KB |
-| `persistAssetKeys` | `string[]` | `["description","tags"]` | Extra Bynder keys besides `id`, `name`, `type`, and `transformBaseUrl`. Ignored when `suppressMetadata` is true. Field config wins over App Config. Allowed extras: `description`, `originalUrl`, `publishedAt`, `updatedAt`, `tags` |
+| `includeFieldFileType` | `boolean` | `true` | Save the original file extension (`jpg`, `pdf`, …) on the asset. Off by default. `suppressMetadata: true` ignores this |
+| `includeFieldFileSize` | `boolean` | `true` | Save the original file size in bytes. Off by default |
+| `includeFieldWidth` | `boolean` | `true` | Save the original pixel width. This is not the CSS crop width (`transform.width`) |
+| `includeFieldHeight` | `boolean` | `true` | Save the original pixel height. This is not the CSS crop height (`transform.height`) |
+| `includeFieldDescription` | `boolean` | `true` | Save Bynder `description` |
+| `includeFieldOriginalUrl` | `boolean` | `true` | Save the original file URL |
+| `includeFieldPublishedAt` | `boolean` | `true` | Save Bynder `publishedAt` |
+| `includeFieldUpdatedAt` | `boolean` | `true` | Save Bynder `updatedAt` |
+| `includeFieldTags` | `boolean` | `true` | Save up to 20 Bynder tags |
+| `persistAssetKeys` | `string[]` | `["description","tags"]` | Legacy list of the same extras (`description`, `originalUrl`, `publishedAt`, `updatedAt`, `tags`, `fileType`, `fileSize`, `width`, `height`). Prefer the `includeField…` flags. A field that sets this array replaces the App Config list. `suppressMetadata: true` ignores it |
 | `maxNumberOfAssets` | `number` | `3` | Cap on selected assets. Default `1` (Single Select). Values above 1 use Multi Select. Alias: `advanced.max_limit` |
 | `compactLanguage` | `string` | `"en_US"` | Compact View locale. Default `en_US` |
 | `enableDat` | `boolean` | `true` | Default `true`. `false` forces CSS crop only (no composed DAT `url`) |
@@ -126,7 +135,7 @@ Field **Config Parameter** unless marked App Config. Types and examples:
 | `width` | `number` or `{ desktop?: number, mobile?: number }` | `1200` or `{ "desktop": 1200, "mobile": 390 }` | Same as `aspect`. Dual objects are only used when `desktopMobileMode` is `true` |
 | `height` | `number` or `{ desktop?: number, mobile?: number }` | `675` or `{ "desktop": 675, "mobile": 844 }` | Same as `width`. If omitted, height is derived from aspect + width |
 | `lockAspect`, `lockWidth`, `lockHeight` | `boolean` or `{ desktop?: boolean, mobile?: boolean }` | `true` or `{ "desktop": true, "mobile": false }` | Disable those inputs. A scalar locks both viewports. An object can lock one viewport only (`desktopMobileMode: true`). Hidden fields are **not** locked: `showAspect: false` still lets width and height set the crop independently. When `desktopMobileMode` is `false`, only a boolean is used |
-| `format` | `"webp"` \| `"jpg"` \| `"png"` | `"webp"` | DAT file type for **new** entries. Default `webp`. Alias: `fileType` |
+| `format` | `"webp"` \| `"jpg"` \| `"png"` | `"webp"` | DAT output format for **new** entries. Default `webp`. Alias: `fileType`. This is not `includeFieldFileType`, which saves the original Bynder extension |
 | `showFormat` | `boolean` | `true` | Show the DAT file-type control. Hidden by default. Aliases: `showFileType`, `hideFormat: false` |
 | `showOperation` | `boolean` | `false` | Show **Transform type** (Fill, Fit, Crop). Shown by default. `showAspect`, `showQuality`, `showAdvancedQuery`, and `showDatPreset` stay hidden unless set to `true` |
 | `lockFormat` | `boolean` | `true` | Show the file-type control but disable it. Alias: `lockFileType` |
@@ -179,6 +188,24 @@ New picks open unmatched (desktop 1200×675, mobile 390×693). Height is derived
 
 ```json
 { "accept": "pdf", "desktopMobileMode": false, "maxNumberOfAssets": 1 }
+```
+
+**Keep the original file type and tags**
+
+`includeFieldFileType` stores the Bynder file extension. Layout size stays on `transform`. `suppressMetadata: true` drops these extras.
+
+```json
+{
+  "accept": "image/video",
+  "desktopMobileMode": true,
+  "maxNumberOfAssets": 3,
+  "includeFieldFileType": true,
+  "includeFieldFileSize": true,
+  "includeFieldWidth": true,
+  "includeFieldHeight": true,
+  "includeFieldDescription": true,
+  "includeFieldTags": true
+}
 ```
 
 **Images and videos (default), metadata stripped so the entry can save**
@@ -259,7 +286,7 @@ If DAT is allowed but the selected asset has no `transformBaseUrl`, the field sh
 
 **Same width / height / aspect fields either way.** There is no second DAT-only size mapping. They always live on `transform` in the saved JSON:
 
-- DAT on: they become Bynder DAT query params (`io=transform:fill,width:1200,height:675` plus `focuspoint`). Aspect is not sent as a DAT param; it is used to derive the missing side. `webImage` is omitted.
+- DAT on: they become Bynder DAT query params. The saved field stores `transformBaseUrl` once, plus `dat["1x"]` and `dat["2x"]` as query strings (1× is the layout size, 2× is the single static image). Aspect is not a DAT param; it derives the missing side. `webImage` is omitted when `transformBaseUrl` exists.
 - DAT off / unavailable: the same values ship for your site’s CSS crop box (`width` / `height` / `aspect-ratio` with `object-fit: cover` and `object-position` from `focalPoint`). `webImage.url` is the source.
 
 ## Author UI
@@ -274,15 +301,15 @@ If DAT is allowed but the selected asset has no `transformBaseUrl`, the field sh
 - When dual viewports are on, click a desktop or mobile thumb to edit that crop. Desktop|Mobile stay one pill. A link icon sits just left of **Mobile**; it stays linked until you change a field on the Mobile tab. Then it becomes a broken link, the hint says **Mobile does not match desktop**, and **Revert mobile to match desktop** restores the pair. Switching tabs without edits does not unsync them. Unmatched mobile is stored as `assets[n].mobile`; matching mobile is omitted.
 - **Transform type** defaults to Fill. Fill covers the width and height and crops the overflow around the focal point. Fit keeps the whole image inside the box. Crop extracts a rectangle of that width and height from the original; the focal point picks the region (center, top-left, and the other Bynder gravity positions).
 - Width and height commit on Enter or blur. Enter keeps focus in the same field so you can keep typing. If the field config omits aspect/width/height for a viewport, those inputs start at the selected asset’s pixel size.
-- Controls (width, height, then focal X/Y) are stacked to the left of the crop preview in a separate panel below the list. Those four short number fields share one width and left edge.
+- Crop fields sit to the left of the editor image. Below about **760px** they stack above the image, which shrinks to the panel.
 - The preview is a crop-shape reference, labeled **Not to scale**.
 - Click or drag the red dot (or anywhere on the image) to set the focal point. The crop slides to match.
 
 ## Saved JSON
 
-Stored on the entry and returned by CDA / GraphQL. One `assets` array: identity (`id`, `name`, `type`), crop editor fields, and the composed DAT `url`. GraphQL ids, `databaseId`, dimensions, and Bynder’s files map are dropped. `webImage` is stored only when DAT is unavailable. Matching mobile is omitted; unmatched mobile is `assets[n].mobile`. Focused thumb and Desktop|Mobile tab are UI-only — reopen has no thumb selected and the crop editor hidden.
+Stored on the entry and returned by CDA / GraphQL. One `assets` array: identity (`id`, `name`, `type`, `transformBaseUrl`), crop fields, and DAT query strings. GraphQL ids, `databaseId`, the `extensions` array, and Bynder’s files map are dropped. `webImage` is stored only when that file has no `transformBaseUrl`. Optional Bynder values (`fileType`, `fileSize`, original `width` / `height`, `description`, `originalUrl`, `publishedAt`, `updatedAt`, `tags`) are saved only when the matching `includeField…` flag is true. Matching mobile is omitted; a different mobile file or crop is `assets[n].mobile`. Focused thumb and Desktop|Mobile tab are UI-only.
 
-Every DAT crop gets a composed `url`. Three images with one unmatched pair is **four URLs**.
+A single image URL is `transformBaseUrl + "?" + dat["2x"]`. `dat["1x"]` is the layout size for srcset. Bases differ only when mobile is a different file.
 
 ```json
 {
@@ -291,7 +318,9 @@ Every DAT crop gets a composed `url`. Three images with one unmatched pair is **
     {
       "id": "2DC52E62-5FB1-4938-BF689857EF9B51E2",
       "name": "Earth",
+      "type": "IMAGE",
       "alt": "The Earth from space",
+      "fileType": "jpg",
       "transformBaseUrl": "https://portal.bynder.com/transform/earth.jpg",
       "focalPoint": { "x": 0.35, "y": 0.42 },
       "transform": {
@@ -302,28 +331,16 @@ Every DAT crop gets a composed `url`. Three images with one unmatched pair is **
         "format": "webp",
         "quality": 80
       },
-      "url": "https://portal.bynder.com/transform/earth.jpg?io=transform:fill,width:1200,height:675&io=focuspoint:0.35,0.42&format=webp&quality=80"
-    },
-    {
-      "id": "A1B2C3D4-E5F6-7890-ABCD1234567890EF",
-      "name": "Bottle",
-      "alt": "Product bottle",
-      "transformBaseUrl": "https://portal.bynder.com/transform/bottle.jpg",
-      "focalPoint": { "x": 0.5, "y": 0.5 },
-      "transform": {
-        "operation": "fill",
-        "width": 1200,
-        "height": 675,
-        "aspect": "16:9",
-        "format": "webp",
-        "quality": 80
-      },
-      "url": "https://portal.bynder.com/transform/bottle.jpg?io=transform:fill,width:1200,height:675&io=focuspoint:0.5,0.5&format=webp&quality=80"
+      "dat": {
+        "1x": "io=transform:fill,width:1200,height:675&focuspoint=0.35,0.42&format=webp&quality=80",
+        "2x": "io=transform:fill,width:2400,height:1350&focuspoint=0.35,0.42&format=webp&quality=80"
+      }
     },
     {
       "id": "9F8E7D6C-5B4A-3210-FEDCBA9876543210",
       "name": "Hero",
-      "alt": "Hero banner",
+      "type": "IMAGE",
+      "alt": "Desktop hero",
       "transformBaseUrl": "https://portal.bynder.com/transform/hero.jpg",
       "focalPoint": { "x": 0.4, "y": 0.3 },
       "transform": {
@@ -334,8 +351,13 @@ Every DAT crop gets a composed `url`. Three images with one unmatched pair is **
         "format": "webp",
         "quality": 80
       },
-      "url": "https://portal.bynder.com/transform/hero.jpg?io=transform:fill,width:1200,height:675&io=focuspoint:0.4,0.3&format=webp&quality=80",
+      "dat": {
+        "1x": "io=transform:fill,width:1200,height:675&focuspoint=0.4,0.3&format=webp&quality=80",
+        "2x": "io=transform:fill,width:2400,height:1350&focuspoint=0.4,0.3&format=webp&quality=80"
+      },
+      "differentMobileAsset": true,
       "mobile": {
+        "alt": "Mobile hero",
         "focalPoint": { "x": 0.62, "y": 0.28 },
         "transform": {
           "operation": "fill",
@@ -345,18 +367,27 @@ Every DAT crop gets a composed `url`. Three images with one unmatched pair is **
           "format": "webp",
           "quality": 80
         },
-        "url": "https://portal.bynder.com/transform/hero.jpg?io=transform:fill,width:390,height:693&io=focuspoint:0.62,0.28&format=webp&quality=80"
+        "dat": {
+          "1x": "io=transform:fill,width:390,height:693&focuspoint=0.62,0.28&format=webp&quality=80",
+          "2x": "io=transform:fill,width:780,height:1386&focuspoint=0.62,0.28&format=webp&quality=80"
+        },
+        "asset": {
+          "id": "AABBCCDD-EEFF-0011-2233445566778899",
+          "name": "Hero mobile",
+          "type": "IMAGE",
+          "transformBaseUrl": "https://portal.bynder.com/transform/hero-mobile.jpg"
+        }
       }
     }
   ]
 }
 ```
 
-Read `assets[n].url` for each image. If `assets[n].mobile` is present, also read `assets[n].mobile.url`. Frontends can call `composeBynderImageUrl(settings, { viewport: "mobile" })` to rebuild a URL with breakpoint overrides. When `url` is omitted, use `webImage.url` with CSS `object-fit: cover` and `object-position` from `focalPoint`.
+`fileType` in that sample is present only because the field set `"includeFieldFileType": true`. Join `transformBaseUrl` with `dat["2x"]` for the image `src`. If `dat` is missing, use `webImage.url` with CSS `object-fit` and `object-position` from `focalPoint`. `composeBynderImageUrl(settings, { viewport: "mobile" })` does that join and can override width or height.
 
 ## Delivery
 
-Sites that today read an official Bynder field (for example `bynder_logo`) **and** a separate settings field (for example `bynder_focal_point_dat`) need to switch to this combined field: prefer `assets[n].url` (DAT) or `assets[n].webImage.url` (CSS). This branch does not migrate old two-field entries.
+Sites that today read an official Bynder field and a separate settings field need to switch to this combined field: join `assets[n].transformBaseUrl` with `assets[n].dat["2x"]`, or use `assets[n].webImage.url` when DAT was not saved. This app does not migrate old two-field entries.
 
 Copy [`src/delivery/composeBynderImageUrl.ts`](src/delivery/composeBynderImageUrl.ts) (and [`src/lib/bynder/composeDatUrl.ts`](src/lib/bynder/composeDatUrl.ts) / [`src/lib/types.ts`](src/lib/types.ts) / [`src/lib/bynder/parseAsset.ts`](src/lib/bynder/parseAsset.ts)) into the website:
 
@@ -368,7 +399,7 @@ const mobileSrc = composeBynderImageUrl(entry.hero_image_settings, { viewport: "
 const objectPosition = focalPointToObjectPosition(entry.hero_image_settings.assets?.[0]?.focalPoint);
 ```
 
-`composeBynderImageUrl` uses `assets[n].url` when DAT was saved, and `webImage.url` when it was not.
+`composeBynderImageUrl` joins `transformBaseUrl` and `dat["2x"]` when DAT was saved, and returns `webImage.url` when it was not. An explicit `{ width: 400 }` is a DAT pixel width, not doubled.
 
 ## Project layout
 

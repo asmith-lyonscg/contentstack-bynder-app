@@ -114,6 +114,7 @@ function pickFileType(
     ? asset.extensions.map((item) => pickString(item)?.replace(/^\./, "")).find(Boolean)
     : pickString(asset.extensions)?.replace(/^\./, "");
   const candidates = [
+    pickString(asset.fileType),
     fromExtList,
     pickString(original?.fileName),
     pickString(original?.filename),
@@ -456,6 +457,10 @@ export function slimPersistedAsset(
     const tags = slimTags(asset.tags);
     if (tags) next.tags = tags;
   }
+  if (want.has("fileType") && parsed.fileType) next.fileType = parsed.fileType;
+  if (want.has("fileSize") && parsed.fileSize) next.fileSize = parsed.fileSize;
+  if (want.has("width") && parsed.width) next.width = parsed.width;
+  if (want.has("height") && parsed.height) next.height = parsed.height;
   if (isRecord(asset.focalPoint)) next.focalPoint = asset.focalPoint;
   if (isRecord(asset.transform)) next.transform = asset.transform;
   if (typeof asset.url === "string" && asset.url) next.url = asset.url;

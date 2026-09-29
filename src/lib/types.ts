@@ -120,6 +120,14 @@ export interface SavedBynderAsset extends AssetCropSettings {
   /** Compact View media type, e.g. IMAGE or VIDEO. Always saved so video UI survives reopen. */
   type?: string;
   transformBaseUrl?: string;
+  /** Original file extension. Saved only when `includeFieldFileType` is true. */
+  fileType?: string;
+  /** Original file size in bytes. Saved only when `includeFieldFileSize` is true. */
+  fileSize?: number;
+  /** Original pixel width. Saved only when `includeFieldWidth` is true. Not the CSS crop width. */
+  width?: number;
+  /** Original pixel height. Saved only when `includeFieldHeight` is true. Not the CSS crop height. */
+  height?: number;
   /** Original/web image. Only persisted when DAT is off or the asset has no transformBaseUrl. */
   webImage?: { url: string };
   description?: string;

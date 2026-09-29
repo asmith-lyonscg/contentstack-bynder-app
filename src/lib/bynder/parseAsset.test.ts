@@ -10,6 +10,7 @@ import {
   normalizeCompactAssets,
   parseBynderAsset,
   parseBynderAssets,
+  slimPersistedAsset,
   pickBynderAltText,
   pickBynderAsset,
 } from "./parseAsset";
@@ -424,5 +425,26 @@ describe("isDocumentAsset", () => {
     expect(isDocumentAsset({ fileType: "docx", sourceUrl: "https://cdn.example/file" })).toBe(true);
     expect(isDocumentAsset({ name: "deck.pptx", sourceUrl: "https://cdn.example/file" })).toBe(true);
     expect(isDocumentAsset({ sourceUrl: "https://cdn.example/hero.jpg" })).toBe(false);
+  });
+});
+
+describe("slimPersistedAsset", () => {
+  it("saves file type and original pixels only when those keys are requested", () => {
+    const raw = {
+      id: "asset-1",
+      name: "Hero",
+      type: "IMAGE",
+      fileType: "jpg",
+      fileSize: 2457600,
+      width: 4000,
+      height: 3000,
+      files: { webImage: { url: "https://cdn.example/hero.jpg" } },
+    };
+    expect(slimPersistedAsset(raw)).not.toHaveProperty("fileType");
+    expect(slimPersistedAsset(raw, ["id", "name", "type", "transformBaseUrl", "fileType", "width", "height"])).toMatchObject({
+      fileType: "jpg",
+      width: 4000,
+      height: 3000,
+    });
   });
 });

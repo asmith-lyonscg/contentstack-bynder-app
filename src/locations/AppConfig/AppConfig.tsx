@@ -5,6 +5,7 @@ import {
   OPTIONAL_PERSIST_KEYS,
   REQUIRED_PERSIST_KEYS,
   SKIPPED_OOTB_KEYS,
+  includeFlagFor,
   optionalKeySelected,
 } from "../../lib/persistKeys";
 import type { AppInstallationConfig } from "../../lib/types";
@@ -153,19 +154,21 @@ export default function AppConfig() {
                 }}
               />
               <code>{key}</code>
+              <span className="key-flag">{includeFlagFor(key)}</span>
             </label>
           </li>
         ))}
       </ul>
       <p className="help">
-        Official-app keys we skip on purpose: {SKIPPED_OOTB_KEYS.map((item) => item.key).join(", ")}.{" "}
+        Not saved unless an include flag is on: {SKIPPED_OOTB_KEYS.map((item) => item.key).join(", ")}.{" "}
         <code>transformBaseUrl</code> is required because DAT URLs are composed from it.{" "}
         <code>webImage</code> is stored only when DAT is unavailable.
       </p>
 
       <p className="help">
-        Per-field override in the content type builder:
-        <code className="example">{`{ "maxNumberOfAssets": 3, "desktopMobileMode": false, "aspect": "16:9" }`}</code>
+        Per-field override in the content type builder. Optional values use{" "}
+        <code>includeFieldFileType</code> and the other flags shown above:
+        <code className="example">{`{ "maxNumberOfAssets": 3, "includeFieldFileType": true, "includeFieldTags": true }`}</code>
       </p>
       <button type="button" disabled={status === "saving" || !portalUrl.trim()} onClick={() => void onSave()}>
         {status === "saving" ? "Saving…" : "Save"}

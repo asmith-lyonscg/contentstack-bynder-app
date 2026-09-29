@@ -149,6 +149,10 @@ export function asSavedAsset(raw: unknown): SavedBynderAsset | null {
     const tags = record.tags.filter((item): item is string => typeof item === "string" && Boolean(item));
     if (tags.length) next.tags = tags;
   }
+  if (typeof record.fileType === "string" && record.fileType) next.fileType = record.fileType;
+  if (typeof record.fileSize === "number" && record.fileSize > 0) next.fileSize = record.fileSize;
+  if (typeof record.width === "number" && record.width > 0) next.width = record.width;
+  if (typeof record.height === "number" && record.height > 0) next.height = record.height;
   return stripMatchingMobile(next) as SavedBynderAsset;
 }
 
