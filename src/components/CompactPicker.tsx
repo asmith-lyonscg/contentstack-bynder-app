@@ -169,6 +169,7 @@ function ThumbImage({
 export function AssetToolbar({
   previewUrl,
   bynderUrl,
+  copyUrl,
   changeLabel,
   removeLabel,
   onChange,
@@ -176,17 +177,53 @@ export function AssetToolbar({
 }: {
   previewUrl?: string;
   bynderUrl?: string;
+  /** Transformed Bynder URL. The copy icon is omitted when this is undefined. */
+  copyUrl?: string;
   changeLabel: string;
   removeLabel: string;
   onChange: () => void;
   onRemove: () => void;
 }) {
+  const [copyStatus, setCopyStatus] = useState<"off" | "on" | "fading">("off");
+  const fadeTimer = useRef(0);
+  const clearTimer = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(fadeTimer.current);
+      window.clearTimeout(clearTimer.current);
+    };
+  }, []);
+
+  const flashCopied = () => {
+    window.clearTimeout(fadeTimer.current);
+    window.clearTimeout(clearTimer.current);
+    setCopyStatus("on");
+    fadeTimer.current = window.setTimeout(() => setCopyStatus("fading"), 1200);
+    clearTimer.current = window.setTimeout(() => setCopyStatus("off"), 1600);
+  };
+
   return (
     <span className="asset-icon-set">
-      <AssetIconSet previewUrl={previewUrl} bynderUrl={bynderUrl} changeLabel={changeLabel} onChange={onChange} />
+      <AssetIconSet
+        previewUrl={previewUrl}
+        bynderUrl={bynderUrl}
+        copyUrl={copyUrl}
+        changeLabel={changeLabel}
+        onChange={onChange}
+        onCopied={flashCopied}
+      />
       <IconButton label={removeLabel} danger onClick={onRemove}>
         <MinusIcon />
       </IconButton>
+      {copyStatus !== "off" ? (
+        <span
+          className={copyStatus === "fading" ? "copy-feedback is-fading" : "copy-feedback"}
+          aria-live="polite"
+        >
+          Copied
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -194,18 +231,22 @@ export function AssetToolbar({
 function AssetIconSet({
   previewUrl,
   bynderUrl,
+  copyUrl,
   changeLabel,
   onChange,
+  onCopied,
 }: {
   previewUrl?: string;
   bynderUrl?: string;
+  copyUrl?: string;
   changeLabel: string;
   onChange: () => void;
+  onCopied?: () => void;
 }) {
   return (
     <span className="asset-icon-set">
       <IconButton
-        label="Preview"
+        label={copyUrl ? "Preview transformed image" : "Preview"}
         onClick={() => {
           if (previewUrl) window.open(previewUrl, "_blank", "noopener");
         }}
@@ -220,6 +261,21 @@ function AssetIconSet({
       >
         <ExternalIcon />
       </IconButton>
+      {copyUrl !== undefined ? (
+        <IconButton
+          label="Copy URL of the transformed Bynder asset."
+          disabled={!copyUrl}
+          onClick={() => {
+            if (!copyUrl) return;
+            void navigator.clipboard.writeText(copyUrl).then(
+              () => onCopied?.(),
+              () => undefined
+            );
+          }}
+        >
+          <CopyIcon />
+        </IconButton>
+      ) : null}
       <IconButton label={changeLabel} onClick={onChange}>
         <SwapIcon />
       </IconButton>
@@ -240,11 +296,13 @@ function IconButton({
   label,
   onClick,
   danger,
+  disabled,
   children,
 }: {
   label: string;
   onClick: () => void;
   danger?: boolean;
+  disabled?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -253,10 +311,11 @@ function IconButton({
       className={danger ? "thumb-action is-danger" : "thumb-action"}
       aria-label={label}
       title={label}
+      disabled={disabled}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        onClick();
+        if (!disabled) onClick();
       }}
       onMouseDown={(event) => event.stopPropagation()}
     >
@@ -540,7 +599,7 @@ export function CompactPicker({
               const mobileThumb = pair?.mobile;
               const video = isVideoAsset(asset);
               const document = isDocumentAsset(asset);
-              const selectable = !video && !document;
+              const selectable = !document;
               const rowFocused = focused && selectable;
               const showMobile = showMobileColumn && !document && !video;
               const videoSharesAsset = showMobileColumn && video;
@@ -868,6 +927,20 @@ function ExternalIcon() {
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
       <path fill="none" stroke="currentColor" strokeWidth="1.4" d="M6 3.5H3.5v9h9V10" />
       <path fill="none" stroke="currentColor" strokeWidth="1.4" d="M8.5 3.5H12.5V7.5M12.5 3.5 7 9" />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+      <rect x="5.6" y="5.6" width="7" height="7" rx="1.1" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M10.4 5.6V4.2c0-.7-.5-1.2-1.2-1.2H4.2C3.5 3 3 3.5 3 4.2v5c0 .7.5 1.2 1.2 1.2h1.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
     </svg>
   );
 }

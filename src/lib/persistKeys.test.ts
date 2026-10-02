@@ -22,20 +22,4 @@ describe("resolvePersistPolicy", () => {
       "tags",
     ]);
   });
-
-  it("reads includeField flags and lets the field turn one key off", () => {
-    expect(resolvePersistPolicy({ includeFieldFileType: true, includeFieldTags: true }, {}).keys).toEqual([
-      ...REQUIRED_PERSIST_KEYS,
-      "tags",
-      "fileType",
-    ]);
-    expect(
-      resolvePersistPolicy({ includeFieldFileType: false }, { persistAssetKeys: ["fileType", "description"] }).keys
-    ).toEqual([...REQUIRED_PERSIST_KEYS, "description"]);
-    expect(resolvePersistPolicy({ suppressMetadata: true, includeFieldFileType: true }, {}).keys).toEqual([
-      "id",
-      "type",
-      "transformBaseUrl",
-    ]);
-  });
 });

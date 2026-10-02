@@ -22,19 +22,6 @@ export const OPTIONAL_PERSIST_KEYS = [
   "height",
 ] as const;
 
-/** Field Config Parameter flags. Each one opts that Bynder value into the saved JSON. */
-export const INCLUDE_FIELD_FLAGS = {
-  includeFieldDescription: "description",
-  includeFieldOriginalUrl: "originalUrl",
-  includeFieldPublishedAt: "publishedAt",
-  includeFieldUpdatedAt: "updatedAt",
-  includeFieldTags: "tags",
-  includeFieldFileType: "fileType",
-  includeFieldFileSize: "fileSize",
-  includeFieldWidth: "width",
-  includeFieldHeight: "height",
-} as const satisfies Record<string, OptionalPersistKey>;
-
 export type RequiredPersistKey = (typeof REQUIRED_PERSIST_KEYS)[number];
 export type OptionalPersistKey = (typeof OPTIONAL_PERSIST_KEYS)[number];
 export type PersistAssetKey = RequiredPersistKey | OptionalPersistKey;
@@ -44,7 +31,7 @@ export const SKIPPED_OOTB_KEYS: { key: string; reason: string }[] = [
   { key: "GraphQL id", reason: "Long base64. Compact View encodes the media UUID itself." },
   {
     key: "width / height / fileSize / fileType",
-    reason: "Original file pixels and type. Saved only when includeFieldWidth, includeFieldHeight, includeFieldFileSize, or includeFieldFileType is true. Crop size stays on transform.",
+    reason: "Original file pixels and type. Opt in with persistAssetKeys (fileType, fileSize, width, height). Crop size stays on transform.",
   },
   { key: "extensions", reason: "Read once to tell a PDF from its WebP preview, then dropped. type DOCUMENT is what we save." },
   { key: "previewUrls", reason: "Duplicates webImage and can be a long URL list." },
@@ -81,21 +68,6 @@ function configFlag(record: Record<string, unknown> | null, key: string): boolea
   return undefined;
 }
 
-function applyIncludeFlags(
-  keys: PersistAssetKey[],
-  record: Record<string, unknown> | null,
-  onlyFlags?: ReadonlySet<string>
-): PersistAssetKey[] {
-  let next = keys;
-  for (const [flag, key] of Object.entries(INCLUDE_FIELD_FLAGS) as [string, OptionalPersistKey][]) {
-    if (onlyFlags && !onlyFlags.has(flag)) continue;
-    const enabled = configFlag(record, flag);
-    if (enabled === true && !next.includes(key)) next = [...next, key];
-    if (enabled === false) next = next.filter((item) => item !== key);
-  }
-  return next;
-}
-
 /** Field config wins. `suppressMetadata` keeps only id, type, and the DAT base URL. */
 export function resolvePersistPolicy(
   fieldConfig: unknown,
@@ -105,26 +77,8 @@ export function resolvePersistPolicy(
   const app = configRecord(appConfig);
   const suppress = configFlag(field, "suppressMetadata") ?? configFlag(app, "suppressMetadata") ?? false;
   if (suppress) return { keys: SUPPRESSED_PERSIST_KEYS, omitWebImage: true };
-  const fieldOwnsList = Boolean(field && "persistAssetKeys" in field);
-  const selected = fieldOwnsList ? field?.persistAssetKeys : app?.persistAssetKeys;
-  const fieldFlags = new Set(
-    Object.keys(INCLUDE_FIELD_FLAGS).filter((flag) => configFlag(field, flag) !== undefined)
-  );
-  const base = resolvePersistKeys(selected);
-  const withAppFlags = fieldOwnsList ? base : applyIncludeFlags(base, app);
-  const keys = applyIncludeFlags(
-    withAppFlags,
-    field,
-    fieldFlags.size ? fieldFlags : undefined
-  );
-  return { keys, omitWebImage: false };
-}
-
-export function includeFlagFor(key: OptionalPersistKey): string {
-  const found = (Object.entries(INCLUDE_FIELD_FLAGS) as [string, OptionalPersistKey][]).find(
-    ([, value]) => value === key
-  );
-  return found?.[0] ?? key;
+  const selected = field && "persistAssetKeys" in field ? field.persistAssetKeys : app?.persistAssetKeys;
+  return { keys: resolvePersistKeys(selected), omitWebImage: false };
 }
 
 export function optionalKeySelected(selected: unknown, key: OptionalPersistKey): boolean {

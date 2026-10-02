@@ -447,4 +447,35 @@ describe("slimPersistedAsset", () => {
       height: 3000,
     });
   });
+
+  it("keeps video playback and additional author values", () => {
+    const video = slimPersistedAsset({
+      id: "clip-1",
+      name: "Launch",
+      type: "VIDEO",
+      url: "https://cdn.example/launch.mp4",
+      video: { autoplay: true, muted: "yes", controls: false, extra: 1 },
+      additional: { uniqueId: true, note: "hero", rank: 2, nested: { a: 1 } },
+    });
+    expect(video).toMatchObject({
+      video: { autoplay: true, muted: false, controls: false, loop: false },
+      additional: { uniqueId: true, note: "hero", rank: 2 },
+    });
+    expect(video).not.toHaveProperty("uniqueId");
+
+    const image = slimPersistedAsset(
+      {
+        id: "img-1",
+        type: "IMAGE",
+        url: "https://cdn.example/hero.jpg",
+        video: { autoplay: true, controls: true },
+        uniqueId: false,
+      },
+      undefined,
+      { additionalProperties: ["uniqueId"] }
+    );
+    expect(image).not.toHaveProperty("video");
+    expect(image).toMatchObject({ additional: { uniqueId: false } });
+    expect(image).not.toHaveProperty("uniqueId");
+  });
 });

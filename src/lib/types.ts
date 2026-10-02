@@ -79,24 +79,24 @@ export interface ViewportCropSettings {
   transform: TransformSettings;
   /**
    * DAT query strings for this viewport. Join with the asset `transformBaseUrl`.
-   * `2x` is the single static image. A different mobile file uses `mobile.asset.transformBaseUrl`.
+   * `2x` is the single static image. A different mobile file uses `mobile.transformBaseUrl`.
    */
   dat?: DatQueries;
   /** @deprecated Older saves stored a full URL. New saves use `dat` plus `transformBaseUrl`. */
   url?: string;
 }
 
-/** Bynder file used only for the mobile crop. Absent means mobile uses the parent asset. */
-export interface MobileAssetIdentity {
-  id: string;
+/**
+ * Mobile crop. When mobile is a different Bynder file, `id`, `name`, `type`,
+ * and `transformBaseUrl` sit here in the same shape as the desktop asset.
+ * When those are omitted, mobile uses the desktop file.
+ */
+export interface MobileViewportSettings extends ViewportCropSettings {
+  id?: string;
   name?: string;
   type?: string;
   transformBaseUrl?: string;
   webImage?: { url: string };
-}
-
-export interface MobileViewportSettings extends ViewportCropSettings {
-  asset?: MobileAssetIdentity;
   /** Alt text for the separate mobile file. Omitted when mobile uses the desktop image. */
   alt?: string;
 }
@@ -120,13 +120,13 @@ export interface SavedBynderAsset extends AssetCropSettings {
   /** Compact View media type, e.g. IMAGE or VIDEO. Always saved so video UI survives reopen. */
   type?: string;
   transformBaseUrl?: string;
-  /** Original file extension. Saved only when `includeFieldFileType` is true. */
+  /** Original file extension. Saved only when `persistAssetKeys` includes `fileType`. */
   fileType?: string;
-  /** Original file size in bytes. Saved only when `includeFieldFileSize` is true. */
+  /** Original file size in bytes. Saved only when `persistAssetKeys` includes `fileSize`. */
   fileSize?: number;
-  /** Original pixel width. Saved only when `includeFieldWidth` is true. Not the CSS crop width. */
+  /** Original pixel width. Saved only when `persistAssetKeys` includes `width`. Not the CSS crop width. */
   width?: number;
-  /** Original pixel height. Saved only when `includeFieldHeight` is true. Not the CSS crop height. */
+  /** Original pixel height. Saved only when `persistAssetKeys` includes `height`. Not the CSS crop height. */
   height?: number;
   /** Original/web image. Only persisted when DAT is off or the asset has no transformBaseUrl. */
   webImage?: { url: string };
@@ -135,6 +135,13 @@ export interface SavedBynderAsset extends AssetCropSettings {
   publishedAt?: string;
   updatedAt?: string;
   tags?: string[];
+  /** Web playback flags. Present on video assets. */
+  video?: VideoPlayback;
+  /**
+   * Values for `additionalFields` config entries, keyed by `property`.
+   * Nested under `additional` so they do not collide with identity/crop keys.
+   */
+  additional?: Record<string, string | number | boolean>;
 }
 
 export interface BynderImageSettings {
@@ -197,6 +204,8 @@ export interface CropFieldConfig {
   hideFormat: boolean;
   showOperation: boolean;
   showAspect: boolean;
+  showWidth: boolean;
+  showHeight: boolean;
   showQuality: boolean;
   showAdvancedQuery: boolean;
   showDatPreset: boolean;
@@ -241,6 +250,29 @@ export interface AppInstallationConfig {
   hideFormat?: boolean;
   /** Dropdown options. Omit to use the built-in list (16:9, 1:1, 4:3, 4:5). */
   aspectPresets?: string[];
+}
+
+export interface VideoPlayback {
+  autoplay: boolean;
+  muted: boolean;
+  controls: boolean;
+  loop: boolean;
+}
+
+/** Which video playback checkboxes the editor shows. Defaults are all on. */
+export interface VideoFieldVisibility {
+  autoplay: boolean;
+  muted: boolean;
+  controls: boolean;
+  loop: boolean;
+}
+
+export type AdditionalFieldType = "string" | "number" | "boolean";
+
+export interface AdditionalFieldDefinition {
+  property: string;
+  type: AdditionalFieldType;
+  label: string;
 }
 
 export const ASPECT_PRESETS = ["16:9", "1:1", "4:3", "4:5"] as const;

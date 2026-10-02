@@ -94,7 +94,7 @@ export function viewportCropsEqual(a: ViewportCropSettings, b: ViewportCropSetti
 
 /** Drop `mobile` when it still matches desktop. Presence of `mobile` means unmatched. */
 export function stripMatchingMobile<T extends AssetCropSettings>(crop: T): T {
-  const separate = Boolean(crop.differentMobileAsset || crop.mobile?.asset);
+  const separate = Boolean(crop.differentMobileAsset || crop.mobile?.id);
   if (!crop.mobile) return crop;
   if (separate || !viewportCropsEqual(crop, crop.mobile)) return crop;
   const { mobile: _mobile, ...desktop } = crop;

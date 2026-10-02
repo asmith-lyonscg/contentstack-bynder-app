@@ -4,9 +4,122 @@
   gap: 8px;
 }
 
-.field {
+.dimension-fields {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: visible;
+}
+
+.dimension-fields.is-constrained::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: calc(100% + 14px);
+  width: 1px;
+  background: #8d95a3;
+  pointer-events: none;
+}
+
+.dimension-fields.is-constrained .field::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  right: -14px;
+  width: 14px;
+  height: 1px;
+  background: #8d95a3;
+  pointer-events: none;
+}
+
+.dimension-fields.is-constrained .field {
+  position: relative;
+}
+
+.proportion-link {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: calc(100% + 14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  color: #5c6573;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.constrain-toggle {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 88px 16px;
+  grid-template-columns: minmax(0, 1fr) var(--editor-control-width, 88px);
+  column-gap: 8px;
+  align-items: center;
+  margin: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475161;
+}
+
+.constrain-toggle-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.constrain-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex: none;
+  accent-color: #6c5ce7;
+}
+
+.field-lock {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: calc(100% + 14px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: #fff;
+  color: #c5cad3;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+}
+
+.field-lock.is-locked {
+  color: #8b95a3;
+  cursor: default;
+}
+
+.field-lock:hover:not(.is-locked) {
+  color: #8b93a3;
+}
+
+.field-lock:focus-visible {
+  outline: 2px solid #6c5ce7;
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.field {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
   align-items: center;
   column-gap: 8px;
   font-size: 12px;
@@ -14,11 +127,13 @@
   font-weight: 600;
 }
 
-.field > span:first-child {
+.field > span:first-child,
+.field > label:first-child {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  margin: 0;
 }
 
 .field input,
@@ -35,16 +150,34 @@
 }
 
 .field-commit {
-  display: contents;
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.field-commit input {
+  padding-right: 22px;
+}
+
+.field-commit input::-webkit-outer-spin-button,
+.field-commit input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.field-commit input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .field-commit-status {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  position: absolute;
+  top: 0;
+  right: 3px;
+  bottom: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   pointer-events: none;
 }
 
@@ -57,6 +190,10 @@
 
 .field-commit-check.is-fading {
   opacity: 0;
+}
+
+.field-commit.is-select .field-commit-status {
+  right: 22px;
 }
 
 .field input:disabled,

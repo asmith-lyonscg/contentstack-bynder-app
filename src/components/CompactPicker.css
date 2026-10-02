@@ -407,6 +407,21 @@
 .asset-icon-set {
   display: inline-flex;
   align-items: center;
+  gap: 2px;
+}
+
+.copy-feedback {
+  margin-left: 6px;
+  font: 600 12px/1 Inter, system-ui, sans-serif;
+  color: #1f8a4c;
+  opacity: 1;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.copy-feedback.is-fading {
+  opacity: 0;
 }
 
 .asset-name {
@@ -454,12 +469,17 @@
   padding: 0;
 }
 
-.thumb-action:hover {
+.thumb-action:hover:not(:disabled) {
   background: #f4f4fb;
   color: #6c5ce7;
 }
 
-.thumb-action.is-danger:hover {
+.thumb-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.thumb-action.is-danger:hover:not(:disabled) {
   color: #c0392b;
 }
 

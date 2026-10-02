@@ -249,6 +249,51 @@
   font-weight: 600;
 }
 
+.video-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.video-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.video-options legend,
+.video-crop h4 {
+  margin: 0 0 4px;
+  font: 600 12px/1.3 Inter, system-ui, sans-serif;
+  color: #243044;
+}
+
+.video-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 13px/1.4 Inter, system-ui, sans-serif;
+  color: #243044;
+  cursor: pointer;
+}
+
+.video-option input {
+  accent-color: #6c5ce7;
+}
+
+.additional-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.video-crop h4 {
+  margin-bottom: 8px;
+}
+
 .viewport-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -356,7 +401,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 12px;
+  /* Extra right inset is the old checkmark gutter, so the ratio-link button stays inside the card. */
+  padding: 12px 36px 12px 12px;
 }
 
 .mobile-asset-cta {
@@ -510,7 +556,7 @@
 
 .editor-fields .field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--editor-control-width) 16px;
+  grid-template-columns: minmax(0, 1fr) var(--editor-control-width);
   align-items: center;
   column-gap: 8px;
   font-size: 12px;
@@ -518,7 +564,8 @@
   color: #475161;
 }
 
-.editor-fields .field > span:first-child {
+.editor-fields .field > span:first-child,
+.editor-fields .field > label:first-child {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -537,7 +584,9 @@
 }
 
 .editor-fields .field-commit {
-  display: contents;
+  position: relative;
+  display: block;
+  min-width: 0;
 }
 
 .alt-input {
@@ -591,7 +640,7 @@
 
 .field-group .linkish {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--editor-control-width) 16px;
+  grid-template-columns: minmax(0, 1fr) var(--editor-control-width);
   column-gap: 8px;
   align-self: stretch;
   justify-items: end;
@@ -634,16 +683,10 @@
     --editor-control-width: 120px;
   }
 
-  .editor-fields .field > span:first-child {
+  .editor-fields .field > span:first-child,
+  .editor-fields .field > label:first-child {
     white-space: normal;
   }
-}
-
-.dat-preview-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
 }
 
 .linkish {
@@ -655,15 +698,6 @@
   cursor: pointer;
   align-self: flex-end;
   padding: 4px 0;
-}
-
-.dat-preview-actions .linkish {
-  align-self: center;
-}
-
-.dat-preview-status {
-  font-size: 12px;
-  color: #6e6e8a;
 }
 
 .notice,
@@ -692,6 +726,17 @@
   border-color: #e8c48a;
   background: #fff8ec;
   color: #8a5a1b;
+}
+
+.notice-card.error {
+  border: 1px solid #f0b4b0;
+  background: #fef3f2;
+  color: #b42318;
+}
+
+.notice-card.error h3,
+.notice-card.error p {
+  color: #b42318;
 }
 
 .notice-card h3 {

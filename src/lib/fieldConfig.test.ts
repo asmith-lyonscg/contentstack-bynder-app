@@ -250,7 +250,9 @@ describe("resolveCropConfig", () => {
       lockFormat: false,
       hideFormat: true,
       showOperation: true,
-      showAspect: false,
+      showAspect: true,
+      showWidth: true,
+      showHeight: true,
       showQuality: false,
       showAdvancedQuery: false,
       showDatPreset: false,
@@ -278,6 +280,7 @@ describe("resolveCropConfig", () => {
     expect(resolveCropConfig({}, {}).format).toBeUndefined();
     expect(resolveCropConfig({}, {}).hideFormat).toBe(true);
     expect(resolveCropConfig({ showFormat: true }, {}).hideFormat).toBe(false);
+    expect(resolveCropConfig({ showFieldFileType: true }, {}).hideFormat).toBe(false);
     expect(
       resolveCropConfig({ format: "jpg", hideFormat: true }, {})
     ).toMatchObject({ format: "jpg", hideFormat: true, lockFormat: false });
@@ -292,6 +295,21 @@ describe("resolveCropConfig", () => {
       showOperation: true,
       showAspect: true,
       showQuality: false,
+    });
+    expect(resolveCropConfig({}, {})).toMatchObject({ showWidth: true, showHeight: true, showAspect: false });
+    expect(resolveCropConfig({ lockWidth: true }, {}).showAspect).toBe(true);
+    expect(resolveCropConfig({ lockHeight: { mobile: true } }, {}).showAspect).toBe(true);
+    expect(resolveCropConfig({ lockWidth: true, showFieldAspectRatio: false }, {}).showAspect).toBe(false);
+    expect(
+      resolveCropConfig(
+        { showFieldAspectRatio: true, showFieldWidth: false, showFieldHeight: false, showFieldOperation: false },
+        {}
+      )
+    ).toMatchObject({
+      showAspect: true,
+      showWidth: false,
+      showHeight: false,
+      showOperation: false,
     });
     expect(resolveCropConfig({}, {}).desktopMobileMode).toBe(true);
     expect(resolveCropConfig({ desktopMobileMode: false }, {}).desktopMobileMode).toBe(false);
@@ -347,6 +365,8 @@ describe("applyCropConfig", () => {
       hideFormat: false,
       showOperation: false,
       showAspect: false,
+      showWidth: true,
+      showHeight: true,
       showQuality: false,
       showAdvancedQuery: false,
       showDatPreset: false,
@@ -371,6 +391,8 @@ describe("applyCropConfig", () => {
       hideFormat: false,
       showOperation: false,
       showAspect: false,
+      showWidth: true,
+      showHeight: true,
       showQuality: false,
       showAdvancedQuery: false,
       showDatPreset: false,
@@ -395,6 +417,8 @@ describe("applyCropConfig", () => {
         hideFormat: false,
         showOperation: false,
         showAspect: false,
+        showWidth: true,
+        showHeight: true,
         showQuality: false,
         showAdvancedQuery: false,
         showDatPreset: false,
@@ -538,5 +562,105 @@ describe("resolveSiblingAsset", () => {
         fieldData: [],
       })
     ).toEqual({ type: "clear" });
+  });
+});
+
+describe("resolveVideoDefaults", () => {
+  it("defaults to controls on and the other playback flags off", async () => {
+    const { resolveVideoDefaults } = await import("./fieldConfig");
+    expect(resolveVideoDefaults({}, {})).toEqual({
+      autoplay: false,
+      muted: false,
+      controls: true,
+      loop: false,
+    });
+  });
+
+  it("prefers the field video object, then flat field keys, then app config", async () => {
+    const { resolveVideoDefaults } = await import("./fieldConfig");
+    expect(
+      resolveVideoDefaults(
+        { video: { autoplay: true, muted: true }, videoLoop: true },
+        { video: { autoplay: false, controls: false, loop: true }, videoMuted: true }
+      )
+    ).toEqual({ autoplay: true, muted: true, controls: false, loop: true });
+  });
+});
+
+describe("resolveVideoFieldVisibility", () => {
+  it("shows every playback checkbox unless a showField flag turns it off", async () => {
+    const { resolveVideoFieldVisibility } = await import("./fieldConfig");
+    expect(resolveVideoFieldVisibility({}, {})).toEqual({
+      autoplay: true,
+      muted: true,
+      controls: true,
+      loop: true,
+    });
+    expect(
+      resolveVideoFieldVisibility(
+        { showFieldAutoplay: false, showFieldMute: false },
+        { showFieldMuted: true, showFieldLoop: false, showFieldControls: false }
+      )
+    ).toEqual({
+      autoplay: false,
+      muted: false,
+      controls: false,
+      loop: false,
+    });
+  });
+});
+
+describe("resolveAdditionalFields", () => {
+  it("reads an array of additionalField objects", async () => {
+    const { resolveAdditionalFields } = await import("./fieldConfig");
+    expect(
+      resolveAdditionalFields(
+        {
+          additionalFields: [
+            { property: "uniqueId", type: "boolean", label: "some label" },
+            { property: "caption", type: "string", label: "Caption" },
+            { property: "rank", type: "number", label: "Rank" },
+          ],
+        },
+        { additionalFields: [{ property: "fromApp", type: "boolean", label: "App" }] }
+      )
+    ).toEqual({
+      fields: [
+        { property: "uniqueId", type: "boolean", label: "some label" },
+        { property: "caption", type: "string", label: "Caption" },
+        { property: "rank", type: "number", label: "Rank" },
+      ],
+    });
+  });
+
+  it("uses app config when the field does not set additionalFields", async () => {
+    const { resolveAdditionalFields } = await import("./fieldConfig");
+    expect(
+      resolveAdditionalFields({}, { additionalFields: [{ property: "featured", type: "boolean", label: "Featured" }] })
+    ).toEqual({ fields: [{ property: "featured", type: "boolean", label: "Featured" }] });
+    expect(resolveAdditionalFields({}, {})).toEqual({ fields: [] });
+  });
+
+  it("fails closed when the list is not an array of valid additionalField objects", async () => {
+    const { resolveAdditionalFields } = await import("./fieldConfig");
+    expect(resolveAdditionalFields({ additionalField: { property: "uniqueId", type: "boolean", label: "some label" } }, {})).toEqual({
+      fields: [],
+      error:
+        'Use "additionalFields", an array of additionalField objects. Each item needs "property", "type", and "label".',
+    });
+    expect(
+      resolveAdditionalFields(
+        {
+          additionalFields: [
+            { property: "caption", type: "string" },
+            { property: "id", type: "string", label: "Reserved" },
+            { property: "rank", type: "object", label: "Rank" },
+            "nope",
+          ],
+        },
+        { additionalFields: [{ property: "fromApp", type: "boolean", label: "App" }] }
+      ).error
+    ).toMatch(/additionalFields\[0\].label/);
+    expect(resolveAdditionalFields({ additionalFields: { property: "uniqueId" } }, {}).error).toMatch(/must be an array/);
   });
 });

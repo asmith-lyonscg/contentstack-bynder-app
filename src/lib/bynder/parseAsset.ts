@@ -418,7 +418,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function slimPersistedAsset(
   raw: unknown,
   keys: readonly PersistAssetKey[] = REQUIRED_PERSIST_KEYS,
-  options?: { omitWebImage?: boolean }
+  options?: { omitWebImage?: boolean; additionalProperties?: readonly string[] }
 ): Record<string, unknown> | null {
   const parsed = parseBynderAsset(raw);
   if (!parsed) return null;
@@ -464,16 +464,86 @@ export function slimPersistedAsset(
   if (isRecord(asset.focalPoint)) next.focalPoint = asset.focalPoint;
   if (isRecord(asset.transform)) next.transform = asset.transform;
   if (typeof asset.url === "string" && asset.url) next.url = asset.url;
-  if (isRecord(asset.mobile)) next.mobile = asset.mobile;
+  if (isRecord(asset.mobile)) {
+    const mobile = { ...asset.mobile };
+    const nested = isRecord(mobile.asset) ? mobile.asset : undefined;
+    if (nested) {
+      if (typeof nested.id === "string" && nested.id) mobile.id = nested.id;
+      if (typeof nested.name === "string" && nested.name) mobile.name = nested.name;
+      if (typeof nested.type === "string" && nested.type) mobile.type = nested.type;
+      if (typeof nested.transformBaseUrl === "string" && nested.transformBaseUrl) {
+        mobile.transformBaseUrl = nested.transformBaseUrl;
+      }
+      if (!mobile.webImage && nested.webImage) mobile.webImage = nested.webImage;
+      delete mobile.asset;
+    }
+    next.mobile = mobile;
+  }
   if (asset.differentMobileAsset === true) next.differentMobileAsset = true;
   if (typeof asset.alt === "string") next.alt = asset.alt;
+  const video = cleanVideoPlayback(asset.video);
+  if (video && isVideoAsset(parsed)) next.video = video;
+  const nested = cleanAdditionalValues(asset.additional) ?? {};
+  const authorKeys = options?.additionalProperties ?? Object.keys(nested);
+  const additional: Record<string, string | number | boolean> = {};
+  for (const key of authorKeys) {
+    const direct = asset[key];
+    const value =
+      typeof direct === "string" || typeof direct === "boolean" || (typeof direct === "number" && Number.isFinite(direct))
+        ? direct
+        : nested[key];
+    if (typeof value === "string" && value === "") continue;
+    if (typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) {
+      additional[key] = value;
+    }
+  }
+  if (Object.keys(additional).length) next.additional = additional;
   return next;
+}
+
+export function cleanVideoPlayback(value: unknown): {
+  autoplay: boolean;
+  muted: boolean;
+  controls: boolean;
+  loop: boolean;
+} | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const next: { autoplay?: boolean; muted?: boolean; controls?: boolean; loop?: boolean } = {};
+  if (typeof record.autoplay === "boolean") next.autoplay = record.autoplay;
+  if (typeof record.muted === "boolean") next.muted = record.muted;
+  if (typeof record.controls === "boolean") next.controls = record.controls;
+  if (typeof record.loop === "boolean") next.loop = record.loop;
+  if (
+    next.autoplay === undefined &&
+    next.muted === undefined &&
+    next.controls === undefined &&
+    next.loop === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    autoplay: next.autoplay ?? false,
+    muted: next.muted ?? false,
+    controls: next.controls ?? true,
+    loop: next.loop ?? false,
+  };
+}
+
+export function cleanAdditionalValues(value: unknown): Record<string, string | number | boolean> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const next: Record<string, string | number | boolean> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof item === "string" || typeof item === "boolean") next[key] = item;
+    else if (typeof item === "number" && Number.isFinite(item)) next[key] = item;
+  }
+  return Object.keys(next).length ? next : undefined;
 }
 
 export function slimPersistedAssets(
   assets: unknown[] | undefined,
   keys: readonly PersistAssetKey[] = REQUIRED_PERSIST_KEYS,
-  options?: { omitWebImage?: boolean }
+  options?: { omitWebImage?: boolean; additionalProperties?: readonly string[] }
 ): unknown[] | undefined {
   if (!Array.isArray(assets) || !assets.length) return undefined;
   return assets.map((item) => slimPersistedAsset(item, keys, options) ?? item);

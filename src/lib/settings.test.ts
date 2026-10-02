@@ -138,19 +138,38 @@ describe("buildSettingsPayload", () => {
         transform: { ...DEFAULT_TRANSFORM, width: 1200, height: 675 },
         differentMobileAsset: true,
         mobile: {
+          id: "mob",
+          transformBaseUrl: "https://portal.bynder.com/transform/mob.jpg",
+          webImage: { url: "https://cdn.example/mob.jpg" },
           focalPoint: { x: 0.5, y: 0.5 },
           transform: { ...DEFAULT_TRANSFORM, width: 400, height: 400 },
-          asset: {
-            id: "mob",
-            transformBaseUrl: "https://portal.bynder.com/transform/mob.jpg",
-            webImage: { url: "https://cdn.example/mob.jpg" },
-          },
         },
       },
     ];
     const next = buildSettingsPayload(current, { assets: current.assets, enableDat: true });
-    expect(next.assets?.[0].mobile?.asset?.transformBaseUrl).toContain("mob.jpg");
-    expect(next.assets?.[0].mobile?.asset?.webImage).toBeUndefined();
+    expect(next.assets?.[0].mobile?.transformBaseUrl).toContain("mob.jpg");
+    expect(next.assets?.[0].mobile?.webImage).toBeUndefined();
+    expect(next.assets?.[0].mobile).not.toHaveProperty("asset");
+  });
+
+  it("saves configured additionalFields under additional", () => {
+    const current = emptySettings();
+    current.assets = [
+      {
+        id: "desk",
+        transformBaseUrl: "https://portal.bynder.com/transform/desk.jpg",
+        focalPoint: { x: 0.5, y: 0.5 },
+        transform: { ...DEFAULT_TRANSFORM, width: 1200, height: 675 },
+        additional: { uniqueId: true },
+      },
+    ];
+    const next = buildSettingsPayload(current, {
+      assets: current.assets,
+      enableDat: true,
+      authorFields: [{ property: "uniqueId", type: "boolean" }],
+    });
+    expect(next.assets?.[0]).toMatchObject({ additional: { uniqueId: true } });
+    expect(next.assets?.[0]).not.toHaveProperty("uniqueId");
   });
 });
 

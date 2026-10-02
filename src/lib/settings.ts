@@ -1,14 +1,14 @@
-import { parseBynderAsset, slimPersistedAssets } from "./bynder/parseAsset";
+import { parseBynderAsset, cleanAdditionalValues, cleanVideoPlayback, slimPersistedAssets } from "./bynder/parseAsset";
 import { datQueriesForSlice, normalizeFocalPoint } from "./bynder/composeDatUrl";
 import { REQUIRED_PERSIST_KEYS, type PersistAssetKey } from "./persistKeys";
 import {
   DEFAULT_FOCAL_POINT,
   DEFAULT_TRANSFORM,
+  type AdditionalFieldDefinition,
   type BynderImageSettings,
   type DatFormat,
   type DatOperation,
   type FocalPoint,
-  type MobileAssetIdentity,
   type MobileViewportSettings,
   type SavedBynderAsset,
   type TransformSettings,
@@ -83,10 +83,14 @@ function asViewportCrop(value: unknown): ViewportCropSettings | undefined {
   };
 }
 
-function asMobileAsset(value: unknown): MobileAssetIdentity | undefined {
+function asMobileIdentity(
+  value: unknown
+): Pick<MobileViewportSettings, "id" | "name" | "type" | "transformBaseUrl" | "webImage"> | undefined {
   if (!isRecord(value) || typeof value.id !== "string" || !value.id) return undefined;
   const webImage = asWebImage(value.webImage);
-  const next: MobileAssetIdentity = { id: value.id };
+  const next: Pick<MobileViewportSettings, "id" | "name" | "type" | "transformBaseUrl" | "webImage"> = {
+    id: value.id,
+  };
   if (typeof value.name === "string" && value.name) next.name = value.name;
   if (typeof value.type === "string" && value.type) next.type = value.type;
   if (typeof value.transformBaseUrl === "string" && value.transformBaseUrl) next.transformBaseUrl = value.transformBaseUrl;
@@ -95,15 +99,16 @@ function asMobileAsset(value: unknown): MobileAssetIdentity | undefined {
 }
 
 function asMobileViewport(value: unknown): MobileViewportSettings | undefined {
+  if (!isRecord(value)) return undefined;
   const crop = asViewportCrop(value);
-  const asset = isRecord(value) ? asMobileAsset(value.asset) : undefined;
-  if (!crop && !asset) return undefined;
+  const identity = asMobileIdentity(value) ?? asMobileIdentity(value.asset);
+  if (!crop && !identity) return undefined;
   return {
     focalPoint: crop?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
     transform: crop?.transform ?? { ...DEFAULT_TRANSFORM },
     dat: crop?.dat,
-    asset,
-    alt: isRecord(value) && typeof value.alt === "string" ? value.alt : undefined,
+    ...identity,
+    alt: typeof value.alt === "string" ? value.alt : undefined,
   };
 }
 
@@ -114,7 +119,7 @@ function asWebImage(value: unknown, fallback?: string): { url: string } | undefi
   return undefined;
 }
 
-export function asSavedAsset(raw: unknown): SavedBynderAsset | null {
+export function asSavedAsset(raw: unknown, additionalProperties?: readonly string[]): SavedBynderAsset | null {
   const parsed = parseBynderAsset(raw);
   if (!parsed) return null;
   const record = isRecord(raw) ? raw : {};
@@ -153,12 +158,62 @@ export function asSavedAsset(raw: unknown): SavedBynderAsset | null {
   if (typeof record.fileSize === "number" && record.fileSize > 0) next.fileSize = record.fileSize;
   if (typeof record.width === "number" && record.width > 0) next.width = record.width;
   if (typeof record.height === "number" && record.height > 0) next.height = record.height;
+  const video = cleanVideoPlayback(record.video);
+  if (video) next.video = video;
+  copyAuthorProperties(next, record, additionalProperties);
   return stripMatchingMobile(next) as SavedBynderAsset;
 }
 
-export function asSavedAssets(value: unknown): SavedBynderAsset[] | undefined {
+function isAuthorValue(value: unknown): value is string | number | boolean {
+  return typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value));
+}
+
+function copyAuthorProperties(
+  next: SavedBynderAsset,
+  record: Record<string, unknown>,
+  names?: readonly string[]
+) {
+  const nested = cleanAdditionalValues(record.additional) ?? {};
+  const keys = names ?? Object.keys(nested);
+  const additional: Record<string, string | number | boolean> = {};
+  for (const key of keys) {
+    const direct = record[key];
+    const value = isAuthorValue(direct) ? direct : nested[key];
+    if (typeof value === "string" && value === "") continue;
+    if (isAuthorValue(value)) additional[key] = value;
+  }
+  if (Object.keys(additional).length) next.additional = additional;
+  else delete next.additional;
+}
+
+/** Puts configured additionalFields under `additional`. Booleans default to false so the key is saved. */
+export function applyAuthorFields(
+  asset: SavedBynderAsset,
+  fields: readonly Pick<AdditionalFieldDefinition, "property" | "type">[]
+): SavedBynderAsset {
+  if (!fields.length) return asset;
+  const root = asset as unknown as Record<string, unknown>;
+  const nested = cleanAdditionalValues(asset.additional) ?? {};
+  const additional: Record<string, string | number | boolean> = {};
+  for (const field of fields) {
+    const direct = root[field.property];
+    const value = isAuthorValue(direct) ? direct : nested[field.property];
+    if (typeof value === "string" && value === "") continue;
+    else if (isAuthorValue(value)) additional[field.property] = value;
+    else if (field.type === "boolean") additional[field.property] = false;
+  }
+  const next: SavedBynderAsset = { ...asset };
+  for (const field of fields) delete (next as unknown as Record<string, unknown>)[field.property];
+  if (Object.keys(additional).length) next.additional = additional;
+  else delete next.additional;
+  return next;
+}
+
+export function asSavedAssets(value: unknown, additionalProperties?: readonly string[]): SavedBynderAsset[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const assets = value.map((item) => asSavedAsset(item)).filter((item): item is SavedBynderAsset => Boolean(item));
+  const assets = value
+    .map((item) => asSavedAsset(item, additionalProperties))
+    .filter((item): item is SavedBynderAsset => Boolean(item));
   return assets;
 }
 
@@ -184,7 +239,7 @@ function liveFromAsset(asset: SavedBynderAsset | undefined, viewport: "desktop" 
     focalPoint: slice?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
     transform: slice?.transform ?? defaultTransform(),
     alt:
-      viewport === "mobile" && asset?.mobile?.asset
+      viewport === "mobile" && asset?.mobile?.id
         ? typeof asset.mobile.alt === "string"
           ? asset.mobile.alt
           : undefined
@@ -221,6 +276,7 @@ export function buildSettingsPayload(
     persistAssetKeys?: readonly PersistAssetKey[];
     omitWebImage?: boolean;
     enableDat?: boolean;
+    authorFields?: readonly Pick<AdditionalFieldDefinition, "property" | "type">[];
   }
 ): BynderImageSettings {
   const pick = <K extends "activeAssetId" | "activeViewport">(
@@ -230,13 +286,14 @@ export function buildSettingsPayload(
 
   const enableDat = extras?.enableDat !== false;
   const persistKeys = extras?.persistAssetKeys ?? REQUIRED_PERSIST_KEYS;
+  const additionalProperties = extras?.authorFields?.map((field) => field.property);
   const activeAssetId = pick("activeAssetId", settings.activeAssetId) || undefined;
   const activeViewport = pick("activeViewport", settings.activeViewport) === "mobile" ? "mobile" : undefined;
   const incoming = extras && Object.prototype.hasOwnProperty.call(extras, "assets") ? extras.assets : settings.assets;
   const slimIdentity = Array.isArray(incoming) && incoming.length
-    ? slimPersistedAssets(incoming, persistKeys, { omitWebImage: extras?.omitWebImage })
+    ? slimPersistedAssets(incoming, persistKeys, { omitWebImage: extras?.omitWebImage, additionalProperties })
     : undefined;
-  const merged = mergeIdentityAndCrops(slimIdentity, incoming);
+  const merged = mergeIdentityAndCrops(slimIdentity, incoming, additionalProperties);
   const stashed = stashActiveCrop(
     {
       ...settings,
@@ -246,7 +303,9 @@ export function buildSettingsPayload(
     },
     activeAssetId
   );
-  const assets = attachAssetUrls(stashed.assets, enableDat);
+  const assets = extras?.authorFields?.length
+    ? attachAssetUrls(stashed.assets, enableDat)?.map((asset) => applyAuthorFields(asset, extras.authorFields ?? []))
+    : attachAssetUrls(stashed.assets, enableDat);
   const focused = savedAssetById({ assets }, activeAssetId);
   const live = focused
     ? liveFromAsset(focused, activeViewport === "mobile" ? "mobile" : "desktop")
@@ -276,14 +335,15 @@ export function buildSettingsPayload(
 
 function mergeIdentityAndCrops(
   slim: unknown[] | undefined,
-  previous: SavedBynderAsset[] | unknown[] | undefined
+  previous: SavedBynderAsset[] | unknown[] | undefined,
+  additionalProperties?: readonly string[]
 ): SavedBynderAsset[] | undefined {
   if (!slim?.length) return undefined;
-  const previousSaved = asSavedAssets(previous) ?? [];
+  const previousSaved = asSavedAssets(previous, additionalProperties) ?? [];
   const byId = new Map(previousSaved.map((asset) => [asset.id, asset]));
   const next: SavedBynderAsset[] = [];
   for (const raw of slim) {
-    const identity = asSavedAsset(raw);
+    const identity = asSavedAsset(raw, additionalProperties);
     if (!identity) continue;
     const existing = byId.get(identity.id);
     next.push(
@@ -296,6 +356,7 @@ function mergeIdentityAndCrops(
             transformBaseUrl: identity.transformBaseUrl ?? existing.transformBaseUrl,
             webImage: identity.webImage ?? existing.webImage,
             alt: existing.alt ?? identity.alt,
+            additional: existing.additional ?? identity.additional,
           }
         : identity
     );
@@ -313,7 +374,11 @@ function attachAssetUrls(assets: SavedBynderAsset[] | undefined, enableDat: bool
   return assets.map((asset) => {
     const datOn = Boolean(enableDat && asset.transformBaseUrl);
     const url = composeViewportUrl(asset.transformBaseUrl, asset, datOn);
-    const mobileBase = asset.mobile?.asset?.transformBaseUrl ?? (asset.differentMobileAsset ? undefined : asset.transformBaseUrl);
+    const mobileBase = asset.mobile?.id
+      ? asset.mobile.transformBaseUrl
+      : asset.differentMobileAsset
+        ? undefined
+        : asset.transformBaseUrl;
     const mobileUrl = asset.mobile ? composeViewportUrl(mobileBase, asset.mobile, Boolean(enableDat && mobileBase)) : undefined;
     const next: SavedBynderAsset = { ...asset };
     if (url) next.dat = url;
@@ -330,9 +395,9 @@ function attachAssetUrls(assets: SavedBynderAsset[] | undefined, enableDat: bool
     }
     if (datOn) delete next.webImage;
     else if (!next.webImage && asset.webImage) next.webImage = asset.webImage;
-    if (next.mobile?.asset?.transformBaseUrl) {
-      const { webImage: _mobileWebImage, ...mobileIdentity } = next.mobile.asset;
-      next.mobile = { ...next.mobile, asset: mobileIdentity };
+    if (next.mobile?.transformBaseUrl) {
+      const { webImage: _mobileWebImage, ...mobileRest } = next.mobile;
+      next.mobile = mobileRest;
     }
     const transform = { ...next.transform };
     if (!transform.extraQuery) delete transform.extraQuery;
@@ -360,14 +425,23 @@ export function stashActiveCrop(settings: BynderImageSettings, assetId?: string)
       viewport === "mobile"
         ? { focalPoint: existing.focalPoint, transform: existing.transform, dat: existing.dat }
         : live;
-    const mobileLive: MobileViewportSettings = { ...live, asset: existing.mobile?.asset };
+    const mobileIdentity = existing.mobile?.id
+      ? {
+          id: existing.mobile.id,
+          name: existing.mobile.name,
+          type: existing.mobile.type,
+          transformBaseUrl: existing.mobile.transformBaseUrl,
+          webImage: existing.mobile.webImage,
+        }
+      : {};
+    const mobileLive: MobileViewportSettings = { ...live, ...mobileIdentity };
     const withLive: SavedBynderAsset =
       viewport === "mobile"
-        ? existing.differentMobileAsset || existing.mobile?.asset || !viewportCropsEqual(live, desktop)
+        ? existing.differentMobileAsset || existing.mobile?.id || !viewportCropsEqual(live, desktop)
           ? { ...existing, ...desktop, mobile: mobileLive }
           : { ...existing, ...desktop }
         : { ...existing, ...live, mobile: existing.mobile };
-    const separateMobile = Boolean(existing.differentMobileAsset || existing.mobile?.asset);
+    const separateMobile = Boolean(existing.differentMobileAsset || existing.mobile?.id);
     if (viewport === "mobile" && separateMobile) {
       withLive.alt = existing.alt;
       if (withLive.mobile && typeof settings.alt === "string") withLive.mobile = { ...withLive.mobile, alt: settings.alt };

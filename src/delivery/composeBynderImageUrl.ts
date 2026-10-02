@@ -40,7 +40,7 @@ export function composeBynderImageUrl(
     viewport,
     settings.transform
   );
-  const mobileAsset = viewport === "mobile" ? asset?.mobile?.asset : undefined;
+  const mobileAsset = viewport === "mobile" && asset?.mobile?.id ? asset.mobile : undefined;
   const base =
     transformBaseUrl ??
     mobileAsset?.transformBaseUrl ??

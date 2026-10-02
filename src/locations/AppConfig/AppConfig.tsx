@@ -5,7 +5,6 @@ import {
   OPTIONAL_PERSIST_KEYS,
   REQUIRED_PERSIST_KEYS,
   SKIPPED_OOTB_KEYS,
-  includeFlagFor,
   optionalKeySelected,
 } from "../../lib/persistKeys";
 import type { AppInstallationConfig } from "../../lib/types";
@@ -154,7 +153,6 @@ export default function AppConfig() {
                 }}
               />
               <code>{key}</code>
-              <span className="key-flag">{includeFlagFor(key)}</span>
             </label>
           </li>
         ))}
@@ -166,9 +164,9 @@ export default function AppConfig() {
       </p>
 
       <p className="help">
-        Per-field override in the content type builder. Optional values use{" "}
-        <code>includeFieldFileType</code> and the other flags shown above:
-        <code className="example">{`{ "maxNumberOfAssets": 3, "includeFieldFileType": true, "includeFieldTags": true }`}</code>
+        Per-field override in the content type builder. Optional saved values use{" "}
+        <code>persistAssetKeys</code>. Editor inputs use <code>showField…</code> flags:
+        <code className="example">{`{ "maxNumberOfAssets": 3, "persistAssetKeys": ["fileType", "tags"], "showFieldFileType": true, "showFieldWidth": false }`}</code>
       </p>
       <button type="button" disabled={status === "saving" || !portalUrl.trim()} onClick={() => void onSave()}>
         {status === "saving" ? "Saving…" : "Save"}
