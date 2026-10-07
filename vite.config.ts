@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
@@ -16,18 +16,30 @@ function resolveViteBase(): string {
   return "/";
 }
 
+/** Static hosts (Launch) have no SPA fallback; emit real HTML for each app route. */
+function emitSpaShells(dist: string, index: string) {
+  const routes = ["picker", "custom-field", "app-configuration"];
+  for (const route of routes) {
+    const dir = path.join(dist, route);
+    mkdirSync(dir, { recursive: true });
+    copyFileSync(index, path.join(dir, "index.html"));
+    copyFileSync(index, path.join(dist, `${route}.html`));
+  }
+}
+
 export default defineConfig({
   base: resolveViteBase(),
   plugins: [
     react(),
     {
-      name: "github-pages-spa",
+      name: "spa-static-shells",
       closeBundle() {
         const dist = path.resolve(__dirname, "dist");
         const index = path.join(dist, "index.html");
         if (!existsSync(index)) return;
         copyFileSync(index, path.join(dist, "404.html"));
         writeFileSync(path.join(dist, ".nojekyll"), "");
+        emitSpaShells(dist, index);
       },
     },
   ],

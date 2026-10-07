@@ -51,6 +51,8 @@ npm run package:launch
 
 `npm run package:launch` writes `launch/bynder-image-settings.zip` (source, no `node_modules`) for Developer Hub → Hosting with Launch → upload zip. In Launch, use build `npm run build` and output `./dist`.
 
+The picker opens `/picker.html` (a real file emitted by `npm run build`). Launch does not SPA-fallback like local Vite, so the build also writes `picker/index.html`, `custom-field/index.html`, `app-configuration/index.html`, and matching `*.html` shells. `launch.json` rewrites remain as a backup. After packaging, confirm the zip version/stamp changed (`PACKAGE_STAMP.txt` inside the zip). If Developer Hub does not prompt to update, open the Launch project and **Redeploy** the new upload.
+
 ## Configure the content type
 
 Add **one** JSON Custom Field (this app). A Group is optional.

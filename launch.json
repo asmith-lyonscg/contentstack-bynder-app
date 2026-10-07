@@ -1,7 +1,10 @@
 {
   "rewrites": [
     { "source": "/custom-field", "destination": "/index.html" },
+    { "source": "/custom-field/:path(.*)", "destination": "/index.html" },
     { "source": "/app-configuration", "destination": "/index.html" },
-    { "source": "/picker", "destination": "/index.html" }
+    { "source": "/app-configuration/:path(.*)", "destination": "/index.html" },
+    { "source": "/picker", "destination": "/index.html" },
+    { "source": "/picker/:path(.*)", "destination": "/index.html" }
   ]
 }

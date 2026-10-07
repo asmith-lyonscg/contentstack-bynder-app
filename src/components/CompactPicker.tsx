@@ -421,7 +421,7 @@ export function CompactPicker({
     setOpenError(undefined);
 
     const id = crypto.randomUUID();
-    const url = appHref(`picker?id=${encodeURIComponent(id)}`);
+    const url = appHref(`picker.html?id=${encodeURIComponent(id)}`);
     const width = 1280;
     const height = 860;
     const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);

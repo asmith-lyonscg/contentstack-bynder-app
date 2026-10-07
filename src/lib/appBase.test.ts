@@ -14,9 +14,9 @@ describe("appBase", () => {
   });
 
   it("joins app routes under the public base", () => {
-    expect(joinAppPath("/", "picker?id=abc")).toBe("/picker?id=abc");
-    expect(joinAppPath("/contentstack-bynder-app/", "/picker?id=abc")).toBe(
-      "/contentstack-bynder-app/picker?id=abc"
+    expect(joinAppPath("/", "picker.html?id=abc")).toBe("/picker.html?id=abc");
+    expect(joinAppPath("/contentstack-bynder-app/", "/picker.html?id=abc")).toBe(
+      "/contentstack-bynder-app/picker.html?id=abc"
     );
     expect(joinAppPath("/contentstack-bynder-app/", "app-icon.svg")).toBe(
       "/contentstack-bynder-app/app-icon.svg"

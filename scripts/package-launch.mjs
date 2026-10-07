@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -43,13 +44,33 @@ for (const dir of dirs) {
   cpSync(from, join(stage, dir), { recursive: true });
 }
 
-execFileSync("tar", ["-a", "-c", "-f", outZip, "-C", stage, "."], { stdio: "inherit" });
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+writeFileSync(
+  join(stage, "PACKAGE_STAMP.txt"),
+  `${pkg.name}@${pkg.version}\npackagedAt=${new Date().toISOString()}\n`
+);
+
+// Compress-Archive (not `tar -a`) so Windows Explorer can open the zip.
+// Entries from `tar -C stage .` start with "./" and Explorer often shows that as empty.
+execFileSync(
+  "powershell.exe",
+  [
+    "-NoProfile",
+    "-Command",
+    `Compress-Archive -Path (Join-Path '${stage.replace(/'/g, "''")}' '*') -DestinationPath '${outZip.replace(/'/g, "''")}' -Force`,
+  ],
+  { stdio: "inherit" }
+);
+
+const hash = createHash("sha256").update(readFileSync(outZip)).digest("hex").slice(0, 12);
 rmSync(join(root, "tmp"), { recursive: true, force: true });
 
 console.log(`Wrote ${outZip}`);
+console.log(`sha256(12)=${hash}  version=${pkg.version}`);
 console.log(`
-Upload this zip in Developer Hub → Hosting → Hosting with Launch → Create a New Project
-→ Upload a .zip file.
+Upload this zip in Developer Hub → Hosting → Hosting with Launch.
+If the project already exists and Developer Hub does not prompt to update, open the
+Launch project and Redeploy (or upload again and confirm PACKAGE_STAMP.txt / version changed).
 
 Launch build settings:
   Framework Preset : Vite (or Other)
