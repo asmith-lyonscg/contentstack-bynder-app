@@ -62,6 +62,17 @@ function asAssetType(value: unknown): CompactAssetType | undefined {
   return ASSET_TYPES.includes(raw as CompactAssetType) ? (raw as CompactAssetType) : undefined;
 }
 
+function acceptAssetTypes(record: Record<string, unknown> | null): CompactAssetType[] | undefined {
+  const raw = pickString(record, "accept") ?? pickString(record, "media");
+  if (!raw) return undefined;
+  const key = raw.toLowerCase().replace(/\s+/g, "");
+  if (key === "image") return ["IMAGE"];
+  if (key === "video") return ["VIDEO"];
+  if (key === "pdf" || key === "document") return ["DOCUMENT"];
+  if (key === "image/video" || key === "image,video" || key === "video/image") return ["IMAGE", "VIDEO"];
+  return undefined;
+}
+
 function pickAssetTypes(record: Record<string, unknown> | null): CompactAssetType[] | undefined {
   const raw = record?.assetTypes ?? record?.assetType;
   const items = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(/[,;]/) : [];
@@ -173,6 +184,8 @@ export function resolveCompactViewConfig(fieldConfig: unknown, appConfig: unknow
   const pickedFilter = pickAssetFilter(options);
   const datPresets = pickDatPresets(fieldConfig) ?? pickDatPresets(appConfig);
   const assetTypes =
+    acceptAssetTypes(field) ??
+    acceptAssetTypes(app) ??
     pickAssetTypes(options) ??
     pickedFilter?.predefinedAssetType ??
     [...DEFAULT_COMPACT_ASSET_TYPES];

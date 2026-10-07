@@ -43,6 +43,66 @@ function extensionFromName(value?: string): string | undefined {
   return ext === "jpeg" ? "jpg" : ext;
 }
 
+const VIDEO_FILE = /^(mp4|webm|mov|m4v|m3u8)$/i;
+const VIDEO_EXT = /\.(mp4|webm|mov|m4v|avi|mkv|m3u8)(?:$|\?)/i;
+const DOCUMENT_FILE = /^(pdf|doc|docx|ppt|pptx|xls|xlsx|pages|key|numbers|rtf|txt|odt|ods|odp)$/i;
+const DOCUMENT_EXT = /\.(pdf|doc|docx|ppt|pptx|xls|xlsx|pages|key|numbers|rtf|txt|odt|ods|odp)(?:$|\?)/i;
+
+function extensionToken(value?: string): string | undefined {
+  if (!value) return undefined;
+  const fromName = extensionFromName(value);
+  if (fromName) return fromName;
+  const cleaned = value.replace(/^\./, "").toLowerCase();
+  if (/^[a-z0-9]{2,5}$/.test(cleaned)) return cleaned === "jpeg" ? "jpg" : cleaned;
+  return undefined;
+}
+
+/** Original-file extensions only. WebP/JPG previews of a PDF are not the file Bynder badges. */
+function originalFileExtensions(
+  asset: Record<string, unknown>,
+  files: Record<string, unknown>,
+  selectedFile: Record<string, unknown> | null
+): string[] {
+  const found: string[] = [];
+  const pushToken = (token?: string) => {
+    if (token && !found.includes(token)) found.push(token);
+  };
+  const pushExt = (value?: string) => pushToken(extensionToken(value));
+  const pushName = (value?: string) => pushToken(extensionFromName(value));
+  const rawList = asset.extensions ?? asset.extension;
+  const items = Array.isArray(rawList) ? rawList : rawList ? [rawList] : [];
+  for (const item of items) pushExt(pickString(item));
+  const original = asRecord(files.original) ?? asRecord(files.Original);
+  pushExt(pickString(original?.extension));
+  pushName(pickString(original?.fileName));
+  pushName(pickString(original?.filename));
+  pushName(pickString(original?.name));
+  pushName(pickUrl(original));
+  pushName(pickString(asset.originalUrl));
+  pushExt(pickString(selectedFile?.extension));
+  pushName(pickString(selectedFile?.fileName));
+  pushName(pickString(selectedFile?.filename));
+  pushName(pickString(selectedFile?.name));
+  pushName(pickString(asset.name));
+  return found;
+}
+
+function resolveAssetType(
+  asset: Record<string, unknown>,
+  files: Record<string, unknown>,
+  selectedFile: Record<string, unknown> | null
+): string | undefined {
+  const declared = pickString(asset.type);
+  const extensions = originalFileExtensions(asset, files, selectedFile);
+  if (declared?.toUpperCase() === "DOCUMENT" || extensions.some((ext) => DOCUMENT_FILE.test(ext))) {
+    return "DOCUMENT";
+  }
+  if (declared?.toUpperCase() === "VIDEO" || extensions.some((ext) => VIDEO_FILE.test(ext))) {
+    return declared?.toUpperCase() === "IMAGE" ? declared : "VIDEO";
+  }
+  return declared;
+}
+
 function pickFileType(
   asset: Record<string, unknown>,
   files: Record<string, unknown>,
@@ -54,6 +114,7 @@ function pickFileType(
     ? asset.extensions.map((item) => pickString(item)?.replace(/^\./, "")).find(Boolean)
     : pickString(asset.extensions)?.replace(/^\./, "");
   const candidates = [
+    pickString(asset.fileType),
     fromExtList,
     pickString(original?.fileName),
     pickString(original?.filename),
@@ -356,7 +417,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** Keep only the fields this editor, DAT, and delivery need. */
 export function slimPersistedAsset(
   raw: unknown,
-  keys: readonly PersistAssetKey[] = REQUIRED_PERSIST_KEYS
+  keys: readonly PersistAssetKey[] = REQUIRED_PERSIST_KEYS,
+  options?: { omitWebImage?: boolean; additionalProperties?: readonly string[] }
 ): Record<string, unknown> | null {
   const parsed = parseBynderAsset(raw);
   if (!parsed) return null;
@@ -367,13 +429,14 @@ export function slimPersistedAsset(
   const mediaId = parsed.databaseId ?? parsed.id;
   if (want.has("id")) next.id = mediaId;
   if (want.has("name") && parsed.name) next.name = parsed.name;
+  if (want.has("type") && parsed.type) next.type = parsed.type;
   if (want.has("transformBaseUrl") && parsed.transformBaseUrl) {
     next.transformBaseUrl = parsed.transformBaseUrl;
   }
   const webImage =
     slimWebImage(filesIn, parsed.transformBaseUrl ? undefined : parsed.sourceUrl) ??
     slimWebImage({ webImage: asset.webImage }, parsed.transformBaseUrl ? undefined : parsed.sourceUrl);
-  if (webImage) next.webImage = webImage;
+  if (webImage && !options?.omitWebImage) next.webImage = webImage;
   if (want.has("description")) {
     const description = pickString(asset.description);
     if (description) next.description = description;
@@ -394,20 +457,96 @@ export function slimPersistedAsset(
     const tags = slimTags(asset.tags);
     if (tags) next.tags = tags;
   }
+  if (want.has("fileType") && parsed.fileType) next.fileType = parsed.fileType;
+  if (want.has("fileSize") && parsed.fileSize) next.fileSize = parsed.fileSize;
+  if (want.has("width") && parsed.width) next.width = parsed.width;
+  if (want.has("height") && parsed.height) next.height = parsed.height;
   if (isRecord(asset.focalPoint)) next.focalPoint = asset.focalPoint;
   if (isRecord(asset.transform)) next.transform = asset.transform;
   if (typeof asset.url === "string" && asset.url) next.url = asset.url;
-  if (isRecord(asset.mobile)) next.mobile = asset.mobile;
+  if (isRecord(asset.mobile)) {
+    const mobile = { ...asset.mobile };
+    const nested = isRecord(mobile.asset) ? mobile.asset : undefined;
+    if (nested) {
+      if (typeof nested.id === "string" && nested.id) mobile.id = nested.id;
+      if (typeof nested.name === "string" && nested.name) mobile.name = nested.name;
+      if (typeof nested.type === "string" && nested.type) mobile.type = nested.type;
+      if (typeof nested.transformBaseUrl === "string" && nested.transformBaseUrl) {
+        mobile.transformBaseUrl = nested.transformBaseUrl;
+      }
+      if (!mobile.webImage && nested.webImage) mobile.webImage = nested.webImage;
+      delete mobile.asset;
+    }
+    next.mobile = mobile;
+  }
+  if (asset.differentMobileAsset === true) next.differentMobileAsset = true;
   if (typeof asset.alt === "string") next.alt = asset.alt;
+  const video = cleanVideoPlayback(asset.video);
+  if (video && isVideoAsset(parsed)) next.video = video;
+  const nested = cleanAdditionalValues(asset.additional) ?? {};
+  const authorKeys = options?.additionalProperties ?? Object.keys(nested);
+  const additional: Record<string, string | number | boolean> = {};
+  for (const key of authorKeys) {
+    const direct = asset[key];
+    const value =
+      typeof direct === "string" || typeof direct === "boolean" || (typeof direct === "number" && Number.isFinite(direct))
+        ? direct
+        : nested[key];
+    if (typeof value === "string" && value === "") continue;
+    if (typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) {
+      additional[key] = value;
+    }
+  }
+  if (Object.keys(additional).length) next.additional = additional;
   return next;
+}
+
+export function cleanVideoPlayback(value: unknown): {
+  autoplay: boolean;
+  muted: boolean;
+  controls: boolean;
+  loop: boolean;
+} | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const next: { autoplay?: boolean; muted?: boolean; controls?: boolean; loop?: boolean } = {};
+  if (typeof record.autoplay === "boolean") next.autoplay = record.autoplay;
+  if (typeof record.muted === "boolean") next.muted = record.muted;
+  if (typeof record.controls === "boolean") next.controls = record.controls;
+  if (typeof record.loop === "boolean") next.loop = record.loop;
+  if (
+    next.autoplay === undefined &&
+    next.muted === undefined &&
+    next.controls === undefined &&
+    next.loop === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    autoplay: next.autoplay ?? false,
+    muted: next.muted ?? false,
+    controls: next.controls ?? true,
+    loop: next.loop ?? false,
+  };
+}
+
+export function cleanAdditionalValues(value: unknown): Record<string, string | number | boolean> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const next: Record<string, string | number | boolean> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof item === "string" || typeof item === "boolean") next[key] = item;
+    else if (typeof item === "number" && Number.isFinite(item)) next[key] = item;
+  }
+  return Object.keys(next).length ? next : undefined;
 }
 
 export function slimPersistedAssets(
   assets: unknown[] | undefined,
-  keys: readonly PersistAssetKey[] = REQUIRED_PERSIST_KEYS
+  keys: readonly PersistAssetKey[] = REQUIRED_PERSIST_KEYS,
+  options?: { omitWebImage?: boolean; additionalProperties?: readonly string[] }
 ): unknown[] | undefined {
   if (!Array.isArray(assets) || !assets.length) return undefined;
-  return assets.map((item) => slimPersistedAsset(item, keys) ?? item);
+  return assets.map((item) => slimPersistedAsset(item, keys, options) ?? item);
 }
 
 /**
@@ -461,7 +600,7 @@ export function parseBynderAsset(raw: unknown): ParsedBynderAsset | null {
     databaseId,
     pickerId: graphqlId ?? databaseId ?? id,
     name: pickString(asset.name) ?? pickString(asset.title),
-    type: pickString(asset.type),
+    type: resolveAssetType(asset, files, selectedFile),
     transformBaseUrl,
     sourceUrl,
     width:
@@ -482,4 +621,54 @@ export function parseBynderAsset(raw: unknown): ParsedBynderAsset | null {
     fileType: pickFileType(asset, files, sourceUrl),
     alt: pickBynderAltText(asset),
   };
+}
+
+/** Original pixel size when present, otherwise the web image. Not saved on the asset. */
+export function assetPixelSize(
+  raw: unknown,
+  extra?: unknown
+): { width?: number; height?: number } {
+  const asset = firstAsset(raw);
+  if (!asset) return {};
+  const passed = asRecord(extra);
+  const selected = asRecord(passed?.selectedFile) ?? asRecord(additionalInfo(asset).selectedFile);
+  const files = filesMap(asset);
+  const records = [
+    asRecord(files.original) ?? asRecord(files.Original),
+    selected,
+    asset,
+    asRecord(files.webImage ?? files.webimage),
+  ];
+  for (const record of records) {
+    if (!record) continue;
+    const width = pickNumber(record.width);
+    const height = pickNumber(record.height);
+    if (width || height) return { width, height };
+  }
+  return {};
+}
+
+/** DAT and the crop editor apply to images. Videos need Bynder Studio / derivatives / clip. */
+export function isVideoAsset(
+  asset?: { type?: string; fileType?: string; sourceUrl?: string; name?: string } | null
+): boolean {
+  if (!asset) return false;
+  if (asset.type?.trim().toUpperCase() === "VIDEO") return true;
+  const fileType = asset.fileType?.trim() ?? "";
+  if (VIDEO_FILE.test(fileType)) return true;
+  return VIDEO_EXT.test(asset.sourceUrl ?? "") || VIDEO_EXT.test(asset.name ?? "");
+}
+
+/**
+ * Compact View `DOCUMENT` covers PDFs and office files. They have no DAT crop
+ * and no desktop/mobile pair.
+ */
+export function isDocumentAsset(
+  asset?: { type?: string; fileType?: string; sourceUrl?: string; name?: string } | null
+): boolean {
+  if (!asset) return false;
+  if (asset.type?.trim().toUpperCase() === "DOCUMENT") return true;
+  const fileType = asset.fileType?.trim() ?? "";
+  if (DOCUMENT_FILE.test(fileType)) return true;
+  return DOCUMENT_EXT.test(asset.sourceUrl ?? "") || DOCUMENT_EXT.test(asset.name ?? "");
 }

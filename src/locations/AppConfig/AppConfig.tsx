@@ -158,14 +158,15 @@ export default function AppConfig() {
         ))}
       </ul>
       <p className="help">
-        Official-app keys we skip on purpose: {SKIPPED_OOTB_KEYS.map((item) => item.key).join(", ")}.{" "}
+        Not saved unless an include flag is on: {SKIPPED_OOTB_KEYS.map((item) => item.key).join(", ")}.{" "}
         <code>transformBaseUrl</code> is required because DAT URLs are composed from it.{" "}
         <code>webImage</code> is stored only when DAT is unavailable.
       </p>
 
       <p className="help">
-        Per-field override in the content type builder:
-        <code className="example">{`{ "maxNumberOfAssets": 3, "desktopMobileMode": false, "aspect": "16:9" }`}</code>
+        Per-field override in the content type builder. Optional saved values use{" "}
+        <code>persistAssetKeys</code>. Editor inputs use <code>showField…</code> flags:
+        <code className="example">{`{ "maxNumberOfAssets": 3, "persistAssetKeys": ["fileType", "tags"], "showFieldFileType": true, "showFieldWidth": false }`}</code>
       </p>
       <button type="button" disabled={status === "saving" || !portalUrl.trim()} onClick={() => void onSave()}>
         {status === "saving" ? "Saving…" : "Save"}

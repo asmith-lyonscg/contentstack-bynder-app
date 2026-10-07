@@ -75,9 +75,9 @@ describe("composeBynderImageUrl", () => {
       },
     ];
     const mobile = composeBynderImageUrl(settings, { viewport: "mobile" });
-    expect(mobile).toContain("width:390");
+    expect(mobile).toContain("width:780");
     expect(mobile).toContain("focuspoint=0.8,0.8");
     const desktop = composeBynderImageUrl(settings);
-    expect(desktop).toContain("width:1200");
+    expect(desktop).toContain("width:2400");
   });
 });

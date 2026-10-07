@@ -1,4 +1,4 @@
-export type DatOperation = "fill" | "fit" | "crop";
+export type DatOperation = "fill" | "fit" | "crop" | "scale";
 export type DatFormat = "webp" | "avif" | "jpg" | "png";
 
 export interface FocalPoint {
@@ -11,6 +11,8 @@ export interface TransformSettings {
   width?: number | null;
   height?: number | null;
   aspect?: string | null;
+  /** Used when operation is `scale` (1 = 100%). Omitted or 1 means no extra zoom. */
+  zoom?: number | null;
   format?: DatFormat | null;
   quality?: number | null;
   extraQuery?: string | null;
@@ -69,11 +71,36 @@ export interface CompactViewConfig {
 
 export type ViewportKind = "desktop" | "mobile";
 
+export interface DatQueries {
+  "1x": string;
+  "2x": string;
+}
+
 export interface ViewportCropSettings {
   focalPoint: FocalPoint;
   transform: TransformSettings;
-  /** Composed DAT URL for this viewport. Omitted when DAT is unavailable or disabled. */
+  /**
+   * DAT query strings for this viewport. Join with the asset `transformBaseUrl`.
+   * `2x` is the single static image. A different mobile file uses `mobile.transformBaseUrl`.
+   */
+  dat?: DatQueries;
+  /** @deprecated Older saves stored a full URL. New saves use `dat` plus `transformBaseUrl`. */
   url?: string;
+}
+
+/**
+ * Mobile crop. When mobile is a different Bynder file, `id`, `name`, `type`,
+ * and `transformBaseUrl` sit here in the same shape as the desktop asset.
+ * When those are omitted, mobile uses the desktop file.
+ */
+export interface MobileViewportSettings extends ViewportCropSettings {
+  id?: string;
+  name?: string;
+  type?: string;
+  transformBaseUrl?: string;
+  webImage?: { url: string };
+  /** Alt text for the separate mobile file. Omitted when mobile uses the desktop image. */
+  alt?: string;
 }
 
 export interface AssetCropSettings extends ViewportCropSettings {
@@ -81,7 +108,9 @@ export interface AssetCropSettings extends ViewportCropSettings {
    * Present only when mobile has been edited away from desktop.
    * When omitted, mobile follows desktop — do not duplicate the crop.
    */
-  mobile?: ViewportCropSettings;
+  mobile?: MobileViewportSettings;
+  /** Switch off: mobile is a different Bynder file. Kept even before that file is picked. */
+  differentMobileAsset?: boolean;
   /** Author-facing alt text for this asset. Prefills from Bynder, then can be overwritten. */
   alt?: string;
 }
@@ -90,7 +119,17 @@ export interface AssetCropSettings extends ViewportCropSettings {
 export interface SavedBynderAsset extends AssetCropSettings {
   id: string;
   name?: string;
+  /** Compact View media type, e.g. IMAGE or VIDEO. Always saved so video UI survives reopen. */
+  type?: string;
   transformBaseUrl?: string;
+  /** Original file extension. Saved only when `persistAssetKeys` includes `fileType`. */
+  fileType?: string;
+  /** Original file size in bytes. Saved only when `persistAssetKeys` includes `fileSize`. */
+  fileSize?: number;
+  /** Original pixel width. Saved only when `persistAssetKeys` includes `width`. Not the CSS crop width. */
+  width?: number;
+  /** Original pixel height. Saved only when `persistAssetKeys` includes `height`. Not the CSS crop height. */
+  height?: number;
   /** Original/web image. Only persisted when DAT is off or the asset has no transformBaseUrl. */
   webImage?: { url: string };
   description?: string;
@@ -98,6 +137,13 @@ export interface SavedBynderAsset extends AssetCropSettings {
   publishedAt?: string;
   updatedAt?: string;
   tags?: string[];
+  /** Web playback flags. Present on video assets. */
+  video?: VideoPlayback;
+  /**
+   * Values for `additionalFields` config entries, keyed by `property`.
+   * Nested under `additional` so they do not collide with identity/crop keys.
+   */
+  additional?: Record<string, string | number | boolean>;
 }
 
 export interface BynderImageSettings {
@@ -160,6 +206,8 @@ export interface CropFieldConfig {
   hideFormat: boolean;
   showOperation: boolean;
   showAspect: boolean;
+  showWidth: boolean;
+  showHeight: boolean;
   showQuality: boolean;
   showAdvancedQuery: boolean;
   showDatPreset: boolean;
@@ -204,6 +252,29 @@ export interface AppInstallationConfig {
   hideFormat?: boolean;
   /** Dropdown options. Omit to use the built-in list (16:9, 1:1, 4:3, 4:5). */
   aspectPresets?: string[];
+}
+
+export interface VideoPlayback {
+  autoplay: boolean;
+  muted: boolean;
+  controls: boolean;
+  loop: boolean;
+}
+
+/** Which video playback checkboxes the editor shows. Defaults are all on. */
+export interface VideoFieldVisibility {
+  autoplay: boolean;
+  muted: boolean;
+  controls: boolean;
+  loop: boolean;
+}
+
+export type AdditionalFieldType = "string" | "number" | "boolean";
+
+export interface AdditionalFieldDefinition {
+  property: string;
+  type: AdditionalFieldType;
+  label: string;
 }
 
 export const ASPECT_PRESETS = ["16:9", "1:1", "4:3", "4:5"] as const;

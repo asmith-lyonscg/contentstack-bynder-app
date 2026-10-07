@@ -3,11 +3,13 @@ import type { FocalPoint, TransformSettings } from "../lib/types";
 import { fitPreviewBox, previewIsToScale } from "../lib/bynder/composeDatUrl";
 import {
   clampOffset,
-  coverLayout,
+  clampZoom,
   focalFromOffset,
+  frameLayout,
   imagePointFromPointer,
-  offsetFromFocal,
+  offsetForOperation,
 } from "../lib/bynder/coverLayout";
+import { ImageSpinner } from "./ImageSpinner";
 import "./FocalPointCanvas.css";
 import "./CropFocalEditor.css";
 
@@ -31,12 +33,22 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
   const [natural, setNatural] = useState({ w: 0, h: 0 });
   const [maxWidth, setMaxWidth] = useState(520);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number } | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const box = fitPreviewBox(transform, maxWidth, 360);
   const toScale = previewIsToScale(box);
+  const zoom = clampZoom(transform.zoom);
 
   useEffect(() => {
     setNatural({ w: 0, h: 0 });
+    setLoaded(false);
+  }, [src]);
+
+  useEffect(() => {
+    const img = imageRef.current;
+    if (!img || !src || !img.complete || img.naturalWidth <= 0) return;
+    setLoaded(true);
+    setNatural({ w: img.naturalWidth, h: img.naturalHeight });
   }, [src]);
 
   useEffect(() => {
@@ -49,8 +61,18 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
     return () => observer.disconnect();
   }, []);
 
-  const layout = coverLayout(natural.w, natural.h, box.width, box.height);
-  const baseOffset = offsetFromFocal(focalPoint, layout, box.width, box.height);
+  const operation = transform.operation || "fill";
+  const layout = frameLayout(
+    operation,
+    natural.w,
+    natural.h,
+    box.width,
+    box.height,
+    transform.width,
+    transform.height,
+    zoom
+  );
+  const baseOffset = offsetForOperation(operation, focalPoint, layout, box.width, box.height);
   const offset = dragOffset ?? baseOffset;
   const canPan = ALLOW_CROP_PAN && (layout.canPanX || layout.canPanY);
 
@@ -134,8 +156,9 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
+        {src && !loaded ? <ImageSpinner /> : null}
         <div
-          className="crop-image-layer"
+          className={`crop-image-layer${loaded ? "" : " is-loading"}`}
           style={{
             width: layout.dispW,
             height: layout.dispH,
@@ -147,12 +170,14 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
             src={src}
             alt={alt ?? "Bynder image"}
             draggable={false}
-            onLoad={(event) =>
+            onLoad={(event) => {
+              setLoaded(true);
               setNatural({
                 w: event.currentTarget.naturalWidth,
                 h: event.currentTarget.naturalHeight,
-              })
-            }
+              });
+            }}
+            onError={() => setLoaded(true)}
           />
           <div
             className="focal-crosshair is-handle"

@@ -4,6 +4,10 @@
   gap: 8px;
 }
 
+.crop-image-layer.is-loading {
+  opacity: 0;
+}
+
 .crop-editor {
   position: relative;
   overflow: hidden;

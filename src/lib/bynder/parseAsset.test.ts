@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   applyPickerSelection,
   assetFromSettings,
+  assetPixelSize,
   compactAssetIds,
   inferTransformBaseUrl,
+  isVideoAsset,
+  isDocumentAsset,
   normalizeCompactAssets,
   parseBynderAsset,
   parseBynderAssets,
+  slimPersistedAsset,
   pickBynderAltText,
   pickBynderAsset,
 } from "./parseAsset";
@@ -129,6 +133,23 @@ describe("pickBynderAsset", () => {
   });
 });
 
+describe("assetPixelSize", () => {
+  it("reads original pixel size ahead of the web image", () => {
+    expect(
+      assetPixelSize(
+        {
+          id: "a",
+          files: {
+            webImage: { url: "https://cdn.example/web.jpg", width: 800, height: 600 },
+            original: { url: "https://cdn.example/original.jpg", width: 4000, height: 3000 },
+          },
+        },
+        { selectedFile: { url: "https://cdn.example/selected.jpg", width: 100, height: 100 } }
+      )
+    ).toEqual({ width: 4000, height: 3000 });
+  });
+});
+
 describe("normalizeCompactAssets", () => {
   it("maps UCV derivatives and selectedFile onto files.webImage / transformBaseUrl", () => {
     const [normalized] = normalizeCompactAssets(
@@ -174,10 +195,32 @@ describe("normalizeCompactAssets", () => {
     expect(normalized).toEqual({
       id: "asset-guid",
       name: "Hero",
+      type: "IMAGE",
       transformBaseUrl: "https://portal.bynder.com/transform/abc/hero.jpg",
       webImage: { url: "https://cdn.example/web.jpg" },
     });
     expect(JSON.stringify(normalized).length).toBeLessThan(500);
+  });
+
+  it("keeps a PDF as a document when the Bynder badge is pdf and the preview is webp", () => {
+    const [normalized] = normalizeCompactAssets([
+      {
+        id: "pdf-1",
+        databaseId: "pdf-guid",
+        name: "T342703-CZLHD_IntegratedDiverter_Infographic",
+        type: "IMAGE",
+        extensions: ["pdf"],
+        originalUrl: "https://assets.example/m/pdf-guid/original/T342703-CZLHD_IntegratedDiverter_Infographic.pdf",
+        derivatives: { webImage: "https://assets.example/asset/pdf-guid/webimage-T342703.webp" },
+      },
+    ]);
+    expect(normalized).toMatchObject({
+      id: "pdf-guid",
+      name: "T342703-CZLHD_IntegratedDiverter_Infographic",
+      type: "DOCUMENT",
+    });
+    expect(normalized).not.toHaveProperty("extensions");
+    expect(isDocumentAsset(parseBynderAsset(normalized))).toBe(true);
   });
 });
 
@@ -354,5 +397,85 @@ describe("parseBynderAssets", () => {
         { id: "b", files: { webImage: { url: "https://cdn.example/b.jpg" } } },
       ]).map((item) => item.id)
     ).toEqual(["a", "b"]);
+  });
+});
+
+describe("isVideoAsset", () => {
+  it("treats Compact View VIDEO type as video", () => {
+    expect(isVideoAsset({ type: "VIDEO", sourceUrl: "https://cdn.example/a.jpg" })).toBe(true);
+    expect(isVideoAsset({ type: "IMAGE", sourceUrl: "https://cdn.example/a.jpg" })).toBe(false);
+  });
+
+  it("falls back to file type and URL when type is missing", () => {
+    expect(isVideoAsset({ sourceUrl: "https://cdn.example/clip.mp4" })).toBe(true);
+    expect(isVideoAsset({ fileType: "webm", sourceUrl: "https://cdn.example/file" })).toBe(true);
+    expect(isVideoAsset({ sourceUrl: "https://cdn.example/hero.jpg" })).toBe(false);
+  });
+});
+
+describe("isDocumentAsset", () => {
+  it("treats Compact View DOCUMENT type as a document (PDFs and office files)", () => {
+    expect(isDocumentAsset({ type: "DOCUMENT", sourceUrl: "https://cdn.example/a.pdf" })).toBe(true);
+    expect(isDocumentAsset({ type: "IMAGE", sourceUrl: "https://cdn.example/a.jpg" })).toBe(false);
+    expect(isDocumentAsset({ type: "VIDEO", sourceUrl: "https://cdn.example/a.mp4" })).toBe(false);
+  });
+
+  it("falls back to pdf and office extensions when type is missing", () => {
+    expect(isDocumentAsset({ sourceUrl: "https://cdn.example/brief.pdf" })).toBe(true);
+    expect(isDocumentAsset({ fileType: "docx", sourceUrl: "https://cdn.example/file" })).toBe(true);
+    expect(isDocumentAsset({ name: "deck.pptx", sourceUrl: "https://cdn.example/file" })).toBe(true);
+    expect(isDocumentAsset({ sourceUrl: "https://cdn.example/hero.jpg" })).toBe(false);
+  });
+});
+
+describe("slimPersistedAsset", () => {
+  it("saves file type and original pixels only when those keys are requested", () => {
+    const raw = {
+      id: "asset-1",
+      name: "Hero",
+      type: "IMAGE",
+      fileType: "jpg",
+      fileSize: 2457600,
+      width: 4000,
+      height: 3000,
+      files: { webImage: { url: "https://cdn.example/hero.jpg" } },
+    };
+    expect(slimPersistedAsset(raw)).not.toHaveProperty("fileType");
+    expect(slimPersistedAsset(raw, ["id", "name", "type", "transformBaseUrl", "fileType", "width", "height"])).toMatchObject({
+      fileType: "jpg",
+      width: 4000,
+      height: 3000,
+    });
+  });
+
+  it("keeps video playback and additional author values", () => {
+    const video = slimPersistedAsset({
+      id: "clip-1",
+      name: "Launch",
+      type: "VIDEO",
+      url: "https://cdn.example/launch.mp4",
+      video: { autoplay: true, muted: "yes", controls: false, extra: 1 },
+      additional: { uniqueId: true, note: "hero", rank: 2, nested: { a: 1 } },
+    });
+    expect(video).toMatchObject({
+      video: { autoplay: true, muted: false, controls: false, loop: false },
+      additional: { uniqueId: true, note: "hero", rank: 2 },
+    });
+    expect(video).not.toHaveProperty("uniqueId");
+
+    const image = slimPersistedAsset(
+      {
+        id: "img-1",
+        type: "IMAGE",
+        url: "https://cdn.example/hero.jpg",
+        video: { autoplay: true, controls: true },
+        uniqueId: false,
+      },
+      undefined,
+      { additionalProperties: ["uniqueId"] }
+    );
+    expect(image).not.toHaveProperty("video");
+    expect(image).toMatchObject({ additional: { uniqueId: false } });
+    expect(image).not.toHaveProperty("uniqueId");
   });
 });

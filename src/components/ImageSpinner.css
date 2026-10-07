@@ -1,0 +1,38 @@
+.image-spinner {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.image-spinner-icon {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #d9def0;
+  border-top-color: #6c5ce7;
+  border-radius: 50%;
+  animation: image-spin 0.7s linear infinite;
+}
+
+.crop-editor .image-spinner-icon {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+}
+
+@keyframes image-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-spinner-icon {
+    animation: none;
+    border-color: #6c5ce7;
+    border-right-color: transparent;
+  }
+}

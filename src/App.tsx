@@ -15,6 +15,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/picker" element={<PickerPopup />} />
+          <Route path="/picker.html" element={<PickerPopup />} />
           <Route
             path="/custom-field"
             element={
@@ -24,7 +25,23 @@ function App() {
             }
           />
           <Route
+            path="/custom-field.html"
+            element={
+              <MarketplaceAppProvider>
+                <CustomField />
+              </MarketplaceAppProvider>
+            }
+          />
+          <Route
             path="/app-configuration"
+            element={
+              <MarketplaceAppProvider>
+                <AppConfig />
+              </MarketplaceAppProvider>
+            }
+          />
+          <Route
+            path="/app-configuration.html"
             element={
               <MarketplaceAppProvider>
                 <AppConfig />

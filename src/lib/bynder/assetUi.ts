@@ -1,12 +1,12 @@
 import {
   DEFAULT_FOCAL_POINT,
-  DEFAULT_TRANSFORM,
   type AssetCropSettings,
+  type DatOperation,
   type FocalPoint,
   type ParsedBynderAsset,
   type TransformSettings,
 } from "../types";
-import { composeDatUrl, normalizeFocalPoint } from "./composeDatUrl";
+import { normalizeFocalPoint } from "./composeDatUrl";
 
 export const LIST_THUMB_MOBILE = { width: 200, height: 200 };
 export const LIST_THUMB_DESKTOP = { width: 300, height: 200 };
@@ -18,6 +18,10 @@ export interface ListThumb {
   height: number;
   objectPosition: string;
   caption?: string;
+  /** Crop pixel size used to fit the thumb inside its max box. */
+  aspectW?: number;
+  aspectH?: number;
+  operation?: DatOperation;
 }
 
 export interface AssetListThumbs {
@@ -48,29 +52,24 @@ export function listThumbForAsset(input: {
   const focal = input.live?.focalPoint ?? input.crop?.focalPoint ?? DEFAULT_FOCAL_POINT;
   const datOn = Boolean(input.datAllowed && input.asset.transformBaseUrl);
   const size = input.slot ?? LIST_THUMB_SLOT;
+  const cropWidth = transform?.width;
+  const cropHeight = transform?.height;
   const caption = thumbCaption({
-    width: transform?.width ?? input.asset.width,
-    height: transform?.height ?? input.asset.height,
+    width: cropWidth,
+    height: cropHeight,
     format: datOn ? transform?.format : input.asset.fileType,
     fileType: input.asset.fileType,
     fileSize: input.asset.fileSize,
   });
-
-  if (datOn && input.asset.transformBaseUrl) {
-    const url =
-      input.live?.url ||
-      composeDatUrl(input.asset.transformBaseUrl, {
-        focalPoint: focal,
-        transform: transform ?? DEFAULT_TRANSFORM,
-      });
-    return { ...size, url, objectPosition: "50% 50%", caption };
-  }
 
   return {
     ...size,
     url: input.asset.sourceUrl,
     objectPosition: objectPosition(focal),
     caption,
+    aspectW: cropWidth ? Math.round(cropWidth) : undefined,
+    aspectH: cropHeight ? Math.round(cropHeight) : undefined,
+    operation: transform?.operation ?? "fill",
   };
 }
 

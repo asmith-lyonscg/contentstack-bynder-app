@@ -26,7 +26,9 @@ describe("buildSettingsPayload", () => {
       transformBaseUrl: "https://portal.bynder.com/transform/earth.jpg",
       focalPoint: { x: 0.35, y: 0.42 },
     });
-    expect(next.assets?.[0].url).toContain("transform/earth.jpg");
+    expect(next.assets?.[0].dat?.["2x"]).toContain("width:");
+    expect(next.assets?.[0].dat?.["2x"]).not.toContain("https://");
+    expect(next.assets?.[0]).not.toHaveProperty("url");
     expect(next.assets?.[0].webImage).toBeUndefined();
     expect(next).not.toHaveProperty("crops");
     expect(next).not.toHaveProperty("datEnabled");
@@ -46,7 +48,7 @@ describe("buildSettingsPayload", () => {
       },
     ];
     const next = buildSettingsPayload(current, { assets, enableDat: true });
-    expect(next.assets?.[0].url).toBeUndefined();
+    expect(next.assets?.[0].dat).toBeUndefined();
     expect(next.assets?.[0].webImage).toEqual({ url: "https://cdn.example/a.jpg" });
 
     const withDat = [
@@ -59,7 +61,7 @@ describe("buildSettingsPayload", () => {
       },
     ];
     const cssOnly = buildSettingsPayload(current, { assets: withDat, enableDat: false });
-    expect(cssOnly.assets?.[0].url).toBeUndefined();
+    expect(cssOnly.assets?.[0].dat).toBeUndefined();
     expect(cssOnly.assets?.[0].webImage).toEqual({ url: "https://cdn.example/b.jpg" });
     expect(cssOnly.assets?.[0].transformBaseUrl).toBe("https://portal.bynder.com/transform/b.jpg");
   });
@@ -113,13 +115,61 @@ describe("buildSettingsPayload", () => {
       },
     ];
     const next = buildSettingsPayload(current, { assets: current.assets, enableDat: true });
-    expect(next.assets?.[0].url).toContain("transform/earth.jpg");
+    expect(next.assets?.[0].dat?.["2x"]).toContain("width:");
+    expect(next.assets?.[0].dat?.["2x"]).not.toContain("https://");
+    expect(next.assets?.[0]).not.toHaveProperty("url");
     expect(next.assets?.[0].mobile).toBeUndefined();
-    expect(next.assets?.[1].url).toContain("transform/bottle.jpg");
-    expect(next.assets?.[2].url).toContain("width:1200");
-    expect(next.assets?.[2].mobile?.url).toContain("width:390");
-    expect(next.assets?.[2].mobile?.url).not.toBe(next.assets?.[2].url);
+    expect(next.assets?.[1].dat?.["2x"]).toContain("io=transform");
+    expect(next.assets?.[2].dat?.["2x"]).toContain("width:2400");
+    expect(next.assets?.[2].dat?.["1x"]).toContain("width:1200");
+    expect(next.assets?.[2].mobile?.dat?.["2x"]).toContain("width:780");
+    expect(next.assets?.[2].mobile?.dat?.["1x"]).toContain("width:390");
+    expect(next.assets?.[2].mobile?.dat?.["2x"]).not.toBe(next.assets?.[2].dat?.["2x"]);
     expect(next.assets?.[2]).not.toHaveProperty("mobileLinked");
+  });
+
+  it("drops webImage from a different mobile file that has a transform base", () => {
+    const current = emptySettings();
+    current.assets = [
+      {
+        id: "desk",
+        transformBaseUrl: "https://portal.bynder.com/transform/desk.jpg",
+        focalPoint: { x: 0.5, y: 0.5 },
+        transform: { ...DEFAULT_TRANSFORM, width: 1200, height: 675 },
+        differentMobileAsset: true,
+        mobile: {
+          id: "mob",
+          transformBaseUrl: "https://portal.bynder.com/transform/mob.jpg",
+          webImage: { url: "https://cdn.example/mob.jpg" },
+          focalPoint: { x: 0.5, y: 0.5 },
+          transform: { ...DEFAULT_TRANSFORM, width: 400, height: 400 },
+        },
+      },
+    ];
+    const next = buildSettingsPayload(current, { assets: current.assets, enableDat: true });
+    expect(next.assets?.[0].mobile?.transformBaseUrl).toContain("mob.jpg");
+    expect(next.assets?.[0].mobile?.webImage).toBeUndefined();
+    expect(next.assets?.[0].mobile).not.toHaveProperty("asset");
+  });
+
+  it("saves configured additionalFields under additional", () => {
+    const current = emptySettings();
+    current.assets = [
+      {
+        id: "desk",
+        transformBaseUrl: "https://portal.bynder.com/transform/desk.jpg",
+        focalPoint: { x: 0.5, y: 0.5 },
+        transform: { ...DEFAULT_TRANSFORM, width: 1200, height: 675 },
+        additional: { uniqueId: true },
+      },
+    ];
+    const next = buildSettingsPayload(current, {
+      assets: current.assets,
+      enableDat: true,
+      authorFields: [{ property: "uniqueId", type: "boolean" }],
+    });
+    expect(next.assets?.[0]).toMatchObject({ additional: { uniqueId: true } });
+    expect(next.assets?.[0]).not.toHaveProperty("uniqueId");
   });
 });
 

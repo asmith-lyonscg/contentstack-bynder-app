@@ -1,6 +1,6 @@
 {
   "name": "bynder-image-settings",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "description": "Contentstack Marketplace App: Bynder Compact View picker plus focal point and crop in one JSON field",
@@ -11,8 +11,7 @@
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "package:launch": "node scripts/package-launch.mjs"
+    "test:watch": "vitest"
   },
   "engines": {
     "node": ">=22"

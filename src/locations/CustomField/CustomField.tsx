@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CompactPicker } from "../../components/CompactPicker";
+import { AssetToolbar, CompactPicker } from "../../components/CompactPicker";
+import { bynderMediaUrl } from "../../lib/bynder/assetUi";
 import { CropFocalEditor } from "../../components/CropFocalEditor";
 import { InfoTooltip } from "../../components/InfoTooltip";
 import { TransformForm } from "../../components/TransformForm";
@@ -8,46 +9,140 @@ import { useFieldFrameHeight } from "../../common/hooks/useFieldFrameHeight";
 import {
   applyPickerSelection,
   assetFromSettings,
+  assetPixelSize,
   normalizeCompactAssets,
   parseBynderAsset,
   parseBynderAssets,
   slimPersistedAssets,
+  isVideoAsset,
+  isDocumentAsset,
 } from "../../lib/bynder/parseAsset";
 import { listThumbForAsset, LIST_THUMB_DESKTOP, LIST_THUMB_MOBILE } from "../../lib/bynder/assetUi";
-import { roundCoord } from "../../lib/bynder/composeDatUrl";
+import { datQueriesForSlice, joinDatUrl, roundCoord } from "../../lib/bynder/composeDatUrl";
 import {
   applyCropConfig,
   applyCropConfigToAssetCrop,
   applyCropConfigToAssets,
-  cropPreset,
+  authorUsesScaleMode,
+  coerceTransformForScaleMode,
+  effectiveViewportLocks,
   readFieldConfig,
+  resolveAdditionalFields,
   resolveCompactViewConfig,
   resolveCropConfig,
   resolveEnableDat,
+  resolveVideoDefaults,
+  resolveVideoFieldVisibility,
   seedAssetCrop,
 } from "../../lib/fieldConfig";
-import { resolvePersistKeys } from "../../lib/persistKeys";
+import { resolvePersistPolicy } from "../../lib/persistKeys";
 import {
+  asSavedAsset,
   asSavedAssets,
+  applyAuthorFields,
   buildSettingsPayload,
   defaultTransform,
   parseSavedSettings,
   persistedPayload,
   stashActiveCrop,
 } from "../../lib/settings";
-import type { BynderImageSettings, FocalPoint, ParsedBynderAsset, SavedBynderAsset, ViewportKind } from "../../lib/types";
+import type {
+  AdditionalFieldDefinition,
+  BynderImageSettings,
+  FocalPoint,
+  ParsedBynderAsset,
+  SavedBynderAsset,
+  VideoPlayback,
+  ViewportKind,
+} from "../../lib/types";
 import {
   cropSliceForAsset,
   resolveActiveViewport,
   savedAssetById,
   viewportCrop,
+  viewportCropsEqual,
   withoutDesktopMobile,
   withoutMobileCrop,
 } from "../../lib/viewportCrop";
 import "./CustomField.css";
 
+function authorValues(asset: SavedBynderAsset | undefined): Record<string, string | number | boolean> | undefined {
+  return asset?.additional;
+}
+
 function percent(value: number): string {
   return String(Math.round(value * 1000) / 10);
+}
+
+function assetIdentity(settings: BynderImageSettings): string {
+  return (settings.assets ?? []).map((asset) => `${asset.id}:${asset.mobile?.id ?? ""}`).join("|");
+}
+
+function AdditionalFields({
+  fields,
+  values,
+  onChange,
+}: {
+  fields: AdditionalFieldDefinition[];
+  values?: Record<string, string | number | boolean>;
+  onChange: (property: string, value: string | number | boolean | undefined) => void;
+}) {
+  if (!fields.length) return null;
+  return (
+    <div className="additional-fields">
+      {fields.map((field) => {
+        const current = values?.[field.property];
+        if (field.type === "boolean") {
+          return (
+            <label key={field.property} className="video-option">
+              <input
+                type="checkbox"
+                checked={current === true}
+                onChange={(event) => onChange(field.property, event.target.checked)}
+              />
+              {field.label}
+            </label>
+          );
+        }
+        return (
+          <label key={field.property} className="field">
+            <span>{field.label}</span>
+            <input
+              type={field.type === "number" ? "number" : "text"}
+              value={field.type === "number" ? (typeof current === "number" ? current : "") : typeof current === "string" ? current : ""}
+              onChange={(event) => {
+                const raw = event.target.value;
+                if (field.type === "number") {
+                  if (raw === "") onChange(field.property, undefined);
+                  else {
+                    const next = Number(raw);
+                    if (Number.isFinite(next)) onChange(field.property, next);
+                  }
+                  return;
+                }
+                onChange(field.property, raw);
+              }}
+            />
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function carrySeparateMobile(current: unknown[], next: unknown[]): unknown[] {
+  if (current.length !== next.length) return next;
+  return next.map((raw, index) => {
+    const prev = asSavedAsset(current[index]);
+    if (!prev?.mobile?.id || !raw || typeof raw !== "object") return raw;
+    const incomingId = asSavedAsset(raw)?.id;
+    if (incomingId && incomingId === prev.id) return raw;
+    return {
+      ...(raw as Record<string, unknown>),
+      differentMobileAsset: true,
+      mobile: prev.mobile,
+    };
+  });
 }
 
 function LinkIcon() {
@@ -103,9 +198,39 @@ function UnlinkIcon() {
   );
 }
 
-function openTransformedPreview(url: string) {
-  const popup = window.open(url, "bynder-dat-preview", "popup=yes,width=1280,height=860");
-  if (!popup) window.open(url, "_blank", "noopener");
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={open ? "crop-editor-chevron is-open" : "crop-editor-chevron"}
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      aria-hidden
+    >
+      <path
+        d="M6 9l6 6 6-6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path
+        d="M6 6l12 12M18 6L6 18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 function pruneAssets(settings: BynderImageSettings, ids: string[]): SavedBynderAsset[] | undefined {
@@ -140,20 +265,41 @@ export default function CustomField() {
     () => resolveCropConfig(fieldConfig, appConfig),
     [fieldConfig, appConfig]
   );
+  const videoDefaults = useMemo(() => resolveVideoDefaults(fieldConfig, appConfig), [fieldConfig, appConfig]);
+  const videoFields = useMemo(() => resolveVideoFieldVisibility(fieldConfig, appConfig), [fieldConfig, appConfig]);
+  const additionalFields = useMemo(
+    () => resolveAdditionalFields(fieldConfig, appConfig),
+    [fieldConfig, appConfig]
+  );
+  const playbackOptions = (
+    [
+      ["autoplay", "Autoplay"],
+      ["muted", "Mute"],
+      ["controls", "Show controls"],
+      ["loop", "Loop"],
+    ] as const
+  ).filter(([key]) => videoFields[key]);
 
   const [settings, setSettings] = useState<BynderImageSettings>(() => parseSavedSettings(null));
+  const [thumbSettings, setThumbSettings] = useState(settings);
   const [assets, setAssets] = useState<ParsedBynderAsset[]>([]);
   const [assetReady, setAssetReady] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | undefined>();
-  const [previewUpdating, setPreviewUpdating] = useState(false);
   const [panelAsset, setPanelAsset] = useState<ParsedBynderAsset | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [mobilePickRequest, setMobilePickRequest] = useState<{ id: string; nonce: number }>();
+  const [desktopPickRequest, setDesktopPickRequest] = useState<{ id: string; nonce: number }>();
+  const heldMobile = useRef(new Map<string, NonNullable<SavedBynderAsset["mobile"]>>());
+  const heldSameCrop = useRef(new Map<string, { focalPoint: FocalPoint; transform: BynderImageSettings["transform"] }>());
   const shellRef = useRef<HTMLDivElement>(null);
   const lastSaved = useRef("");
   const hydrated = useRef(false);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
-  const focused = assets.find((item) => item.id === settings.activeAssetId) ?? null;
+  const activeAsset = assets.find((item) => item.id === settings.activeAssetId) ?? null;
+  const focused = activeAsset && !isDocumentAsset(activeAsset) ? activeAsset : null;
+  const focusedIsVideo = isVideoAsset(focused);
+  const focusedIsDocument = isDocumentAsset(focused);
   const desktopMobileMode = cropConfig.desktopMobileMode !== false;
   const activeViewport = desktopMobileMode ? resolveActiveViewport(settings) : "desktop";
   const focusedSaved = savedAssetById(settings, focused?.id);
@@ -168,7 +314,24 @@ export default function CustomField() {
       current && assets.some((item) => item.id === current.id) ? current : null
     );
   }, [assets, focused]);
-  useFieldFrameHeight(sdk, shellRef, focused?.id, assets.length);
+
+  useEffect(() => {
+    if (!focused) {
+      setEditorOpen(false);
+      return;
+    }
+    setEditorOpen(true);
+  }, [focused?.id]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (settingsRef.current !== settings) return;
+      setThumbSettings(settings);
+    }, assetIdentity(thumbSettings) === assetIdentity(settings) ? 1000 : 0);
+    return () => window.clearTimeout(timer);
+  }, [settings, thumbSettings]);
+
+  useFieldFrameHeight(sdk, shellRef, focused?.id, editorOpen, assets.length);
   const fallbackTransform = useMemo(
     () => applyCropConfig(defaultTransform(), cropConfig, "defaults", "desktop"),
     [cropConfig]
@@ -177,16 +340,18 @@ export default function CustomField() {
     () => applyCropConfig(defaultTransform(), cropConfig, "defaults", "mobile"),
     [cropConfig]
   );
-  const viewportLocks = cropPreset(cropConfig, activeViewport);
+  const viewportLocks = effectiveViewportLocks(cropConfig, activeViewport);
+  const scaleMode = authorUsesScaleMode(cropConfig, activeViewport);
+  const editorTransform = coerceTransformForScaleMode(settings.transform, scaleMode);
   const thumbs = useMemo(() => {
     const next: Record<string, { desktop: ReturnType<typeof listThumbForAsset>; mobile: ReturnType<typeof listThumbForAsset> }> =
       {};
     for (const asset of assets) {
-      const desktop = cropSliceForAsset(settings, asset.id, "desktop", fallbackTransform);
+      const desktop = cropSliceForAsset(thumbSettings, asset.id, "desktop", fallbackTransform);
       const thumb = listThumbForAsset({
         asset,
         live: desktop,
-        datAllowed: configAllowsDat,
+        datAllowed: configAllowsDat && !isVideoAsset(asset) && !isDocumentAsset(asset),
         fallbackTransform,
         slot: LIST_THUMB_DESKTOP,
       });
@@ -194,22 +359,51 @@ export default function CustomField() {
         next[asset.id] = { desktop: thumb, mobile: thumb };
         continue;
       }
-      const mobile = cropSliceForAsset(settings, asset.id, "mobile", fallbackMobileTransform);
+      const mobile = cropSliceForAsset(thumbSettings, asset.id, "mobile", fallbackMobileTransform);
+      const saved = thumbSettings.assets?.find((item) => item.id === asset.id);
+      const mobileFile = saved?.mobile?.id
+        ? {
+            id: saved.mobile.id,
+            name: saved.mobile.name,
+            type: saved.mobile.type,
+            transformBaseUrl: saved.mobile.transformBaseUrl,
+            webImage: saved.mobile.webImage,
+          }
+        : undefined;
+      const mobileSource: ParsedBynderAsset = mobileFile
+        ? {
+            ...asset,
+            id: mobileFile.id,
+            name: mobileFile.name,
+            type: mobileFile.type,
+            transformBaseUrl: mobileFile.transformBaseUrl,
+            sourceUrl: mobileFile.webImage?.url || mobileFile.transformBaseUrl || "",
+            width: undefined,
+            height: undefined,
+            fileType: undefined,
+            fileSize: undefined,
+          }
+        : asset;
       next[asset.id] = {
         desktop: thumb,
         mobile: listThumbForAsset({
-          asset,
+          asset: mobileSource,
           live: mobile,
-          datAllowed: configAllowsDat,
+          datAllowed:
+            configAllowsDat &&
+            !isVideoAsset(mobileSource) &&
+            !isDocumentAsset(mobileSource) &&
+            Boolean(mobileSource.transformBaseUrl),
           fallbackTransform: fallbackMobileTransform,
           slot: LIST_THUMB_MOBILE,
         }),
       };
     }
     return next;
-  }, [assets, configAllowsDat, desktopMobileMode, fallbackMobileTransform, fallbackTransform, settings]);
+  }, [assets, configAllowsDat, desktopMobileMode, fallbackMobileTransform, fallbackTransform, thumbSettings]);
 
-  const persistKeys = useMemo(() => resolvePersistKeys(appConfig?.persistAssetKeys), [appConfig]);
+  const persistPolicy = useMemo(() => resolvePersistPolicy(fieldConfig, appConfig), [fieldConfig, appConfig]);
+  const persistKeys = persistPolicy.keys;
 
   const persist = useCallback((next: BynderImageSettings) => {
     const viewport = desktopMobileMode ? resolveActiveViewport(next) : "desktop";
@@ -219,47 +413,77 @@ export default function CustomField() {
         transform: applyCropConfig(next.transform, cropConfig, "locks", viewport),
         assets: applyCropConfigToAssets(next.assets, cropConfig, "locks"),
       },
-      { persistAssetKeys: persistKeys, enableDat: configAllowsDat }
+      { persistAssetKeys: persistKeys, omitWebImage: persistPolicy.omitWebImage, enableDat: configAllowsDat, authorFields: additionalFields.fields }
     );
     const prepared = desktopMobileMode ? payload : withoutDesktopMobile(payload);
     settingsRef.current = prepared;
     setSettings(prepared);
     return prepared;
-  }, [configAllowsDat, cropConfig, desktopMobileMode, persistKeys]);
+  }, [additionalFields.fields, configAllowsDat, cropConfig, desktopMobileMode, persistKeys, persistPolicy.omitWebImage]);
+
+  useEffect(() => {
+    if (editorTransform.operation === settings.transform.operation) return;
+    persist(stashActiveCrop({ ...settings, transform: editorTransform }, focused?.id));
+    // Only rewrite crop↔scale when the lock mode and stored op disagree.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid looping on full settings
+  }, [scaleMode, editorTransform.operation, settings.transform.operation, focused?.id, persist]);
 
   const applyAssets = useCallback(
-    (rawAssets: unknown[], nextFocusedId?: string) => {
+    (rawAssets: unknown[], nextFocusedId?: string, sizes?: Map<string, { width?: number; height?: number }>) => {
       const source = settingsRef.current;
       const parsedList = parseBynderAssets(rawAssets);
       const ids = parsedList.map((item) => item.id);
-      const focusedId =
-        (nextFocusedId && ids.includes(nextFocusedId) ? nextFocusedId : undefined) ??
-        (source.activeAssetId && ids.includes(source.activeAssetId) ? source.activeAssetId : undefined);
+      const selectableId = (id?: string) => {
+        if (!id || !ids.includes(id)) return undefined;
+        const asset = parsedList.find((item) => item.id === id);
+        if (!asset || isDocumentAsset(asset)) return undefined;
+        return id;
+      };
+      const focusedId = selectableId(nextFocusedId) ?? selectableId(source.activeAssetId);
       const focusedAsset = focusedId ? parsedList.find((item) => item.id === focusedId) ?? null : null;
-      const slimmed = slimPersistedAssets(rawAssets, persistKeys);
+      const slimmed = slimPersistedAssets(rawAssets, persistKeys, { omitWebImage: persistPolicy.omitWebImage });
       const incoming = asSavedAssets(slimmed) ?? [];
       const previous = pruneAssets(stashActiveCrop(source, source.activeAssetId), ids) ?? [];
       const previousById = new Map(previous.map((asset) => [asset.id, asset]));
+      const withVideoDefaults = (asset: SavedBynderAsset, parsed?: ParsedBynderAsset): SavedBynderAsset => {
+        if (!parsed || !isVideoAsset(parsed) || asset.video) return asset;
+        return { ...asset, video: { ...videoDefaults } };
+      };
       const nextAssets: SavedBynderAsset[] = incoming.map((identity) => {
         const existing = previousById.get(identity.id);
+        const parsed = parsedList.find((item) => item.id === identity.id);
         if (existing) {
-          return applyCropConfigToAssetCrop(
-            {
-              ...existing,
-              name: identity.name ?? existing.name,
-              transformBaseUrl: identity.transformBaseUrl ?? existing.transformBaseUrl,
-              webImage: identity.webImage ?? existing.webImage,
-            },
-            cropConfig,
-            "locks"
+          return withVideoDefaults(
+            applyCropConfigToAssetCrop(
+              {
+                ...existing,
+                name: identity.name ?? existing.name,
+                type: identity.type ?? existing.type,
+                transformBaseUrl: identity.transformBaseUrl ?? existing.transformBaseUrl,
+                webImage: identity.webImage ?? existing.webImage,
+              },
+              cropConfig,
+              "locks"
+            ),
+            parsed
           );
         }
-        const parsed = parsedList.find((item) => item.id === identity.id);
-        return {
-          ...identity,
-          ...seedAssetCrop(cropConfig, { width: parsed?.width, height: parsed?.height }),
-          alt: identity.alt ?? parsed?.alt ?? "",
-        };
+        const sized = sizes?.get(identity.id);
+        const seeded = seedAssetCrop(cropConfig, {
+          width: sized?.width ?? parsed?.width,
+          height: sized?.height ?? parsed?.height,
+        });
+        return withVideoDefaults(
+          {
+            ...identity,
+            ...seeded,
+            alt: identity.alt ?? parsed?.alt ?? "",
+            ...(identity.mobile?.id
+              ? { differentMobileAsset: true as const, mobile: identity.mobile }
+              : {}),
+          },
+          parsed
+        );
       });
       const isNewAsset = Boolean(focusedAsset && focusedId && !previousById.has(focusedId));
       const isFirstPick = !source.assets?.length;
@@ -296,7 +520,9 @@ export default function CustomField() {
           activeAssetId: focusedAsset?.id,
           activeViewport: focusedAsset && viewport === "mobile" ? "mobile" : undefined,
           persistAssetKeys: persistKeys,
+          omitWebImage: persistPolicy.omitWebImage,
           enableDat: configAllowsDat,
+          authorFields: additionalFields.fields,
         }
       );
       const next = desktopMobileMode ? payload : withoutDesktopMobile(payload);
@@ -305,27 +531,36 @@ export default function CustomField() {
       setAssetReady(true);
       setSettings(next);
     },
-    [configAllowsDat, cropConfig, desktopMobileMode, persistKeys]
+    [additionalFields.fields, configAllowsDat, cropConfig, desktopMobileMode, persistKeys, persistPolicy.omitWebImage, videoDefaults]
   );
 
   const onCompactSelect = useCallback(
     (rawAssets: unknown[], additionalInfo?: unknown) => {
       if (!rawAssets.length) return;
       const incoming = normalizeCompactAssets(rawAssets, additionalInfo, persistKeys);
+      const sizes = new Map<string, { width?: number; height?: number }>();
+      for (const raw of rawAssets) {
+        const parsed = parseBynderAsset(raw);
+        const id = parsed?.databaseId ?? parsed?.id;
+        if (id) sizes.set(id, assetPixelSize(raw, additionalInfo));
+      }
       const current = settingsRef.current;
       const previousIds = new Set(parseBynderAssets(current.assets ?? []).map((item) => item.id));
       const incomingParsed = parseBynderAssets(incoming);
-      const firstNew = incomingParsed.find((item) => !previousIds.has(item.id)) ?? incomingParsed[0];
-      const nextRaw = applyPickerSelection({
-        current: current.assets ?? [],
-        incoming,
-        mode: compact.mode,
-        focusedId: focused?.id,
-        maxLimit: compact.maxLimit,
-      });
-      applyAssets(nextRaw, firstNew?.id);
+      const firstNew = incomingParsed.find((item) => !previousIds.has(item.id) && !isDocumentAsset(item));
+      const nextRaw = carrySeparateMobile(
+        current.assets ?? [],
+        applyPickerSelection({
+          current: current.assets ?? [],
+          incoming,
+          mode: compact.mode,
+          focusedId: focused?.id,
+          maxLimit: compact.maxLimit,
+        })
+      );
+      applyAssets(nextRaw, firstNew?.id, sizes);
     },
-    [applyAssets, compact.maxLimit, compact.mode, focused?.id, persistKeys]
+    [applyAssets, compact.maxLimit, compact.mode, focused?.id, persistKeys, persistPolicy.omitWebImage]
   );
 
   const onCompactRemove = useCallback(
@@ -342,31 +577,32 @@ export default function CustomField() {
   const onFocusAsset = useCallback(
     (id: string, viewport?: ViewportKind) => {
       const parsed = assets.find((item) => item.id === id);
-      if (!parsed) return;
+      if (!parsed || isDocumentAsset(parsed)) return;
       const source = settingsRef.current;
       const currentViewport = resolveActiveViewport(source);
-      const nextViewport = desktopMobileMode ? viewport ?? (id === focused?.id ? currentViewport : "desktop") : "desktop";
-      const sameThumb =
-        id === focused?.id && (viewport == null || nextViewport === currentViewport);
+      const nextViewport =
+        !desktopMobileMode ? "desktop" : viewport ?? (id === focused?.id ? currentViewport : "desktop");
+      const sameThumb = id === focused?.id && nextViewport === currentViewport;
       if (sameThumb) {
-        persist({
-          ...stashActiveCrop(source, focused.id),
-          activeAssetId: undefined,
-          activeViewport: undefined,
-        });
+        setEditorOpen((open) => !open);
         return;
       }
+      setEditorOpen(true);
       const sameAsset = id === focused?.id;
       const stashed = stashActiveCrop(source, focused?.id);
       const crop = viewportCrop(savedAssetById(stashed, id), nextViewport);
-      const storedAlt = savedAssetById(stashed, id)?.alt;
+      const savedRow = savedAssetById(stashed, id);
+      const separateMobile = Boolean(savedRow?.differentMobileAsset && savedRow.mobile?.id);
+      const storedAlt =
+        nextViewport === "mobile" && separateMobile
+          ? savedRow?.mobile?.alt
+          : savedRow?.alt;
+      const fallbackAlt = nextViewport === "mobile" && separateMobile ? "" : parsed.alt ?? "";
       persist({
         ...stashed,
         activeAssetId: id,
         activeViewport: nextViewport === "mobile" ? "mobile" : undefined,
-        alt: sameAsset
-          ? (typeof stashed.alt === "string" ? stashed.alt : storedAlt ?? parsed.alt ?? "")
-          : (typeof storedAlt === "string" ? storedAlt : parsed.alt ?? ""),
+        alt: typeof storedAlt === "string" ? storedAlt : fallbackAlt,
         focalPoint: crop?.focalPoint ?? { x: 0.5, y: 0.5 },
         transform: sameAsset
           ? (crop?.transform ?? source.transform)
@@ -375,6 +611,16 @@ export default function CustomField() {
     },
     [assets, cropConfig, desktopMobileMode, focused?.id, persist]
   );
+
+  const onCloseEditor = useCallback(() => {
+    const source = settingsRef.current;
+    persist({
+      ...stashActiveCrop(source, source.activeAssetId),
+      activeAssetId: undefined,
+      activeViewport: undefined,
+    });
+    setEditorOpen(false);
+  }, [persist]);
 
   const onMatchDesktopCrop = useCallback(() => {
     if (!focused) return;
@@ -395,6 +641,175 @@ export default function CustomField() {
       transform: applyCropConfig(desktop?.transform ?? source.transform, cropConfig, "locks", "mobile"),
     });
   }, [cropConfig, focused, persist]);
+
+  const requestMobilePick = (id: string) => {
+    setMobilePickRequest({ id, nonce: Date.now() });
+  };
+
+  const onRemoveMobileAsset = useCallback(
+    (id: string) => {
+      const source = settingsRef.current;
+      const stashed = stashActiveCrop(source, source.activeAssetId);
+      const current = savedAssetById(stashed, id);
+      if (current?.mobile?.id) heldMobile.current.set(id, current.mobile);
+      const nextAssets = (stashed.assets ?? []).map((asset) => {
+        if (asset.id !== id) return asset;
+        const cleared = withoutMobileCrop(asset);
+        return (cleared ?? asset) as SavedBynderAsset;
+      });
+      const desktop = savedAssetById({ assets: nextAssets }, id);
+      const viewingRow = source.activeAssetId === id;
+      persist({
+        ...stashed,
+        assets: nextAssets,
+        activeViewport: viewingRow ? "desktop" : source.activeViewport,
+        focalPoint: viewingRow ? desktop?.focalPoint ?? source.focalPoint : source.focalPoint,
+        transform: viewingRow ? desktop?.transform ?? source.transform : source.transform,
+      });
+    },
+    [persist]
+  );
+
+  const onDifferentAssetChange = (useDifferent: boolean) => {
+    if (!focused || isVideoAsset(focused) || isDocumentAsset(focused)) return;
+    const source = settingsRef.current;
+    const stashed = stashActiveCrop(source, focused.id);
+    const current = savedAssetById(stashed, focused.id);
+    const desktopCrop = {
+      focalPoint: current?.focalPoint ?? source.focalPoint,
+      transform: current?.transform ?? source.transform,
+    };
+    if (useDifferent) heldSameCrop.current.set(focused.id, desktopCrop);
+    if (!useDifferent && current?.mobile?.id) {
+      heldMobile.current.set(focused.id, current.mobile);
+    }
+    const remembered = useDifferent ? heldMobile.current.get(focused.id) : undefined;
+    const sameCrop = heldSameCrop.current.get(focused.id) ?? desktopCrop;
+    const nextAssets = (stashed.assets ?? []).map((asset) => {
+      if (asset.id !== focused.id) return asset;
+      if (!useDifferent) {
+        const cleared = withoutMobileCrop(asset);
+        const restored = sameCrop;
+        return {
+          ...(cleared ?? asset),
+          focalPoint: restored.focalPoint,
+          transform: restored.transform,
+        } as SavedBynderAsset;
+      }
+      if (remembered?.id) {
+        return { ...asset, differentMobileAsset: true as const, mobile: remembered };
+      }
+      const { mobile: _mobile, ...rest } = asset;
+      return { ...rest, focalPoint: desktopCrop.focalPoint, transform: desktopCrop.transform, differentMobileAsset: true as const };
+    });
+    const clearedTransform = {
+      ...source.transform,
+      width: null,
+      height: null,
+      aspect: null,
+    };
+    persist({
+      ...stashed,
+      assets: nextAssets,
+      activeViewport: useDifferent ? "mobile" : "desktop",
+      focalPoint: useDifferent
+        ? remembered?.id
+          ? remembered.focalPoint
+          : { x: 0.5, y: 0.5 }
+        : sameCrop.focalPoint,
+      transform: useDifferent
+        ? remembered?.id
+          ? remembered.transform
+          : clearedTransform
+        : sameCrop.transform,
+    });
+    setEditorOpen(true);
+  };
+
+  const onReplaceDesktop = useCallback(
+    (rowId: string, rawAssets: unknown[], additionalInfo?: unknown) => {
+      const incoming = normalizeCompactAssets(rawAssets, additionalInfo, persistKeys);
+      const parsed = parseBynderAssets(incoming)[0];
+      const saved = asSavedAssets(slimPersistedAssets(incoming, persistKeys, { omitWebImage: persistPolicy.omitWebImage }))?.[0];
+      if (!parsed || !saved) return;
+      const source = settingsRef.current;
+      const stashed = stashActiveCrop(source, rowId);
+      const seeded = seedAssetCrop(cropConfig, assetPixelSize(rawAssets[0], additionalInfo));
+      const nextAssets = (stashed.assets ?? []).map((asset) => {
+        if (asset.id !== rowId) return asset;
+        const { dat: _dat, ...kept } = asset;
+        return {
+          ...kept,
+          id: saved.id,
+          name: saved.name,
+          type: saved.type,
+          transformBaseUrl: saved.transformBaseUrl,
+          webImage: saved.webImage,
+          focalPoint: seeded.focalPoint,
+          transform: seeded.transform,
+          mobile: asset.mobile,
+          differentMobileAsset: asset.differentMobileAsset,
+        };
+      });
+      const selectable = !isDocumentAsset(parsed);
+      const wasFocused = source.activeAssetId === rowId || source.activeAssetId === saved.id;
+      setAssets((current) => current.map((item) => (item.id === rowId ? parsed : item)));
+      persist({
+        ...stashed,
+        assets: nextAssets,
+        activeAssetId: selectable ? saved.id : wasFocused ? undefined : source.activeAssetId,
+        ...(selectable
+          ? { activeViewport: "desktop" as const, focalPoint: seeded.focalPoint, transform: seeded.transform }
+          : wasFocused
+            ? { activeViewport: undefined }
+            : {}),
+      });
+      if (selectable) setEditorOpen(true);
+      else if (wasFocused) setEditorOpen(false);
+    },
+    [cropConfig, persist, persistKeys, persistPolicy.omitWebImage]
+  );
+
+  const onSelectMobile = useCallback(
+    (rowId: string, rawAssets: unknown[], additionalInfo?: unknown) => {
+      const incoming = normalizeCompactAssets(rawAssets, additionalInfo, persistKeys);
+      const parsed = parseBynderAssets(incoming)[0];
+      const saved = asSavedAssets(slimPersistedAssets(incoming, persistKeys, { omitWebImage: persistPolicy.omitWebImage }))?.[0];
+      if (!parsed || !saved) return;
+      const source = settingsRef.current;
+      const stashed = stashActiveCrop(source, rowId);
+      const seeded = seedAssetCrop(cropConfig, assetPixelSize(rawAssets[0], additionalInfo));
+      const nextAssets = (stashed.assets ?? []).map((asset) => {
+        if (asset.id !== rowId) return asset;
+        return {
+          ...asset,
+          differentMobileAsset: true as const,
+          mobile: {
+            focalPoint: seeded.focalPoint,
+            transform: seeded.mobile?.transform ?? seeded.transform,
+            id: saved.id,
+            name: saved.name,
+            type: saved.type,
+            transformBaseUrl: saved.transformBaseUrl,
+            webImage: saved.transformBaseUrl ? undefined : saved.webImage,
+            alt: parsed.alt ?? "",
+          },
+        };
+      });
+      const mobile = nextAssets.find((asset) => asset.id === rowId)?.mobile;
+      persist({
+        ...stashed,
+        assets: nextAssets,
+        activeAssetId: rowId,
+        activeViewport: "mobile",
+        focalPoint: mobile?.focalPoint ?? { x: 0.5, y: 0.5 },
+        transform: mobile?.transform ?? source.transform,
+        alt: mobile?.alt ?? "",
+      });
+      setEditorOpen(true);
+    },
+    [cropConfig, persist, persistKeys, persistPolicy.omitWebImage]
+  );
 
   const onCompactReorder = useCallback(
     (ids: string[]) => {
@@ -425,8 +840,16 @@ export default function CustomField() {
       );
       saved.assets = applyCropConfigToAssets(saved.assets, cropConfig, isNew ? "defaults" : "locks");
       const originalAssets = saved.assets;
-      const slimmed = slimPersistedAssets(saved.assets, persistKeys);
-      if (slimmed) saved.assets = asSavedAssets(slimmed);
+      const authorProperties = additionalFields.fields.map((field) => field.property);
+      const slimmed = slimPersistedAssets(saved.assets, persistKeys, {
+        omitWebImage: persistPolicy.omitWebImage,
+        additionalProperties: authorProperties,
+      });
+      if (slimmed) {
+        saved.assets = asSavedAssets(slimmed, authorProperties)?.map((asset) =>
+          applyAuthorFields(asset, additionalFields.fields)
+        );
+      }
       const prepared = desktopMobileMode ? saved : withoutDesktopMobile(saved);
       const serialized = safeJsonStringify(persistedPayload(prepared));
       const assetsNeedRewrite =
@@ -448,7 +871,7 @@ export default function CustomField() {
       hydrated.current = true;
       setAssetReady(true);
     }
-  }, [customField, cropConfig, desktopMobileMode, persistKeys]);
+  }, [additionalFields.fields, customField, cropConfig, desktopMobileMode, persistKeys, persistPolicy.omitWebImage]);
 
   useEffect(() => {
     if (!assetReady || !customField?.field) return undefined;
@@ -472,31 +895,23 @@ export default function CustomField() {
   }, [assetReady, customField, settings]);
 
   const panel = focused ?? panelAsset;
+  const showCropChrome = Boolean(panel) && !isDocumentAsset(focused ?? panel);
   const hasDatUrl = Boolean(panel?.transformBaseUrl);
-  const datMissing = Boolean(focused && configAllowsDat && !hasDatUrl);
   const datActive = Boolean(configAllowsDat && hasDatUrl);
   const previewSrc = panel?.sourceUrl;
-  const activeDatUrl = datActive
-    ? cropSliceForAsset(settings, panel?.id, activeViewport, settings.transform).url
-    : undefined;
-
-  useEffect(() => {
-    if (!datActive) {
-      setPreviewUpdating(false);
-      setPreviewUrl(undefined);
-      return undefined;
-    }
-    if (activeDatUrl === previewUrl) {
-      setPreviewUpdating(false);
-      return undefined;
-    }
-    setPreviewUpdating(true);
-    const timer = window.setTimeout(() => {
-      setPreviewUrl(activeDatUrl);
-      setPreviewUpdating(false);
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [datActive, activeDatUrl, previewUrl]);
+  const mobileAssetPreview =
+    activeViewport === "mobile" && focusedSaved?.mobile?.id
+      ? focusedSaved.mobile.webImage?.url ?? focusedSaved.mobile.transformBaseUrl
+      : undefined;
+  const editorSrc = mobileAssetPreview || previewSrc;
+  const activeSlice = cropSliceForAsset(settings, panel?.id, activeViewport, settings.transform);
+  const activeBase =
+    activeViewport === "mobile" && focusedSaved?.mobile?.transformBaseUrl
+      ? focusedSaved.mobile.transformBaseUrl
+      : panel?.transformBaseUrl;
+  const activeDatUrl =
+    datActive && activeBase ? joinDatUrl(activeBase, datQueriesForSlice(activeSlice)["2x"]) : undefined;
+  const copyUrl = activeDatUrl || editorSrc || previewSrc || "";
 
   const onFocalChange = (focalPoint: FocalPoint) => {
     persist(
@@ -516,10 +931,49 @@ export default function CustomField() {
     onFocalChange({ ...settings.focalPoint, [axis]: n / 100 });
   };
 
+  const patchFocusedAsset = (update: (asset: SavedBynderAsset) => SavedBynderAsset) => {
+    if (!focused?.id) return;
+    const assets = (settings.assets ?? []).map((asset) => (asset.id === focused.id ? update(asset) : asset));
+    persist({ ...settings, assets });
+  };
+
+  const patchAdditional = (property: string, value: string | number | boolean | undefined) => {
+    patchFocusedAsset((asset) => {
+      const current = { ...(asset.additional ?? {}) };
+      if (value === undefined || value === "") delete current[property];
+      else current[property] = value;
+      const next = { ...asset };
+      if (Object.keys(current).length) next.additional = current;
+      else delete next.additional;
+      return next;
+    });
+  };
+
+  const patchVideo = (key: keyof VideoPlayback, value: boolean) => {
+    if (!focusedIsVideo) return;
+    patchFocusedAsset((asset) => ({
+      ...asset,
+      video: { ...(asset.video ?? videoDefaults), [key]: value },
+    }));
+  };
+
+  const playback = focusedSaved?.video ?? videoDefaults;
+
   if (!customField) {
     return (
       <div className="bynder-settings" ref={shellRef}>
         <p className="notice">This view only works as a Custom Field location.</p>
+      </div>
+    );
+  }
+
+  if (additionalFields.error) {
+    return (
+      <div className="bynder-settings" ref={shellRef}>
+        <div className="notice-card error" role="alert">
+          <h3>Invalid field config</h3>
+          <p>{additionalFields.error}</p>
+        </div>
       </div>
     );
   }
@@ -557,7 +1011,7 @@ export default function CustomField() {
     <div className="bynder-settings" ref={shellRef}>
       <header className="header">
         <div>
-          <h2>Bynder image settings</h2>
+          <h2>Bynder Asset Settings</h2>
           <p>
             {focused?.name
               ? `${focused.name}${assets.length > 1 ? ` · ${assets.length} assets` : ""}`
@@ -578,36 +1032,173 @@ export default function CustomField() {
         onFocus={onFocusAsset}
         onSelect={onCompactSelect}
         onRemove={onCompactRemove}
+        onRemoveMobile={onRemoveMobileAsset}
         onReorder={onCompactReorder}
         desktopMobileMode={desktopMobileMode}
+        separateMobileIds={settings.assets?.filter((asset) => asset.differentMobileAsset).map((asset) => asset.id)}
+        linkedIds={settings.assets
+          ?.filter((asset) => {
+            if (asset.differentMobileAsset || asset.mobile?.id) return false;
+            if (!asset.mobile) return true;
+            return viewportCropsEqual(asset, asset.mobile);
+          })
+          .map((asset) => asset.id)}
+        emptyMobileIds={settings.assets
+          ?.filter((asset) => asset.differentMobileAsset && !asset.mobile?.id)
+          .map((asset) => asset.id)}
+        mobilePickRequest={mobilePickRequest}
+        desktopPickRequest={desktopPickRequest}
+        onSelectMobile={onSelectMobile}
+        onReplaceDesktop={onReplaceDesktop}
+        mobileFiles={Object.fromEntries(
+          (settings.assets ?? [])
+            .filter((asset) => asset.differentMobileAsset && asset.mobile?.id)
+            .map((asset) => [
+              asset.id,
+              {
+                id: asset.mobile!.id!,
+                name: asset.mobile!.name,
+                type: asset.mobile!.type,
+                sourceUrl: asset.mobile!.webImage?.url || asset.mobile!.transformBaseUrl,
+              },
+            ])
+        )}
       />
 
-      <div
-        className={`crop-editor-collapse${focused ? " is-open" : ""}`}
-        aria-hidden={!focused}
-      >
+      {showCropChrome ? (
+      <div className={`crop-editor-collapse${focused && !focusedIsDocument ? " is-open" : ""}`} aria-hidden={!focused || focusedIsDocument}>
         <div className="crop-editor-collapse-inner">
-      {previewSrc ? (
-        <div className="crop-editor-frame">
-          {datMissing ? (
-            <div className="notice-card warning">
-              <h3>DAT is unavailable for this image</h3>
-              <p>
-                DAT is enabled in config, but this Bynder payload has no <code>transformBaseUrl</code>.
-                Using CSS crop and focal point until then.
-              </p>
-            </div>
-          ) : null}
+          {previewSrc ? (
+            <div className="crop-editor-frame">
+              <div className="crop-editor-bar">
+                <button
+                  type="button"
+                  className="crop-editor-toggle"
+                  aria-expanded={editorOpen}
+                  aria-controls="crop-editor-body"
+                  onClick={() => setEditorOpen((open) => !open)}
+                >
+                  <ChevronIcon open={editorOpen} />
+                  <span className="crop-editor-toggle-label">
+                    {focusedIsVideo ? "Video settings" : "Edit Crop & Focal Point"}
+                    {focused ? (
+                      <span className="crop-editor-asset">
+                        {activeViewport === "mobile" && focusedSaved?.mobile?.id
+                          ? focusedSaved.mobile.name || focusedSaved.mobile.id
+                          : focused.name ?? focused.id}
+                      </span>
+                    ) : null}
+                    {focusedIsVideo ? (
+                      <span className="dat-badge is-video" title="Bynder video asset">
+                        Video
+                      </span>
+                    ) : hasDatUrl ? (
+                      <span className="dat-badge" title="This Bynder asset has a DAT transform URL">
+                        DAT capable
+                      </span>
+                    ) : (
+                      <span className="dat-badge is-missing" title="This Bynder asset has no DAT transform URL">
+                        Not DAT capable
+                      </span>
+                    )}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="crop-editor-close"
+                  aria-label={focusedIsVideo ? "Close video settings" : "Close crop editor"}
+                  title={focusedIsVideo ? "Close video settings" : "Close crop editor"}
+                  onClick={onCloseEditor}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
 
-          {desktopMobileMode ? (
+              <div
+                id="crop-editor-body"
+                className={`crop-editor-body${editorOpen ? " is-open" : ""}`}
+                aria-hidden={!editorOpen}
+              >
+                <div className="crop-editor-body-inner">
+          {focusedIsVideo ? (
+            <div className="video-settings">
+              {playbackOptions.length ? (
+              <fieldset className="video-options">
+                <legend>Playback</legend>
+                {playbackOptions.map(([key, label]) => (
+                  <label key={key} className="video-option">
+                    <input
+                      type="checkbox"
+                      checked={playback[key]}
+                      onChange={(event) => patchVideo(key, event.target.checked)}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </fieldset>
+              ) : null}
+              <AdditionalFields fields={additionalFields.fields} values={authorValues(focusedSaved)} onChange={patchAdditional} />
+              <section className="video-crop">
+                <h4>Edit Crop</h4>
+                <div className="video-dat-note">
+                  <p>
+                    DAT transforms such as cropping or resizing via URL parameters are unavailable for video assets. They can only be applied to image assets.
+                  </p>
+                  <p>
+                    If you need to crop or modify this video, you must prepare it within Bynder first using one
+                    of the following methods:{" "}
+                    <a
+                      href="https://support.bynder.com/hc/en-us/articles/14540950050322-How-To-Use-And-Manage-Videos-In-Studio"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Bynder Studio
+                    </a>
+                    ,{" "}
+                    <a
+                      href="https://support.bynder.com/hc/en-us/articles/16130743711890-Create-Video-Derivatives"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Custom Video Derivatives
+                    </a>
+                    , or{" "}
+                    <a
+                      href="https://support.bynder.com/hc/en-us/articles/360013870380-Trim-Videos-in-the-Asset-Bank"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Clip Video Tool
+                    </a>
+                    .
+                  </p>
+                </div>
+              </section>
+            </div>
+          ) : (
+            <>
+          {desktopMobileMode && !focusedIsVideo ? (
           <div className="viewport-toolbar">
-            <div className="viewport-tabs" role="tablist" aria-label="Crop viewport">
+            <div
+              className={
+                focusedSaved?.differentMobileAsset ? "viewport-tabs is-split" : "viewport-tabs"
+              }
+              role="tablist"
+              aria-label="Crop viewport"
+            >
               <button
                 type="button"
                 role="tab"
                 aria-selected={activeViewport === "desktop"}
                 className={activeViewport === "desktop" ? "is-active" : ""}
-                onClick={() => focused && onFocusAsset(focused.id, "desktop")}
+                onClick={() => {
+                  if (!focused) return;
+                  if (activeViewport === "desktop") {
+                    setEditorOpen(true);
+                    return;
+                  }
+                  onFocusAsset(focused.id, "desktop");
+                }}
               >
                 Desktop
               </button>
@@ -616,8 +1207,16 @@ export default function CustomField() {
                 role="tab"
                 aria-selected={activeViewport === "mobile"}
                 className={activeViewport === "mobile" ? "is-active" : ""}
-                onClick={() => focused && onFocusAsset(focused.id, "mobile")}
+                onClick={() => {
+                  if (!focused) return;
+                  if (activeViewport === "mobile") {
+                    setEditorOpen(true);
+                    return;
+                  }
+                  onFocusAsset(focused.id, "mobile");
+                }}
               >
+                {!focusedSaved?.differentMobileAsset ? (
                 <span
                   className={mobileDiverged ? "viewport-link-icon is-broken" : "viewport-link-icon"}
                   title={mobileDiverged ? "Mobile does not match desktop" : "Mobile matches desktop"}
@@ -625,31 +1224,107 @@ export default function CustomField() {
                 >
                   {mobileDiverged ? <UnlinkIcon /> : <LinkIcon />}
                 </span>
+                ) : null}
                 Mobile
               </button>
             </div>
-            <p className="viewport-hint">
-              {mobileDiverged ? (
-                <>
-                  <strong>Mobile does not match desktop.</strong>{" "}
-                  <button type="button" className="linkish viewport-match" onClick={onMatchDesktopCrop}>
-                    Revert mobile to match desktop
-                  </button>
-                </>
-              ) : (
-                <>
-                  <strong>Mobile matches desktop</strong> unless you edit it on the Mobile tab.
-                </>
-              )}
-            </p>
+            {!focusedIsVideo && !focusedIsDocument ? (
+              <label className="asset-switch">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={Boolean(focusedSaved?.differentMobileAsset)}
+                  onChange={(event) => onDifferentAssetChange(event.target.checked)}
+                  aria-label="Use a different asset for mobile"
+                />
+                <span>Use a different asset for mobile</span>
+              </label>
+            ) : null}
           </div>
           ) : null}
 
           <div className="editor-row">
             <aside className="editor-fields">
+              <div className="crop-fields-card">
+                {desktopMobileMode && !focusedSaved?.differentMobileAsset ? (
+                  <div className="crop-fields-card-header">
+                    <p className="crop-fields-card-kicker">Mobile &amp; desktop crops are currently:</p>
+                    <p className="crop-fields-card-status">
+                      {mobileDiverged ? (
+                        <>
+                          <strong>DIFFERENT</strong>{" "}
+                          <button type="button" className="crop-fields-card-cta" onClick={onMatchDesktopCrop}>
+                            (revert to match)
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <strong>MATCHING</strong>{" "}
+                          <span className="crop-fields-card-aside">(and linked)</span>
+                        </>
+                      )}
+                      <InfoTooltip>
+                        {mobileDiverged
+                          ? "Click “revert to match” to copy the desktop crop onto mobile and link them again."
+                          : "Mobile matches desktop by default unless you edit it on the Mobile tab. Desktop edits update mobile immediately."}
+                      </InfoTooltip>
+                    </p>
+                  </div>
+                ) : null}
+                <div className="crop-fields-card-body">
               <div className="field-group">
                 <div className="panel-title">
-                  <span className="panel-title-label">Crop &amp; focal point</span>
+                  <span className="panel-title-label">{datActive ? "Transforms" : "Crop frame"}</span>
+                  <InfoTooltip>
+                    {datActive ? (
+                      <>
+                        These are CSS layout pixels, not the original file size. A layout width of 1200 is
+                        delivered to Bynder at 2400 (2×) for a single image URL, and the saved field also
+                        includes 1× and 2× URLs for srcset. The focal point decides which part of the photo
+                        is kept when the image is cropped.
+                      </>
+                    ) : (
+                      <>
+                        These are CSS layout pixels for the crop box on your site. The focal point decides
+                        which part of the photo is kept.
+                      </>
+                    )}
+                  </InfoTooltip>
+                </div>
+                <TransformForm
+                  value={editorTransform}
+                  datEnabled={datActive}
+                  aspectPresets={cropConfig.aspectPresets}
+                  datPresets={compact.datPresets}
+                  hideFormat={cropConfig.hideFormat}
+                  showOperation={cropConfig.showOperation}
+                  showAspect={cropConfig.showAspect}
+                  showWidth={cropConfig.showWidth}
+                  showHeight={cropConfig.showHeight}
+                  scaleMode={scaleMode}
+                  showQuality={cropConfig.showQuality}
+                  showAdvancedQuery={cropConfig.showAdvancedQuery}
+                  showDatPreset={cropConfig.showDatPreset}
+                  locks={{
+                    aspect: viewportLocks.lockAspect,
+                    width: viewportLocks.lockWidth,
+                    height: viewportLocks.lockHeight,
+                    format: cropConfig.lockFormat,
+                  }}
+                  ratioScope={`${focused?.id ?? ""}:${activeViewport}`}
+                  onChange={(transform) =>
+                    persist(
+                      stashActiveCrop(
+                        { ...settings, transform: coerceTransformForScaleMode(transform, scaleMode) },
+                        focused?.id
+                      )
+                    )
+                  }
+                />
+              </div>
+              <div className="field-group">
+                <div className="panel-title">
+                  <span className="panel-title-label">Edit Crop &amp; Focal Point</span>
                   <InfoTooltip>
                     Drag the red dot, or click the image, to choose what stays in view when the image is
                     cropped. With more than one asset, this applies only to the highlighted thumbnail.
@@ -682,52 +1357,24 @@ export default function CustomField() {
                   className="linkish"
                   onClick={() => onFocalChange({ x: 0.5, y: 0.5 })}
                 >
-                  Reset center
+                  <span>Reset center</span>
                 </button>
               </div>
-              <div className="field-group">
-                <div className="panel-title">
-                  <span className="panel-title-label">{datActive ? "Transforms" : "Crop frame"}</span>
-                  <InfoTooltip>
-                    {datActive ? (
-                      <>
-                        Width and Height define the output box Bynder generates. When the image is cropped to
-                        that box, the focal point decides which part of the photo is kept.
-                      </>
-                    ) : (
-                      <>
-                        Width and Height define the crop box your site should use. When the image is cropped to
-                        that box, the focal point decides which part of the photo is kept.
-                      </>
-                    )}
-                  </InfoTooltip>
                 </div>
-                <TransformForm
-                  value={settings.transform}
-                  datEnabled={datActive}
-                  aspectPresets={cropConfig.aspectPresets}
-                  datPresets={compact.datPresets}
-                  hideFormat={cropConfig.hideFormat}
-                  showOperation={cropConfig.showOperation}
-                  showAspect={cropConfig.showAspect}
-                  showQuality={cropConfig.showQuality}
-                  showAdvancedQuery={cropConfig.showAdvancedQuery}
-                  showDatPreset={cropConfig.showDatPreset}
-                  locks={{
-                    aspect: viewportLocks.lockAspect,
-                    width: viewportLocks.lockWidth,
-                    height: viewportLocks.lockHeight,
-                    format: cropConfig.lockFormat,
-                  }}
-                  onChange={(transform) => persist(stashActiveCrop({ ...settings, transform }, focused?.id))}
-                />
               </div>
               <div className="field-group">
                 <div className="panel-title">
-                  <span className="panel-title-label">Alt text</span>
+                  <span className="panel-title-label">
+                    {focusedSaved?.differentMobileAsset && focusedSaved.mobile?.id && activeViewport === "mobile"
+                      ? "Mobile alt text"
+                      : "Alt text"}
+                  </span>
                   <InfoTooltip>
-                    Prefills from Bynder metadata in this order: alt_text, alttext, alt, then description. You
-                    can overwrite it for this entry.
+                    {focusedSaved?.differentMobileAsset && focusedSaved.mobile?.id
+                      ? activeViewport === "mobile"
+                        ? "Alt text for the mobile image only. Prefills from that asset’s Bynder metadata."
+                        : "Alt text for the desktop image. The mobile image has its own alt text on the Mobile tab."
+                      : "Prefills from Bynder metadata in this order: alt_text, alttext, alt, then description. You can overwrite it for this entry."}
                   </InfoTooltip>
                 </div>
                 <textarea
@@ -741,40 +1388,73 @@ export default function CustomField() {
                   }
                 />
               </div>
+              <AdditionalFields fields={additionalFields.fields} values={authorValues(focusedSaved)} onChange={patchAdditional} />
             </aside>
             <section className="editor-preview">
+              {focusedSaved?.differentMobileAsset && activeViewport === "mobile" && !focusedSaved.mobile?.id ? (
+                <button type="button" className="mobile-asset-cta" onClick={() => focused && requestMobilePick(focused.id)}>
+                  <span className="mobile-asset-cta-icon" aria-hidden>
+                    +
+                  </span>
+                  Select a mobile asset
+                </button>
+              ) : (
+              <>
               <CropFocalEditor
-                key={`${panel?.id ?? ""}:${activeViewport}:${previewSrc}`}
-                src={previewSrc}
+                key={`${panel?.id ?? ""}:${activeViewport}:${editorSrc}`}
+                src={editorSrc ?? previewSrc}
                 alt={panel?.name}
                 focalPoint={settings.focalPoint}
-                transform={settings.transform}
+                transform={editorTransform}
                 onChange={onFocalChange}
               />
+              {focused ? (
+                <div className="editor-asset-actions">
+                  <AssetToolbar
+                    previewUrl={copyUrl || editorSrc || previewSrc}
+                    copyUrl={copyUrl}
+                    bynderUrl={bynderMediaUrl(
+                      compact.portalUrl,
+                      activeViewport === "mobile" && focusedSaved?.mobile?.id
+                        ? { id: focusedSaved.mobile.id }
+                        : focused
+                    )}
+                    changeLabel={activeViewport === "mobile" ? "Change mobile asset" : "Change desktop asset"}
+                    removeLabel={
+                      activeViewport === "mobile" && focusedSaved?.differentMobileAsset
+                        ? "Remove mobile asset"
+                        : "Remove"
+                    }
+                    onChange={() => {
+                      if (activeViewport === "mobile") requestMobilePick(focused.id);
+                      else setDesktopPickRequest({ id: focused.id, nonce: Date.now() });
+                    }}
+                    onRemove={() => {
+                      if (activeViewport === "mobile" && focusedSaved?.differentMobileAsset) onRemoveMobileAsset(focused.id);
+                      else onCompactRemove(focused.id);
+                    }}
+                  />
+                </div>
+              ) : null}
+              </>
+              )}
             </section>
           </div>
 
-          {datActive && previewUrl ? (
-            <div className="dat-preview-actions">
-              <button type="button" className="linkish" onClick={() => openTransformedPreview(previewUrl)}>
-                View transformed image
-              </button>
-              {previewUpdating ? <span className="dat-preview-status">Updating…</span> : null}
-              <button
-                type="button"
-                className="linkish"
-                onClick={() => {
-                  void navigator.clipboard.writeText(previewUrl).catch(() => undefined);
-                }}
-              >
-                Copy DAT URL
-              </button>
-            </div>
+          {!hasDatUrl ? (
+            <p className="dat-error" role="status">
+              This image is not DAT capable. CSS cropping will be needed.
+            </p>
           ) : null}
+            </>
+          )}
+                </div>
+              </div>
         </div>
       ) : null}
         </div>
       </div>
+      ) : null}
     </div>
   );
 }
