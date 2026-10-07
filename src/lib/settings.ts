@@ -21,7 +21,7 @@ import {
   viewportCropsEqual,
 } from "./viewportCrop";
 
-const OPERATIONS: DatOperation[] = ["fill", "fit", "crop"];
+const OPERATIONS: DatOperation[] = ["fill", "fit", "crop", "scale"];
 const FORMATS: DatFormat[] = ["webp", "avif", "jpg", "png"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -52,13 +52,22 @@ function asFocalPoint(value: unknown): FocalPoint {
   });
 }
 
+function asZoom(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 1) return null;
+  return Math.min(3, Math.round(n * 100) / 100);
+}
+
 function asTransform(value: unknown): TransformSettings {
   const transformRaw = isRecord(value) ? value : {};
+  const zoom = asZoom(transformRaw.zoom);
   return {
     operation: asOperation(transformRaw.operation),
     width: asOptionalNumber(transformRaw.width) ?? DEFAULT_TRANSFORM.width,
     height: asOptionalNumber(transformRaw.height) ?? DEFAULT_TRANSFORM.height,
     aspect: typeof transformRaw.aspect === "string" ? transformRaw.aspect : DEFAULT_TRANSFORM.aspect,
+    ...(zoom != null ? { zoom } : {}),
     format: asFormat(transformRaw.format) ?? DEFAULT_TRANSFORM.format,
     quality: asOptionalNumber(transformRaw.quality) ?? DEFAULT_TRANSFORM.quality,
     extraQuery: typeof transformRaw.extraQuery === "string" ? transformRaw.extraQuery : "",

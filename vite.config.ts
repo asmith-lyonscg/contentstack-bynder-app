@@ -16,7 +16,7 @@ function resolveViteBase(): string {
   return "/";
 }
 
-/** Static hosts (Launch) have no SPA fallback; emit real HTML for each app route. */
+/** Static hosts (GitHub Pages) have no SPA fallback; emit real HTML for each app route. */
 function emitSpaShells(dist: string, index: string) {
   const routes = ["picker", "custom-field", "app-configuration"];
   for (const route of routes) {

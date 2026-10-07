@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { DatPresetSettings } from "../lib/types";
 import { ASPECT_PRESETS, DAT_FILE_TYPES, type DatFormat, type DatOperation, type TransformSettings } from "../lib/types";
 import { parseAspect, lockToAspect } from "../lib/bynder/composeDatUrl";
+import { clampZoom } from "../lib/bynder/coverLayout";
 import { applyProportionPin, type ProportionPin } from "../lib/proportionPin";
 import { InfoTooltip } from "./InfoTooltip";
 import "./TransformForm.css";
@@ -22,6 +23,11 @@ interface TransformFormProps {
   showAspect?: boolean;
   showWidth?: boolean;
   showHeight?: boolean;
+  /**
+   * When true (≥2 of width/height/aspect locked), options are Fill / Fit / Scale.
+   * When false, options are Fill / Fit / Crop — no zoom slider.
+   */
+  scaleMode?: boolean;
   showQuality?: boolean;
   showAdvancedQuery?: boolean;
   showDatPreset?: boolean;
@@ -30,10 +36,19 @@ interface TransformFormProps {
   ratioScope?: string;
 }
 
-const OPERATIONS: { value: DatOperation; label: string }[] = [
-  { value: "fill", label: "Fill (crop to box)" },
-  { value: "fit", label: "Fit (no crop; scale only)" },
-  { value: "crop", label: "Crop (region of the original)" },
+const FILL_FIT: { value: DatOperation; label: string }[] = [
+  { value: "fill", label: "Fill — cover the box" },
+  { value: "fit", label: "Fit — whole image in the box" },
+];
+
+const SCALE_OPERATIONS: { value: DatOperation; label: string }[] = [
+  ...FILL_FIT,
+  { value: "scale", label: "Scale — zoom into the box" },
+];
+
+const CROP_OPERATIONS: { value: DatOperation; label: string }[] = [
+  ...FILL_FIT,
+  { value: "crop", label: "Crop — portion of the image" },
 ];
 
 const FORMATS = DAT_FILE_TYPES;
@@ -268,12 +283,16 @@ export function TransformForm({
   showAspect = false,
   showWidth = true,
   showHeight = true,
+  scaleMode = false,
   showQuality = false,
   showAdvancedQuery = false,
   showDatPreset = false,
   datPresets,
   ratioScope,
 }: TransformFormProps) {
+  const zoom = clampZoom(value.zoom);
+  const operations = scaleMode ? SCALE_OPERATIONS : CROP_OPERATIONS;
+  const showZoom = scaleMode && value.operation === "scale";
   const presets = aspectPresets.length ? aspectPresets : ASPECT_PRESETS;
   const aspectIsPreset = Boolean(value.aspect && presets.includes(value.aspect));
   const [customAspect, setCustomAspect] = useState(false);
@@ -451,22 +470,55 @@ export function TransformForm({
           <span>
             Transform type
             <InfoTooltip>
-              Fill scales the image to Width and Height, then crops whatever does not fit. The focal point
-              chooses the part that stays. Fit scales the whole image inside the box and does not crop. Crop
-              takes a rectangle of that width and height out of the original file. Leave the focal point in
-              the center for the middle of the image, or move it to choose another region.
+              <strong>Fill</strong>, <strong>Fit</strong>, and{" "}
+              {scaleMode ? <strong>Scale</strong> : <strong>Crop</strong>} are mutually exclusive. Fill covers
+              the box and trims overflow. Fit shows the whole image (letterbox).{" "}
+              {scaleMode ? (
+                <>
+                  Scale covers the box like Fill, then the Zoom slider pulls in closer. Use the focal point to
+                  choose what stays.
+                </>
+              ) : (
+                <>
+                  Crop cuts a Width×Height portion out of the original file. Change width/height/aspect to
+                  choose how large that portion is.
+                </>
+              )}
             </InfoTooltip>
           </span>
           <select
             value={value.operation}
             onChange={(event) => patch({ operation: event.target.value as DatOperation })}
           >
-            {OPERATIONS.map((op) => (
+            {operations.map((op) => (
               <option key={op.value} value={op.value}>
                 {op.label}
               </option>
             ))}
           </select>
+        </label>
+      )}
+
+      {showZoom && (
+        <label className="field field-range">
+          <span>
+            Zoom {Math.round(zoom * 100)}%
+            <InfoTooltip>
+              Pull in closer on the fixed crop box. Move the focal point after zooming to choose what stays in
+              view.
+            </InfoTooltip>
+          </span>
+          <input
+            type="range"
+            min={100}
+            max={300}
+            step={5}
+            value={Math.round(zoom * 100)}
+            onChange={(event) => {
+              const next = clampZoom(Number(event.target.value) / 100);
+              patch({ zoom: next === 1 ? null : next });
+            }}
+          />
         </label>
       )}
 

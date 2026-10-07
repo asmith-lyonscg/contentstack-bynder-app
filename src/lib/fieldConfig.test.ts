@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { applyCropConfig, cropPreset, readFieldConfig, resolveBynderFieldUid, resolveBynderPortalUrl, resolveCompactViewConfig, resolveCropConfig, resolveEnableDat, resolveSiblingAsset, seedAssetCrop } from "./fieldConfig";
+import {
+  applyCropConfig,
+  authorUsesScaleMode,
+  coerceTransformForScaleMode,
+  cropPreset,
+  readFieldConfig,
+  resolveBynderFieldUid,
+  resolveBynderPortalUrl,
+  resolveCompactViewConfig,
+  resolveCropConfig,
+  resolveEnableDat,
+  resolveSiblingAsset,
+  seedAssetCrop,
+} from "./fieldConfig";
 
 describe("resolveBynderFieldUid", () => {
   it("prefers per-field config over app config", () => {
@@ -250,9 +263,9 @@ describe("resolveCropConfig", () => {
       lockFormat: false,
       hideFormat: true,
       showOperation: true,
-      showAspect: true,
-      showWidth: true,
-      showHeight: true,
+      showAspect: false,
+      showWidth: false,
+      showHeight: false,
       showQuality: false,
       showAdvancedQuery: false,
       showDatPreset: false,
@@ -296,10 +309,18 @@ describe("resolveCropConfig", () => {
       showAspect: true,
       showQuality: false,
     });
-    expect(resolveCropConfig({}, {})).toMatchObject({ showWidth: true, showHeight: true, showAspect: false });
-    expect(resolveCropConfig({ lockWidth: true }, {}).showAspect).toBe(true);
-    expect(resolveCropConfig({ lockHeight: { mobile: true } }, {}).showAspect).toBe(true);
-    expect(resolveCropConfig({ lockWidth: true, showFieldAspectRatio: false }, {}).showAspect).toBe(false);
+    expect(resolveCropConfig({}, {})).toMatchObject({
+      showWidth: false,
+      showHeight: false,
+      showAspect: false,
+      showOperation: true,
+    });
+    expect(resolveCropConfig({ lockWidth: true }, {}).showAspect).toBe(false);
+    expect(resolveCropConfig({ showFieldWidth: true, showFieldHeight: true }, {})).toMatchObject({
+      showWidth: true,
+      showHeight: true,
+      showAspect: false,
+    });
     expect(
       resolveCropConfig(
         { showFieldAspectRatio: true, showFieldWidth: false, showFieldHeight: false, showFieldOperation: false },
@@ -352,6 +373,39 @@ describe("resolveCropConfig", () => {
   });
 });
 
+describe("authorUsesScaleMode", () => {
+  it("uses Scale (not Crop) when at least two size controls are locked or hidden", () => {
+    expect(authorUsesScaleMode(resolveCropConfig({}, {}), "desktop")).toBe(true);
+    expect(
+      authorUsesScaleMode(
+        resolveCropConfig({ showFieldWidth: true, showFieldHeight: true, showFieldAspectRatio: true }, {}),
+        "desktop"
+      )
+    ).toBe(false);
+    expect(
+      authorUsesScaleMode(
+        resolveCropConfig(
+          { showFieldWidth: true, showFieldHeight: true, showFieldAspectRatio: true, lockWidth: true, lockHeight: true },
+          {}
+        ),
+        "desktop"
+      )
+    ).toBe(true);
+    expect(
+      authorUsesScaleMode(
+        resolveCropConfig({ showFieldWidth: true, showFieldHeight: true, showFieldAspectRatio: false }, {}),
+        "desktop"
+      )
+    ).toBe(false);
+    expect(coerceTransformForScaleMode({ operation: "crop", width: 800, height: 600 }, true).operation).toBe(
+      "scale"
+    );
+    expect(coerceTransformForScaleMode({ operation: "scale", width: 800, height: 600 }, false).operation).toBe(
+      "crop"
+    );
+  });
+});
+
 describe("applyCropConfig", () => {
   it("applies unlocked presets only in defaults mode", () => {
     const current = { operation: "fill" as const, width: 1200, height: 675, aspect: "16:9" };
@@ -364,7 +418,7 @@ describe("applyCropConfig", () => {
       lockFormat: false,
       hideFormat: false,
       showOperation: false,
-      showAspect: false,
+      showAspect: true,
       showWidth: true,
       showHeight: true,
       showQuality: false,
@@ -378,6 +432,56 @@ describe("applyCropConfig", () => {
       width: 600,
       height: 600,
     });
+  });
+
+  it("treats hidden size fields as locked and derives the third value from a preset pair", () => {
+    const current = { operation: "fill" as const, width: 1200, height: 675, aspect: "16:9" };
+    expect(
+      applyCropConfig(
+        current,
+        {
+          width: 800,
+          height: 600,
+          lockAspect: false,
+          lockWidth: false,
+          lockHeight: false,
+          lockFormat: false,
+          hideFormat: true,
+          showOperation: true,
+          showAspect: false,
+          showWidth: false,
+          showHeight: false,
+          showQuality: false,
+          showAdvancedQuery: false,
+          showDatPreset: false,
+          aspectPresets: ["16:9", "4:3"],
+        },
+        "locks"
+      )
+    ).toMatchObject({ width: 800, height: 600, aspect: "4:3" });
+    expect(
+      applyCropConfig(
+        current,
+        {
+          width: 900,
+          aspect: "16:9",
+          lockAspect: false,
+          lockWidth: false,
+          lockHeight: false,
+          lockFormat: false,
+          hideFormat: true,
+          showOperation: true,
+          showAspect: false,
+          showWidth: false,
+          showHeight: false,
+          showQuality: false,
+          showAdvancedQuery: false,
+          showDatPreset: false,
+          aspectPresets: ["16:9"],
+        },
+        "locks"
+      )
+    ).toMatchObject({ width: 900, height: 506, aspect: "16:9" });
   });
 
   it("applies DAT file type on new fields and forces it when hidden or locked", () => {

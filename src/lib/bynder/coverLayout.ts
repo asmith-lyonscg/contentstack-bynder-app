@@ -10,16 +10,22 @@ export interface CoverLayout {
   canPanY: boolean;
 }
 
+export function clampZoom(zoom: number | null | undefined): number {
+  if (zoom == null || !Number.isFinite(zoom)) return 1;
+  return Math.min(3, Math.max(1, Math.round(zoom * 100) / 100));
+}
+
 export function coverLayout(
   naturalW: number,
   naturalH: number,
   frameW: number,
-  frameH: number
+  frameH: number,
+  zoom = 1
 ): CoverLayout {
   if (!naturalW || !naturalH || !frameW || !frameH) {
     return { dispW: frameW, dispH: frameH, overflowX: 0, overflowY: 0, canPanX: false, canPanY: false };
   }
-  const scale = Math.max(frameW / naturalW, frameH / naturalH);
+  const scale = Math.max(frameW / naturalW, frameH / naturalH) * clampZoom(zoom);
   const dispW = naturalW * scale;
   const dispH = naturalH * scale;
   const overflowX = dispW - frameW;
@@ -39,12 +45,13 @@ export function containLayout(
   naturalW: number,
   naturalH: number,
   frameW: number,
-  frameH: number
+  frameH: number,
+  zoom = 1
 ): CoverLayout {
   if (!naturalW || !naturalH || !frameW || !frameH) {
     return { dispW: frameW, dispH: frameH, overflowX: 0, overflowY: 0, canPanX: false, canPanY: false };
   }
-  const scale = Math.min(frameW / naturalW, frameH / naturalH);
+  const scale = Math.min(frameW / naturalW, frameH / naturalH) * clampZoom(zoom);
   const dispW = naturalW * scale;
   const dispH = naturalH * scale;
   return {
@@ -67,12 +74,13 @@ export function cropWindowLayout(
   frameW: number,
   frameH: number,
   cropW: number,
-  cropH: number
+  cropH: number,
+  zoom = 1
 ): CoverLayout {
   if (!naturalW || !naturalH || !frameW || !frameH || !cropW || !cropH) {
-    return coverLayout(naturalW, naturalH, frameW, frameH);
+    return coverLayout(naturalW, naturalH, frameW, frameH, zoom);
   }
-  const scale = Math.min(frameW / cropW, frameH / cropH);
+  const scale = Math.min(frameW / cropW, frameH / cropH) * clampZoom(zoom);
   const dispW = naturalW * scale;
   const dispH = naturalH * scale;
   const overflowX = dispW - frameW;
@@ -94,13 +102,16 @@ export function frameLayout(
   frameW: number,
   frameH: number,
   cropW?: number | null,
-  cropH?: number | null
+  cropH?: number | null,
+  zoom = 1
 ): CoverLayout {
-  if (operation === "fit") return containLayout(naturalW, naturalH, frameW, frameH);
+  // Fit / Fill / Crop do not use zoom. Scale is cover + zoom (mutually exclusive with Fill).
+  if (operation === "fit") return containLayout(naturalW, naturalH, frameW, frameH, 1);
   if (operation === "crop" && cropW && cropH) {
-    return cropWindowLayout(naturalW, naturalH, frameW, frameH, cropW, cropH);
+    return cropWindowLayout(naturalW, naturalH, frameW, frameH, cropW, cropH, 1);
   }
-  return coverLayout(naturalW, naturalH, frameW, frameH);
+  if (operation === "scale") return coverLayout(naturalW, naturalH, frameW, frameH, zoom);
+  return coverLayout(naturalW, naturalH, frameW, frameH, 1);
 }
 
 export function offsetFromFocal(
@@ -131,7 +142,7 @@ function clampCropOffset(
   };
 }
 
-/** Fill slides the covered image. Fit stays centered. Crop keeps the focal point in the window. */
+/** Fill/Scale slide the covered image. Fit stays centered. Crop keeps the focal point in the window. */
 export function offsetForOperation(
   operation: DatOperation,
   focal: FocalPoint,

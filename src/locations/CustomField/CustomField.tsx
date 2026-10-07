@@ -23,7 +23,9 @@ import {
   applyCropConfig,
   applyCropConfigToAssetCrop,
   applyCropConfigToAssets,
-  cropPreset,
+  authorUsesScaleMode,
+  coerceTransformForScaleMode,
+  effectiveViewportLocks,
   readFieldConfig,
   resolveAdditionalFields,
   resolveCompactViewConfig,
@@ -338,7 +340,9 @@ export default function CustomField() {
     () => applyCropConfig(defaultTransform(), cropConfig, "defaults", "mobile"),
     [cropConfig]
   );
-  const viewportLocks = cropPreset(cropConfig, activeViewport);
+  const viewportLocks = effectiveViewportLocks(cropConfig, activeViewport);
+  const scaleMode = authorUsesScaleMode(cropConfig, activeViewport);
+  const editorTransform = coerceTransformForScaleMode(settings.transform, scaleMode);
   const thumbs = useMemo(() => {
     const next: Record<string, { desktop: ReturnType<typeof listThumbForAsset>; mobile: ReturnType<typeof listThumbForAsset> }> =
       {};
@@ -416,6 +420,13 @@ export default function CustomField() {
     setSettings(prepared);
     return prepared;
   }, [additionalFields.fields, configAllowsDat, cropConfig, desktopMobileMode, persistKeys, persistPolicy.omitWebImage]);
+
+  useEffect(() => {
+    if (editorTransform.operation === settings.transform.operation) return;
+    persist(stashActiveCrop({ ...settings, transform: editorTransform }, focused?.id));
+    // Only rewrite crop↔scale when the lock mode and stored op disagree.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- avoid looping on full settings
+  }, [scaleMode, editorTransform.operation, settings.transform.operation, focused?.id, persist]);
 
   const applyAssets = useCallback(
     (rawAssets: unknown[], nextFocusedId?: string, sizes?: Map<string, { width?: number; height?: number }>) => {
@@ -1281,7 +1292,7 @@ export default function CustomField() {
                   </InfoTooltip>
                 </div>
                 <TransformForm
-                  value={settings.transform}
+                  value={editorTransform}
                   datEnabled={datActive}
                   aspectPresets={cropConfig.aspectPresets}
                   datPresets={compact.datPresets}
@@ -1290,6 +1301,7 @@ export default function CustomField() {
                   showAspect={cropConfig.showAspect}
                   showWidth={cropConfig.showWidth}
                   showHeight={cropConfig.showHeight}
+                  scaleMode={scaleMode}
                   showQuality={cropConfig.showQuality}
                   showAdvancedQuery={cropConfig.showAdvancedQuery}
                   showDatPreset={cropConfig.showDatPreset}
@@ -1300,7 +1312,14 @@ export default function CustomField() {
                     format: cropConfig.lockFormat,
                   }}
                   ratioScope={`${focused?.id ?? ""}:${activeViewport}`}
-                  onChange={(transform) => persist(stashActiveCrop({ ...settings, transform }, focused?.id))}
+                  onChange={(transform) =>
+                    persist(
+                      stashActiveCrop(
+                        { ...settings, transform: coerceTransformForScaleMode(transform, scaleMode) },
+                        focused?.id
+                      )
+                    )
+                  }
                 />
               </div>
               <div className="field-group">
@@ -1386,7 +1405,7 @@ export default function CustomField() {
                 src={editorSrc ?? previewSrc}
                 alt={panel?.name}
                 focalPoint={settings.focalPoint}
-                transform={settings.transform}
+                transform={editorTransform}
                 onChange={onFocalChange}
               />
               {focused ? (

@@ -14,7 +14,7 @@ import type {
   ViewportKind,
 } from "./types";
 import { ASPECT_PRESETS, DEFAULT_FOCAL_POINT, DEFAULT_TRANSFORM } from "./types";
-import { lockToAspect, parseAspect, resolveDimensions } from "./bynder/composeDatUrl";
+import { lockToAspect } from "./bynder/composeDatUrl";
 import { parseBynderAsset } from "./bynder/parseAsset";
 import { stripMatchingMobile, viewportCropsEqual } from "./viewportCrop";
 
@@ -238,20 +238,6 @@ function pickHideFormat(value: unknown): boolean | undefined {
   return undefined;
 }
 
-function explicitShowChoice(
-  fieldConfig: unknown,
-  appConfig: unknown,
-  showKeys: string[],
-  hideKeys: string[]
-): boolean {
-  for (const source of [fieldConfig, appConfig]) {
-    for (const key of [...showKeys, ...hideKeys]) {
-      if (pickBool(source, key) !== undefined) return true;
-    }
-  }
-  return false;
-}
-
 function pickShowFlag(
   fieldConfig: unknown,
   appConfig: unknown,
@@ -316,12 +302,6 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
   const lockAspect = firstViewportPair(fieldConfig, appConfig, "lockAspect", desktopMobileMode, coerceBool);
   const lockWidth = firstViewportPair(fieldConfig, appConfig, "lockWidth", desktopMobileMode, coerceBool);
   const lockHeight = firstViewportPair(fieldConfig, appConfig, "lockHeight", desktopMobileMode, coerceBool);
-  const aspectShowKeys = ["showFieldAspectRatio", "showAspect"];
-  const aspectHideKeys = ["hideAspect"];
-  const dimensionLocked = Boolean(
-    lockWidth.desktop || lockHeight.desktop || lockWidth.mobile || lockHeight.mobile
-  );
-
   const config: CropFieldConfig = {
     aspect: aspect.desktop,
     width: width.desktop,
@@ -344,11 +324,15 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
       ["hideOperation"],
       true
     ),
-    showAspect: explicitShowChoice(fieldConfig, appConfig, aspectShowKeys, aspectHideKeys)
-      ? pickShowFlag(fieldConfig, appConfig, aspectShowKeys, aspectHideKeys, false)
-      : dimensionLocked,
-    showWidth: pickShowFlag(fieldConfig, appConfig, ["showFieldWidth", "showWidth"], ["hideWidth"], true),
-    showHeight: pickShowFlag(fieldConfig, appConfig, ["showFieldHeight", "showHeight"], ["hideHeight"], true),
+    showAspect: pickShowFlag(
+      fieldConfig,
+      appConfig,
+      ["showFieldAspectRatio", "showAspect"],
+      ["hideAspect"],
+      false
+    ),
+    showWidth: pickShowFlag(fieldConfig, appConfig, ["showFieldWidth", "showWidth"], ["hideWidth"], false),
+    showHeight: pickShowFlag(fieldConfig, appConfig, ["showFieldHeight", "showHeight"], ["hideHeight"], false),
     showQuality: pickShowFlag(fieldConfig, appConfig, ["showFieldQuality", "showQuality"], ["hideQuality"], false),
     showAdvancedQuery: pickShowFlag(
       fieldConfig,
@@ -399,35 +383,96 @@ export function cropPreset(crop: CropFieldConfig, viewport: ViewportKind = "desk
   };
 }
 
+/**
+ * Hidden fields count as locked. A configured pair (width+height, width+aspect,
+ * or height+aspect) also locks and derives the third value.
+ */
+export function effectiveViewportLocks(
+  crop: CropFieldConfig,
+  viewport: ViewportKind = "desktop"
+): ViewportCropPreset {
+  const preset = cropPreset(crop, viewport);
+  let lockAspect = Boolean(preset.lockAspect || !crop.showAspect);
+  let lockWidth = Boolean(preset.lockWidth || !crop.showWidth);
+  let lockHeight = Boolean(preset.lockHeight || !crop.showHeight);
+
+  const hasW = preset.width != null;
+  const hasH = preset.height != null;
+  const hasA = Boolean(preset.aspect);
+
+  if (hasW && hasH) lockAspect = true;
+  if (hasW && hasA) lockHeight = true;
+  if (hasH && hasA) lockWidth = true;
+
+  if (lockWidth && lockHeight) lockAspect = true;
+  if (lockWidth && lockAspect) lockHeight = true;
+  if (lockHeight && lockAspect) lockWidth = true;
+
+  return {
+    aspect: preset.aspect,
+    width: preset.width,
+    height: preset.height,
+    lockAspect,
+    lockWidth,
+    lockHeight,
+  };
+}
+
+/**
+ * When at least two of width / height / aspect are locked (hidden counts as locked),
+ * authors pick Fill, Fit, or Scale — not Crop. Zoom only appears for Scale.
+ */
+export function authorUsesScaleMode(
+  crop: CropFieldConfig,
+  viewport: ViewportKind = "desktop"
+): boolean {
+  const locks = effectiveViewportLocks(crop, viewport);
+  const locked = [locks.lockWidth, locks.lockHeight, locks.lockAspect].filter(Boolean).length;
+  return locked >= 2;
+}
+
+/** Map crop ↔ scale when the field lock mode changes so saved ops stay valid in the UI. */
+export function coerceTransformForScaleMode(
+  transform: TransformSettings,
+  scaleMode: boolean
+): TransformSettings {
+  if (scaleMode && transform.operation === "crop") {
+    return { ...transform, operation: "scale" };
+  }
+  if (!scaleMode && transform.operation === "scale") {
+    return { ...transform, operation: "crop" };
+  }
+  return transform;
+}
+
 export function applyCropLocks(
   transform: TransformSettings,
   crop: CropFieldConfig,
   viewport: ViewportKind = "desktop"
 ): TransformSettings {
-  const preset = cropPreset(crop, viewport);
+  const preset = effectiveViewportLocks(crop, viewport);
   let next: TransformSettings = { ...transform };
 
-  if (preset.lockAspect && preset.aspect) {
-    next = lockToAspect(next, preset.aspect);
-  }
   if (preset.lockWidth && preset.width != null) {
     next.width = preset.width;
-    if (parseAspect(next.aspect) && !preset.lockHeight) {
-      next.height = resolveDimensions({ ...next, height: null }).height ?? next.height;
-    }
   }
   if (preset.lockHeight && preset.height != null) {
     next.height = preset.height;
-    if (parseAspect(next.aspect) && !preset.lockWidth) {
-      next.width = resolveDimensions({ ...next, width: null }).width ?? next.width;
-    }
   }
-  if (preset.lockAspect && preset.lockWidth && parseAspect(next.aspect) && next.width) {
-    next.height = resolveDimensions({ ...next, height: null }).height ?? next.height;
+
+  // Configured width + height wins: lock aspect to that box.
+  if (preset.width != null && preset.height != null) {
+    next.width = preset.width;
+    next.height = preset.height;
+    next.aspect = aspectFromDimensions(preset.width, preset.height);
+  } else if (preset.lockAspect && preset.aspect) {
+    // Width + aspect or height + aspect: derive the missing side; keep the preset ratio.
+    next = lockToAspect({ ...next, aspect: preset.aspect }, preset.aspect);
+  } else if (preset.lockWidth && preset.lockHeight && next.width && next.height) {
+    // Both dimensions locked on the transform (e.g. hidden) without config presets.
+    next.aspect = aspectFromDimensions(next.width, next.height);
   }
-  if (preset.lockAspect && preset.lockHeight && parseAspect(next.aspect) && next.height) {
-    next.width = resolveDimensions({ ...next, width: null }).width ?? next.width;
-  }
+
   if (crop.lockFormat || crop.hideFormat) {
     next.format = crop.format ?? "webp";
   }

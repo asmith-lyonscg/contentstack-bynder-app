@@ -11,8 +11,7 @@
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "package:launch": "node scripts/package-launch.mjs"
+    "test:watch": "vitest"
   },
   "engines": {
     "node": ">=22"

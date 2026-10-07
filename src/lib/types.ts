@@ -1,4 +1,4 @@
-export type DatOperation = "fill" | "fit" | "crop";
+export type DatOperation = "fill" | "fit" | "crop" | "scale";
 export type DatFormat = "webp" | "avif" | "jpg" | "png";
 
 export interface FocalPoint {
@@ -11,6 +11,8 @@ export interface TransformSettings {
   width?: number | null;
   height?: number | null;
   aspect?: string | null;
+  /** Used when operation is `scale` (1 = 100%). Omitted or 1 means no extra zoom. */
+  zoom?: number | null;
   format?: DatFormat | null;
   quality?: number | null;
   extraQuery?: string | null;

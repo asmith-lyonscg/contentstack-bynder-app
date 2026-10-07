@@ -3,6 +3,7 @@ import type { FocalPoint, TransformSettings } from "../lib/types";
 import { fitPreviewBox, previewIsToScale } from "../lib/bynder/composeDatUrl";
 import {
   clampOffset,
+  clampZoom,
   focalFromOffset,
   frameLayout,
   imagePointFromPointer,
@@ -36,6 +37,7 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
 
   const box = fitPreviewBox(transform, maxWidth, 360);
   const toScale = previewIsToScale(box);
+  const zoom = clampZoom(transform.zoom);
 
   useEffect(() => {
     setNatural({ w: 0, h: 0 });
@@ -60,7 +62,16 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
   }, []);
 
   const operation = transform.operation || "fill";
-  const layout = frameLayout(operation, natural.w, natural.h, box.width, box.height, transform.width, transform.height);
+  const layout = frameLayout(
+    operation,
+    natural.w,
+    natural.h,
+    box.width,
+    box.height,
+    transform.width,
+    transform.height,
+    zoom
+  );
   const baseOffset = offsetForOperation(operation, focalPoint, layout, box.width, box.height);
   const offset = dragOffset ?? baseOffset;
   const canPan = ALLOW_CROP_PAN && (layout.canPanX || layout.canPanY);

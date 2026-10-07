@@ -127,6 +127,16 @@ describe("composeDatUrl", () => {
     expect(url).toContain("focuspoint=1,0");
   });
 
+  it("maps scale to DAT fill (zoom is editor/CSS only)", () => {
+    const url = composeDatUrl(base, {
+      focalPoint: { x: 0.4, y: 0.6 },
+      transform: { operation: "scale", width: 1200, height: 675, zoom: 1.5, format: "webp" },
+    });
+    expect(url).toContain("io=transform:fill,width:1200,height:675");
+    expect(url).not.toContain("scale");
+    expect(url).toContain("focuspoint=0.4,0.6");
+  });
+
   it("builds 1x and 2x query strings from CSS layout size", () => {
     const sources = datQueriesForSlice({
       focalPoint: { x: 0.5, y: 0.5 },

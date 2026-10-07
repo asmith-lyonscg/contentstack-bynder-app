@@ -152,8 +152,14 @@ function gravityFromFocal(focal: FocalPoint): string {
   return `${row}${col}` || "center";
 }
 
+/** Bynder DAT only knows fill / fit / crop. Scale is fill + author zoom in the editor/CSS. */
+export function datIoOperation(operation: string | null | undefined): "fill" | "fit" | "crop" {
+  if (operation === "fit" || operation === "crop") return operation;
+  return "fill";
+}
+
 function buildIoParam(operation: string, width?: number, height?: number, gravity?: string): string {
-  const parts = [`transform:${operation}`];
+  const parts = [`transform:${datIoOperation(operation)}`];
   if (width) parts.push(`width:${width}`);
   if (height) parts.push(`height:${height}`);
   if (gravity) parts.push(`gravity:${gravity}`);
