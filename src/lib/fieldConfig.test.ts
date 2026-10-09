@@ -326,6 +326,7 @@ describe("resolveCropConfig", () => {
     expect(crop.allowedProfiles).toEqual([]);
     expect(crop.profile).toBeUndefined();
     expect(crop.allowOriginal).toBe(true);
+    expect(crop.profileLocked).toBe(false);
     expect(crop.maxWidths).toEqual({ desktop: 2000, mobile: 960 });
     expect(crop.active).toEqual({
       desktop: { targetWidth: 2000 },
@@ -358,9 +359,11 @@ describe("resolveCropConfig", () => {
     expect(crop.profile).toBe("hero");
     expect(crop.defaultProfile).toBe("hero");
     expect(crop.allowOriginal).toBe(false);
+    expect(crop.profileLocked).toBe(true);
     expect(crop.active.desktop).toEqual({ aspectRatio: "16:9", targetWidth: 2000 });
     expect(resolveCropConfig({ profile: " hero " }, APP_PROFILES).profile).toBe("hero");
     expect(resolveCropConfig({ profile: "missing", profiles: ["card"] }, APP_PROFILES).allowedProfiles).toEqual(["card"]);
+    expect(resolveCropConfig({ profile: "missing", profiles: ["card"] }, APP_PROFILES).profileLocked).toBe(false);
   });
 
   it("narrows to the field's list and default, ignoring unknown names", () => {
@@ -368,6 +371,7 @@ describe("resolveCropConfig", () => {
     expect(crop.allowedProfiles).toEqual(["card", "largeHero"]);
     expect(crop.profile).toBe("largeHero");
     expect(crop.allowOriginal).toBe(false);
+    expect(crop.profileLocked).toBe(false);
     expect(crop.active.desktop).toEqual({ aspectRatio: "21:9", targetWidth: 1800 });
     expect(resolveCropConfig({ profiles: "card, hero", defaultProfile: "largeHero" }, APP_PROFILES).defaultProfile).toBeUndefined();
     expect(resolveCropConfig({ custom_settings: { profiles: ["card"] } }, APP_PROFILES).allowedProfiles).toEqual(["card"]);

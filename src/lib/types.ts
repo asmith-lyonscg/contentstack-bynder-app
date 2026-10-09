@@ -228,6 +228,8 @@ export interface CropFieldConfig {
   defaultProfile?: string;
   /** Authors may choose "Original aspect ratio". True unless the field sets `defaultProfile`. */
   allowOriginal: boolean;
+  /** Field Config Parameter `"profile"` names one profile. The dropdown stays hidden. */
+  profileLocked: boolean;
   maxWidths: MaxWidths;
   /** Profile the editor is applying right now. Undefined: original aspect ratio. */
   profile?: string;

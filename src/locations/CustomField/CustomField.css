@@ -386,21 +386,8 @@
   font-weight: 800;
 }
 
-.crop-fields-card-aspects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin: 8px 0 0;
-  font: 600 14px/1.3 Inter, system-ui, sans-serif;
-  color: #212121;
-}
-
-.crop-fields-card-aspect-label {
-  display: block;
-  font: 500 11px/1.3 Inter, system-ui, sans-serif;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #475161;
+.crop-fields-card-profile + .crop-fields-card-profile {
+  margin-top: 4px;
 }
 
 .crop-fields-card-body {

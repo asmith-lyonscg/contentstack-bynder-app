@@ -14,8 +14,10 @@ interface TransformFormProps {
   showOperation?: boolean;
   /** Fit / letterbox. Off by default, which leaves Fill as the only transform type. */
   allowFit?: boolean;
-  /** Render profiles the author may pick. The dropdown shows only with two or more. */
+  /** Render profiles the author may pick. */
   profiles?: readonly ProfileOption[];
+  /** Show the dropdown. A locked field config `"profile"` leaves this false. */
+  showProfile?: boolean;
   profile?: string;
   onProfileChange?: (name: string) => void;
 }
@@ -41,8 +43,8 @@ function normalizeHexInput(raw: string): string {
 
 /** Mirrors the render conditions below: false when every control is hidden. */
 export function transformFormHasFields(props: Omit<TransformFormProps, "onChange" | "onProfileChange">): boolean {
-  const { value, datEnabled = true, showOperation = false, allowFit = false, profiles } = props;
-  if ((profiles?.length ?? 0) > 1) return true;
+  const { value, datEnabled = true, showOperation = false, allowFit = false, profiles, showProfile = false } = props;
+  if (showProfile && (profiles?.length ?? 0) > 0) return true;
   if (datEnabled && showOperation && allowFit) return true;
   return allowFit && value.operation === "fit";
 }
@@ -54,6 +56,7 @@ export function TransformForm({
   showOperation = false,
   allowFit = false,
   profiles,
+  showProfile = false,
   profile,
   onProfileChange,
 }: TransformFormProps) {
@@ -65,7 +68,7 @@ export function TransformForm({
 
   return (
     <div className="transform-form">
-      {profiles && profiles.length > 1 && onProfileChange && (
+      {showProfile && profiles && profiles.length > 0 && onProfileChange && (
         <label className="field">
           <span>
             Render profile

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppSdk } from "../../common/hooks/useAppSdk";
 import { normalizeBynderPortalUrl } from "../../lib/fieldConfig";
 import { parseRenderProfiles } from "../../lib/profiles";
@@ -126,8 +126,11 @@ export default function AppConfig() {
   const [maxDesktopDraft, setMaxDesktopDraft] = useState(String(DEFAULT_MAX_WIDTHS.desktop));
   const [maxMobileDraft, setMaxMobileDraft] = useState(String(DEFAULT_MAX_WIDTHS.mobile));
   const [flags, setFlags] = useState<FlagState>(() => initialFlags({}));
-  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [loading, setLoading] = useState(true);
+  const loadedConfiguration = useRef<Record<string, unknown>>({});
+  const serverConfiguration = useRef<Record<string, unknown>>({});
+  const stagedOnce = useRef(false);
+  const stageQueue = useRef(Promise.resolve());
   const maxDesktop = readWidth(maxDesktopDraft, "maxDesktopWidth");
   const maxMobile = readWidth(maxMobileDraft, "maxMobileWidth");
   const widthErrors = [maxDesktop.error, maxMobile.error].filter((error): error is string => Boolean(error));
@@ -137,7 +140,6 @@ export default function AppConfig() {
     () => readProfilesText(profilesDraft, { desktop: maxDesktopWidth, mobile: maxMobileWidth }),
     [profilesDraft, maxDesktopWidth, maxMobileWidth]
   );
-  const blocked = profiles.errors.length > 0 || widthErrors.length > 0;
 
   useEffect(() => {
     if (!location?.installation) {
@@ -148,6 +150,8 @@ export default function AppConfig() {
       .getInstallationData()
       .then((data: InstallationData) => {
         const config = data?.configuration ?? {};
+        loadedConfiguration.current = { ...config };
+        serverConfiguration.current = data?.serverConfiguration ?? {};
         setPortalUrl(config.bynderPortalUrl ?? "");
         setCompactLanguage(config.compactLanguage ?? "en_US");
         setEnableDat(config.enableDat !== false);
@@ -175,39 +179,67 @@ export default function AppConfig() {
     </li>
   );
 
-  const onSave = async () => {
+  const widthError = maxDesktop.error ?? maxMobile.error;
+  const profileError = profiles.errors[0];
+
+  useEffect(() => {
+    const installation = location?.installation;
+    if (loading || !installation) return undefined;
+    const invalid = !portalUrl.trim() ? "Enter a Bynder portal URL." : widthError ?? profileError;
+    if (invalid) {
+      installation.setValidity(false, { message: invalid });
+      stagedOnce.current = true;
+      return undefined;
+    }
+    installation.setValidity(true);
+    if (!stagedOnce.current) {
+      stagedOnce.current = true;
+      return undefined;
+    }
     const nextPortal = normalizeBynderPortalUrl(portalUrl) ?? portalUrl.trim();
-    if (!nextPortal || !location?.installation || blocked) {
-      setStatus("error");
-      return;
-    }
-    setStatus("saving");
-    try {
-      const current: InstallationData = await location.installation.getInstallationData();
-      const configuration: AppInstallationConfig & Record<string, unknown> = {
-        ...(current.configuration ?? {}),
-        bynderPortalUrl: nextPortal,
-        compactLanguage: compactLanguage.trim() || "en_US",
-        enableDat,
-        allowFit,
-        maxDesktopWidth,
-        maxMobileWidth,
-      };
-      if (profiles.value) configuration.profiles = profiles.value as AppInstallationConfig["profiles"];
-      else delete configuration.profiles;
-      for (const row of ALL_ROWS) configuration[row.showKey] = flags[row.showKey];
-      for (const key of RETIRED_KEYS) delete configuration[key];
-      await location.installation.setInstallationData({
-        configuration,
-        serverConfiguration: current.serverConfiguration ?? {},
+    const configuration: AppInstallationConfig & Record<string, unknown> = {
+      ...loadedConfiguration.current,
+      bynderPortalUrl: nextPortal,
+      compactLanguage: compactLanguage.trim() || "en_US",
+      enableDat,
+      allowFit,
+      maxDesktopWidth,
+      maxMobileWidth,
+    };
+    if (profiles.value) configuration.profiles = profiles.value as AppInstallationConfig["profiles"];
+    else delete configuration.profiles;
+    for (const row of ALL_ROWS) configuration[row.showKey] = flags[row.showKey];
+    for (const key of RETIRED_KEYS) delete configuration[key];
+    stageQueue.current = stageQueue.current
+      .then(() =>
+        installation.setInstallationData({
+          configuration,
+          serverConfiguration: serverConfiguration.current,
+        })
+      )
+      .then((saved) => {
+        const next = saved as InstallationData;
+        if (next?.configuration) loadedConfiguration.current = { ...next.configuration };
+        if (next?.serverConfiguration) serverConfiguration.current = next.serverConfiguration;
+      })
+      .catch(() => {
+        installation.setValidity(false, { message: "Could not update the configuration. Try again." });
       });
-      setPortalUrl(nextPortal);
-      setStatus("saved");
-      window.setTimeout(() => setStatus("idle"), 2000);
-    } catch {
-      setStatus("error");
-    }
-  };
+    return undefined;
+  }, [
+    allowFit,
+    compactLanguage,
+    enableDat,
+    flags,
+    loading,
+    location,
+    maxDesktopWidth,
+    maxMobileWidth,
+    portalUrl,
+    profileError,
+    profiles.value,
+    widthError,
+  ]);
 
   if (!location) {
     return <p className="notice">This view only works as an App Configuration location.</p>;
@@ -357,15 +389,7 @@ export default function AppConfig() {
         Bynder by id. Contentstack JSON fields cap at <strong>10KB</strong>.
       </p>
 
-      <button
-        type="button"
-        disabled={status === "saving" || !portalUrl.trim() || blocked}
-        onClick={() => void onSave()}
-      >
-        {status === "saving" ? "Saving…" : "Save"}
-      </button>
-      {status === "saved" && <span className="status ok">Saved</span>}
-      {status === "error" && <span className="status err">Could not save</span>}
+      <p className="help">Use <strong>Save</strong> in Contentstack to keep this configuration.</p>
     </div>
   );
 }

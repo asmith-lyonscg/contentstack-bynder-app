@@ -400,6 +400,7 @@ export default function CustomField() {
     cropConfig.active.mobile,
     viewportAssetSize(focusedSaved, "mobile")
   ).aspectRatio;
+  const activeAspect = activeViewport === "mobile" ? mobileAspect : desktopAspect;
 
   useEffect(() => {
     if (focused) {
@@ -1148,6 +1149,7 @@ export default function CustomField() {
     showOperation: cropConfig.showOperation,
     allowFit: cropConfig.allowFit,
     profiles: profileOptions,
+    showProfile: !cropConfig.profileLocked && profileOptions.length > 0,
     profile: cropConfig.profile ?? "",
   };
   const previewSrc = panel?.sourceUrl;
@@ -1559,17 +1561,9 @@ export default function CustomField() {
                     <span className="crop-fields-card-kicker">Profile:</span>
                     <strong>{profileName}</strong>
                   </p>
-                  <p className="crop-fields-card-aspects">
-                    <span>
-                      <span className="crop-fields-card-aspect-label">Desktop</span>
-                      {desktopAspect ?? "—"}
-                    </span>
-                    {desktopMobileMode ? (
-                      <span>
-                        <span className="crop-fields-card-aspect-label">Mobile</span>
-                        {mobileAspect ?? "—"}
-                      </span>
-                    ) : null}
+                  <p className="crop-fields-card-profile">
+                    <span className="crop-fields-card-kicker">Aspect Ratio:</span>
+                    <strong>{activeAspect ?? "—"}</strong>
                   </p>
                 </div>
                 <div className="crop-fields-card-body">

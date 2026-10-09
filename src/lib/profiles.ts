@@ -238,6 +238,8 @@ export interface ResolvedProfiles {
   allowed: string[];
   defaultProfile?: string;
   allowOriginal: boolean;
+  /** True only when the field Config Parameter sets `"profile"`. Authors get no dropdown. */
+  profileLocked: boolean;
   maxWidths: MaxWidths;
 }
 
@@ -253,7 +255,14 @@ export function resolveProfiles(fieldConfig: unknown, appConfig: unknown): Resol
   const locked = pickRaw(fieldConfig, "profile");
   const lockedName = typeof locked === "string" ? locked.trim() : "";
   if (lockedName && names.includes(lockedName)) {
-    return { profiles, allowed: [lockedName], defaultProfile: lockedName, allowOriginal: false, maxWidths };
+    return {
+      profiles,
+      allowed: [lockedName],
+      defaultProfile: lockedName,
+      allowOriginal: false,
+      profileLocked: true,
+      maxWidths,
+    };
   }
   const requested = parseNameList(pickRaw(fieldConfig, "profiles"));
   const allowed = requested
@@ -262,7 +271,7 @@ export function resolveProfiles(fieldConfig: unknown, appConfig: unknown): Resol
   const wanted = pickRaw(fieldConfig, "defaultProfile");
   const defaultProfile =
     typeof wanted === "string" && allowed.includes(wanted.trim()) ? wanted.trim() : undefined;
-  return { profiles, allowed, defaultProfile, allowOriginal: !defaultProfile, maxWidths };
+  return { profiles, allowed, defaultProfile, allowOriginal: !defaultProfile, profileLocked: false, maxWidths };
 }
 
 /** No profile: each asset keeps its own aspect ratio, capped at the App Config max widths. */

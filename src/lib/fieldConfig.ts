@@ -188,12 +188,16 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
     pickBool(appConfig, "desktopMobileMode") ??
     pickBool(appConfig, "desktopMobile") ??
     true;
-  const { profiles, allowed, defaultProfile, allowOriginal, maxWidths } = resolveProfiles(fieldConfig, appConfig);
+  const { profiles, allowed, defaultProfile, allowOriginal, profileLocked, maxWidths } = resolveProfiles(
+    fieldConfig,
+    appConfig
+  );
   return {
     profiles,
     allowedProfiles: allowed,
     defaultProfile,
     allowOriginal,
+    profileLocked,
     maxWidths,
     profile: defaultProfile,
     active: defaultProfile ? profileSettingsFrom(profiles[defaultProfile]) : originalProfileSettings(maxWidths),
