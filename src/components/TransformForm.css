@@ -211,6 +211,27 @@
   border-color: #6c5ce7;
 }
 
+.field-color-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.field-color-inputs input[type="color"] {
+  width: 32px;
+  height: 32px;
+  padding: 2px;
+  flex: none;
+  cursor: pointer;
+}
+
+.field-color-inputs input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
 .field-quality input[type="range"],
 .field-range input[type="range"] {
   -webkit-appearance: none;

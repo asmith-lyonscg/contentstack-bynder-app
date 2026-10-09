@@ -4,19 +4,27 @@ import type {
   AssetCropSettings,
   CompactViewConfig,
   CropFieldConfig,
-  DatFormat,
+  OriginalAssetSize,
   ParsedBynderAsset,
+  ProfileSettings,
   SavedBynderAsset,
   TransformSettings,
   VideoFieldVisibility,
   VideoPlayback,
-  ViewportCropPreset,
   ViewportKind,
 } from "./types";
-import { ASPECT_PRESETS, DEFAULT_FOCAL_POINT, DEFAULT_TRANSFORM } from "./types";
-import { lockToAspect } from "./bynder/composeDatUrl";
-import { parseBynderAsset } from "./bynder/parseAsset";
-import { stripMatchingMobile, viewportCropsEqual } from "./viewportCrop";
+import { DEFAULT_FOCAL_POINT, DEFAULT_TRANSFORM } from "./types";
+import { isDocumentAsset, parseBynderAsset } from "./bynder/parseAsset";
+import {
+  applyProfileTransform,
+  originalProfileSettings,
+  profileSettingsFrom,
+  resolveProfiles,
+  viewportAssetSize,
+} from "./profiles";
+import { stripMatchingMobile } from "./viewportCrop";
+
+export { parseDatFormat } from "./profiles";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -122,122 +130,6 @@ function pickString(value: unknown, key: string): string | undefined {
   return undefined;
 }
 
-function pickRaw(value: unknown, key: string): unknown {
-  const record = asRecord(value);
-  if (!record) return undefined;
-  if (record[key] !== undefined) return record[key];
-  const custom = asRecord(record.custom_settings);
-  if (custom && custom[key] !== undefined) return custom[key];
-  return undefined;
-}
-
-function coercePositiveInt(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) return Math.round(value);
-  if (typeof value === "string" && value.trim()) {
-    const n = Number(value);
-    if (Number.isFinite(n) && n > 0) return Math.round(n);
-  }
-  return undefined;
-}
-
-function coerceAspect(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-interface ViewportPair<T> {
-  desktop?: T;
-  mobile?: T;
-}
-
-function parseViewportPair<T>(
-  raw: unknown,
-  dualMode: boolean,
-  coerce: (value: unknown) => T | undefined
-): ViewportPair<T> {
-  const direct = coerce(raw);
-  if (direct !== undefined) {
-    return dualMode ? { desktop: direct, mobile: direct } : { desktop: direct };
-  }
-  const record = asRecord(raw);
-  if (!record) return {};
-  const desktop = coerce(record.desktop);
-  const mobile = coerce(record.mobile);
-  if (!dualMode) return desktop !== undefined ? { desktop } : {};
-  return { desktop, mobile };
-}
-
-function firstViewportPair<T>(
-  fieldConfig: unknown,
-  appConfig: unknown,
-  key: string,
-  dualMode: boolean,
-  coerce: (value: unknown) => T | undefined
-): ViewportPair<T> {
-  const field = parseViewportPair(pickRaw(fieldConfig, key), dualMode, coerce);
-  const app = parseViewportPair(pickRaw(appConfig, key), dualMode, coerce);
-  return {
-    desktop: firstDefined(field.desktop, app.desktop),
-    mobile: dualMode ? firstDefined(field.mobile, app.mobile) : undefined,
-  };
-}
-
-function firstDefined<T>(...values: Array<T | undefined>): T | undefined {
-  return values.find((value) => value !== undefined);
-}
-
-function parseAspectList(value: unknown): string[] | undefined {
-  const fromArray = (items: unknown[]): string[] =>
-    items
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter(Boolean);
-
-  if (Array.isArray(value)) {
-    const items = fromArray(value);
-    return items.length ? items : undefined;
-  }
-  if (typeof value === "string" && value.trim()) {
-    const items = fromArray(value.split(/[,;]/));
-    return items.length ? items : undefined;
-  }
-  return undefined;
-}
-
-function pickAspectPresets(value: unknown): string[] | undefined {
-  const record = asRecord(value);
-  if (!record) return undefined;
-  return parseAspectList(record.aspectPresets) ?? parseAspectList(asRecord(record.custom_settings)?.aspectPresets);
-}
-
-export function parseDatFormat(value: unknown): DatFormat | undefined {
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "jpeg") return "jpg";
-  if (normalized === "jpg" || normalized === "png" || normalized === "webp" || normalized === "avif") {
-    return normalized;
-  }
-  return undefined;
-}
-
-function pickFormat(value: unknown): DatFormat | undefined {
-  return (
-    parseDatFormat(pickString(value, "format")) ??
-    parseDatFormat(pickString(value, "fileType")) ??
-    parseDatFormat(pickString(value, "datFormat"))
-  );
-}
-
-function pickHideFormat(value: unknown): boolean | undefined {
-  const show =
-    pickBool(value, "showFieldFileType") ??
-    pickBool(value, "showFormat") ??
-    pickBool(value, "showFileType");
-  if (show !== undefined) return !show;
-  const hide = pickBool(value, "hideFormat") ?? pickBool(value, "hideFileType");
-  if (hide !== undefined) return hide;
-  return undefined;
-}
-
 function pickShowFlag(
   fieldConfig: unknown,
   appConfig: unknown,
@@ -296,27 +188,15 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
     pickBool(appConfig, "desktopMobileMode") ??
     pickBool(appConfig, "desktopMobile") ??
     true;
-  const aspect = firstViewportPair(fieldConfig, appConfig, "aspect", desktopMobileMode, coerceAspect);
-  const width = firstViewportPair(fieldConfig, appConfig, "width", desktopMobileMode, coercePositiveInt);
-  const height = firstViewportPair(fieldConfig, appConfig, "height", desktopMobileMode, coercePositiveInt);
-  const lockAspect = firstViewportPair(fieldConfig, appConfig, "lockAspect", desktopMobileMode, coerceBool);
-  const lockWidth = firstViewportPair(fieldConfig, appConfig, "lockWidth", desktopMobileMode, coerceBool);
-  const lockHeight = firstViewportPair(fieldConfig, appConfig, "lockHeight", desktopMobileMode, coerceBool);
-  const config: CropFieldConfig = {
-    aspect: aspect.desktop,
-    width: width.desktop,
-    height: height.desktop,
-    format: firstDefined(pickFormat(fieldConfig), pickFormat(appConfig)),
-    lockAspect: lockAspect.desktop ?? false,
-    lockWidth: lockWidth.desktop ?? false,
-    lockHeight: lockHeight.desktop ?? false,
-    lockFormat:
-      pickBool(fieldConfig, "lockFormat") ??
-      pickBool(fieldConfig, "lockFileType") ??
-      pickBool(appConfig, "lockFormat") ??
-      pickBool(appConfig, "lockFileType") ??
-      false,
-    hideFormat: pickHideFormat(fieldConfig) ?? pickHideFormat(appConfig) ?? true,
+  const { profiles, allowed, defaultProfile, allowOriginal, maxWidths } = resolveProfiles(fieldConfig, appConfig);
+  return {
+    profiles,
+    allowedProfiles: allowed,
+    defaultProfile,
+    allowOriginal,
+    maxWidths,
+    profile: defaultProfile,
+    active: defaultProfile ? profileSettingsFrom(profiles[defaultProfile]) : originalProfileSettings(maxWidths),
     showOperation: pickShowFlag(
       fieldConfig,
       appConfig,
@@ -324,279 +204,89 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
       ["hideOperation"],
       true
     ),
-    showAspect: pickShowFlag(
-      fieldConfig,
-      appConfig,
-      ["showFieldAspectRatio", "showAspect"],
-      ["hideAspect"],
-      false
-    ),
-    showWidth: pickShowFlag(fieldConfig, appConfig, ["showFieldWidth", "showWidth"], ["hideWidth"], false),
-    showHeight: pickShowFlag(fieldConfig, appConfig, ["showFieldHeight", "showHeight"], ["hideHeight"], false),
-    showQuality: pickShowFlag(fieldConfig, appConfig, ["showFieldQuality", "showQuality"], ["hideQuality"], false),
-    showAdvancedQuery: pickShowFlag(
-      fieldConfig,
-      appConfig,
-      ["showFieldAdvancedQuery", "showAdvancedQuery", "showExtraQuery"],
-      ["hideAdvancedQuery"],
-      false
-    ),
-    showDatPreset: pickShowFlag(
-      fieldConfig,
-      appConfig,
-      ["showFieldDatPreset", "showDatPreset"],
-      ["hideDatPreset"],
-      false
-    ),
-    aspectPresets:
-      pickAspectPresets(fieldConfig) ?? pickAspectPresets(appConfig) ?? [...ASPECT_PRESETS],
+    allowFit: pickBool(fieldConfig, "allowFit") ?? pickBool(appConfig, "allowFit") ?? false,
     desktopMobileMode,
   };
-
-  if (desktopMobileMode) {
-    if (aspect.mobile !== undefined && aspect.mobile !== aspect.desktop) config.mobileAspect = aspect.mobile;
-    if (width.mobile !== undefined && width.mobile !== width.desktop) config.mobileWidth = width.mobile;
-    if (height.mobile !== undefined && height.mobile !== height.desktop) config.mobileHeight = height.mobile;
-    if (lockAspect.mobile !== undefined && lockAspect.mobile !== (lockAspect.desktop ?? false)) {
-      config.lockAspectMobile = lockAspect.mobile;
-    }
-    if (lockWidth.mobile !== undefined && lockWidth.mobile !== (lockWidth.desktop ?? false)) {
-      config.lockWidthMobile = lockWidth.mobile;
-    }
-    if (lockHeight.mobile !== undefined && lockHeight.mobile !== (lockHeight.desktop ?? false)) {
-      config.lockHeightMobile = lockHeight.mobile;
-    }
-  }
-
-  return config;
-}
-
-export function cropPreset(crop: CropFieldConfig, viewport: ViewportKind = "desktop"): ViewportCropPreset {
-  const mobile = crop.desktopMobileMode !== false && viewport === "mobile";
-  return {
-    aspect: mobile ? crop.mobileAspect ?? crop.aspect : crop.aspect,
-    width: mobile ? crop.mobileWidth ?? crop.width : crop.width,
-    height: mobile ? crop.mobileHeight ?? crop.height : crop.height,
-    lockAspect: mobile ? crop.lockAspectMobile ?? crop.lockAspect : crop.lockAspect,
-    lockWidth: mobile ? crop.lockWidthMobile ?? crop.lockWidth : crop.lockWidth,
-    lockHeight: mobile ? crop.lockHeightMobile ?? crop.lockHeight : crop.lockHeight,
-  };
 }
 
 /**
- * Hidden fields count as locked. A configured pair (width+height, width+aspect,
- * or height+aspect) also locks and derives the third value.
+ * Point the config at the entry's profile. Undefined means the original aspect ratio. A name App
+ * Config no longer defines keeps `snapshot` (the entry's saved `profileSettings`) so existing crops
+ * keep their size.
  */
-export function effectiveViewportLocks(
+export function withActiveProfile(
   crop: CropFieldConfig,
-  viewport: ViewportKind = "desktop"
-): ViewportCropPreset {
-  const preset = cropPreset(crop, viewport);
-  let lockAspect = Boolean(preset.lockAspect || !crop.showAspect);
-  let lockWidth = Boolean(preset.lockWidth || !crop.showWidth);
-  let lockHeight = Boolean(preset.lockHeight || !crop.showHeight);
-
-  const hasW = preset.width != null;
-  const hasH = preset.height != null;
-  const hasA = Boolean(preset.aspect);
-
-  if (hasW && hasH) lockAspect = true;
-  if (hasW && hasA) lockHeight = true;
-  if (hasH && hasA) lockWidth = true;
-
-  if (lockWidth && lockHeight) lockAspect = true;
-  if (lockWidth && lockAspect) lockHeight = true;
-  if (lockHeight && lockAspect) lockWidth = true;
-
-  return {
-    aspect: preset.aspect,
-    width: preset.width,
-    height: preset.height,
-    lockAspect,
-    lockWidth,
-    lockHeight,
-  };
+  name: string | undefined,
+  snapshot?: ProfileSettings
+): CropFieldConfig {
+  if (!name) return { ...crop, profile: undefined, active: originalProfileSettings(crop.maxWidths) };
+  const defined = crop.profiles[name];
+  if (defined) return { ...crop, profile: name, active: profileSettingsFrom(defined) };
+  if (snapshot) return { ...crop, profile: name, active: snapshot };
+  return crop;
 }
 
 /**
- * When at least two of width / height / aspect are locked (hidden counts as locked),
- * authors pick Fill, Fit, or Scale — not Crop. Zoom only appears for Scale.
+ * The profile sets size, aspect, format, and quality. The author keeps operation and letterbox.
+ * `size` is the original file size, used when there is no profile aspect ratio.
  */
-export function authorUsesScaleMode(
-  crop: CropFieldConfig,
-  viewport: ViewportKind = "desktop"
-): boolean {
-  const locks = effectiveViewportLocks(crop, viewport);
-  const locked = [locks.lockWidth, locks.lockHeight, locks.lockAspect].filter(Boolean).length;
-  return locked >= 2;
-}
-
-/** Map crop ↔ scale when the field lock mode changes so saved ops stay valid in the UI. */
-export function coerceTransformForScaleMode(
-  transform: TransformSettings,
-  scaleMode: boolean
-): TransformSettings {
-  if (scaleMode && transform.operation === "crop") {
-    return { ...transform, operation: "scale" };
-  }
-  if (!scaleMode && transform.operation === "scale") {
-    return { ...transform, operation: "crop" };
-  }
-  return transform;
-}
-
-export function applyCropLocks(
-  transform: TransformSettings,
-  crop: CropFieldConfig,
-  viewport: ViewportKind = "desktop"
-): TransformSettings {
-  const preset = effectiveViewportLocks(crop, viewport);
-  let next: TransformSettings = { ...transform };
-
-  if (preset.lockWidth && preset.width != null) {
-    next.width = preset.width;
-  }
-  if (preset.lockHeight && preset.height != null) {
-    next.height = preset.height;
-  }
-
-  // Configured width + height wins: lock aspect to that box.
-  if (preset.width != null && preset.height != null) {
-    next.width = preset.width;
-    next.height = preset.height;
-    next.aspect = aspectFromDimensions(preset.width, preset.height);
-  } else if (preset.lockAspect && preset.aspect) {
-    // Width + aspect or height + aspect: derive the missing side; keep the preset ratio.
-    next = lockToAspect({ ...next, aspect: preset.aspect }, preset.aspect);
-  } else if (preset.lockWidth && preset.lockHeight && next.width && next.height) {
-    // Both dimensions locked on the transform (e.g. hidden) without config presets.
-    next.aspect = aspectFromDimensions(next.width, next.height);
-  }
-
-  if (crop.lockFormat || crop.hideFormat) {
-    next.format = crop.format ?? "webp";
-  }
-
-  return next;
-}
-
-function gcd(a: number, b: number): number {
-  let x = Math.abs(Math.round(a));
-  let y = Math.abs(Math.round(b));
-  while (y) {
-    const rest = x % y;
-    x = y;
-    y = rest;
-  }
-  return x || 1;
-}
-
-/** Lowest-terms `width:height` from pixel size, e.g. 1920×1080 → `16:9`. */
-export function aspectFromDimensions(width: number, height: number): string {
-  const w = Math.max(1, Math.round(width));
-  const h = Math.max(1, Math.round(height));
-  const g = gcd(w, h);
-  return `${w / g}:${h / g}`;
-}
-
-function viewportHasSizePreset(crop: CropFieldConfig, viewport: ViewportKind): boolean {
-  const preset = cropPreset(crop, viewport);
-  return Boolean(preset.aspect || preset.width != null || preset.height != null);
-}
-
-function baseTransformForSeed(
-  crop: CropFieldConfig,
-  viewport: ViewportKind,
-  size?: { width?: number; height?: number }
-): TransformSettings {
-  const width = size?.width && size.width > 0 ? Math.round(size.width) : undefined;
-  const height = size?.height && size.height > 0 ? Math.round(size.height) : undefined;
-  if (viewportHasSizePreset(crop, viewport) || (!width && !height)) {
-    return { ...DEFAULT_TRANSFORM };
-  }
-  if (width && height) {
-    return {
-      ...DEFAULT_TRANSFORM,
-      width,
-      height,
-      aspect: aspectFromDimensions(width, height),
-    };
-  }
-  return {
-    ...DEFAULT_TRANSFORM,
-    width: width ?? DEFAULT_TRANSFORM.width,
-    height: height ?? DEFAULT_TRANSFORM.height,
-  };
-}
-
-/** Unlocked presets fill in a new field. Locks always win. */
 export function applyCropConfig(
   transform: TransformSettings,
   crop: CropFieldConfig,
-  mode: "defaults" | "locks" = "locks",
-  viewport: ViewportKind = "desktop"
+  viewport: ViewportKind = "desktop",
+  size?: OriginalAssetSize
 ): TransformSettings {
-  const preset = cropPreset(crop, viewport);
-  let next: TransformSettings = { ...transform };
-  if (mode === "defaults") {
-    if (preset.width != null) next.width = preset.width;
-    if (preset.height != null) next.height = preset.height;
-    if (preset.aspect) next = lockToAspect(next, preset.aspect);
-    if (crop.format) next.format = crop.format;
-  }
-  return applyCropLocks(next, crop, viewport);
+  return applyProfileTransform(
+    transform,
+    crop.active,
+    viewport,
+    crop.desktopMobileMode !== false,
+    size,
+    crop.allowFit
+  );
 }
 
-export function seedAssetCrop(
-  crop: CropFieldConfig,
-  size?: { width?: number; height?: number }
-): AssetCropSettings {
-  const desktop: AssetCropSettings = {
+/** New asset: centered focal point, Fill. Mobile follows desktop until edited. */
+export function seedAssetCrop(crop: CropFieldConfig, size?: OriginalAssetSize): AssetCropSettings {
+  return {
     focalPoint: { ...DEFAULT_FOCAL_POINT },
-    transform: applyCropConfig(baseTransformForSeed(crop, "desktop", size), crop, "defaults", "desktop"),
+    transform: applyCropConfig({ ...DEFAULT_TRANSFORM }, crop, "desktop", size),
   };
-  if (crop.desktopMobileMode === false) return desktop;
-  const mobile = {
-    focalPoint: { ...DEFAULT_FOCAL_POINT },
-    transform: applyCropConfig(baseTransformForSeed(crop, "mobile", size), crop, "defaults", "mobile"),
-  };
-  return stripMatchingMobile({ ...desktop, mobile });
 }
 
-export function applyCropConfigToAssetCrop<T extends AssetCropSettings>(
+export function applyCropConfigToAssetCrop<T extends AssetCropSettings & OriginalAssetSize & { id?: string }>(
   assetCrop: T,
-  crop: CropFieldConfig,
-  mode: "defaults" | "locks" = "locks"
+  crop: CropFieldConfig
 ): T {
+  if (isDocumentAsset(assetCrop as unknown as SavedBynderAsset)) return assetCrop;
   const next: T = {
     ...assetCrop,
-    transform: applyCropConfig(assetCrop.transform, crop, mode, "desktop"),
+    transform: applyCropConfig(assetCrop.transform ?? DEFAULT_TRANSFORM, crop, "desktop", assetCrop),
   };
   if (crop.desktopMobileMode === false) {
-    const { mobile: _mobile, ...desktop } = next;
+    const { mobile: _mobile, differentMobileAsset: _flag, ...desktop } = next;
     return desktop as T;
   }
   if (assetCrop.mobile) {
     next.mobile = {
       ...assetCrop.mobile,
-      transform: applyCropConfig(assetCrop.mobile.transform, crop, mode, "mobile"),
+      transform: applyCropConfig(
+        assetCrop.mobile.transform ?? DEFAULT_TRANSFORM,
+        crop,
+        "mobile",
+        viewportAssetSize(assetCrop, "mobile")
+      ),
     };
-  } else if (mode === "locks") {
-    const forced = applyCropConfig(next.transform, crop, "locks", "mobile");
-    const desktopSlice = { focalPoint: next.focalPoint, transform: next.transform };
-    const mobileSlice = { focalPoint: next.focalPoint, transform: forced };
-    if (!viewportCropsEqual(desktopSlice, mobileSlice)) next.mobile = mobileSlice;
   }
   return stripMatchingMobile(next);
 }
 
 export function applyCropConfigToAssets(
   assets: SavedBynderAsset[] | undefined,
-  crop: CropFieldConfig,
-  mode: "defaults" | "locks" = "locks"
+  crop: CropFieldConfig
 ): SavedBynderAsset[] | undefined {
   if (!assets?.length) return undefined;
-  return assets.map((asset) => ({ ...asset, ...applyCropConfigToAssetCrop(asset, crop, mode) }));
+  return assets.map((asset) => (isDocumentAsset(asset) ? asset : applyCropConfigToAssetCrop(asset, crop)));
 }
 
 export function readValueAtUid(data: unknown, uid: string): unknown {
@@ -703,6 +393,13 @@ const RESERVED_ADDITIONAL_PROPERTIES = new Set([
   "additional",
   "transform",
   "focalPoint",
+  "operation",
+  "zoom",
+  "extendBackground",
+  "extendBackgroundColor",
+  "originalAssetWidth",
+  "originalAssetHeight",
+  "aspectRatio",
   "mobile",
   "dat",
   "webImage",
@@ -718,6 +415,7 @@ const RESERVED_ADDITIONAL_PROPERTIES = new Set([
   "width",
   "height",
   "url",
+  "downloadUrl",
 ]);
 
 function pickVideoFlag(

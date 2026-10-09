@@ -17,7 +17,13 @@
   animation: image-spin 0.7s linear infinite;
 }
 
-.crop-editor .image-spinner-icon {
+.crop-editor .image-spinner,
+.editor-skeleton-preview .image-spinner {
+  background: rgba(238, 241, 247, 0.92);
+}
+
+.crop-editor .image-spinner-icon,
+.editor-skeleton-preview .image-spinner-icon {
   width: 32px;
   height: 32px;
   border-width: 3px;

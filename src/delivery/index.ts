@@ -1,2 +1,2 @@
-export { composeBynderImageUrl, focalPointToObjectPosition } from "./composeBynderImageUrl";
-export type { ComposeOverrides } from "./composeBynderImageUrl";
+export { buildBynderSources, composeBynderImageUrl, focalPointToObjectPosition } from "./composeBynderImageUrl";
+export type { BynderImageOptions, BynderSources, BynderSourcesOptions } from "./composeBynderImageUrl";

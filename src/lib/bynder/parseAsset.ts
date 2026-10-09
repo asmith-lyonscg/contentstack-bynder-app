@@ -1,5 +1,6 @@
-import { REQUIRED_PERSIST_KEYS, type PersistAssetKey } from "../persistKeys";
 import type { ParsedBynderAsset } from "../types";
+import { parseAspect } from "./composeDatUrl";
+import { aspectRatioFromPixels } from "../profiles";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -216,7 +217,15 @@ export function inferTransformBaseUrl(url?: string): string | undefined {
 }
 
 function filesMap(asset: Record<string, unknown>): Record<string, unknown> {
-  return asRecord(asset.files) ?? {};
+  const raw = asset.files;
+  if (typeof raw === "string") {
+    try {
+      return asRecord(JSON.parse(raw)) ?? {};
+    } catch {
+      return {};
+    }
+  }
+  return asRecord(raw) ?? {};
 }
 
 function additionalInfo(asset: Record<string, unknown>): Record<string, unknown> {
@@ -365,11 +374,7 @@ export function assetFromSettings(settings: { assets?: unknown[] }): ParsedBynde
  * Compact View often returns `derivatives.webImage` as a string and DAT on
  * `additionalInfo.selectedFile`. Persist a shape `parseBynderAsset` already understands.
  */
-export function normalizeCompactAssets(
-  assets: unknown[],
-  additionalInfo?: unknown,
-  keys: readonly PersistAssetKey[] = REQUIRED_PERSIST_KEYS
-): unknown[] {
+export function normalizeCompactAssets(assets: unknown[], additionalInfo?: unknown): unknown[] {
   const extra = asRecord(additionalInfo);
   const selectedFile = extra?.selectedFile;
   return assets.map((raw) => {
@@ -388,7 +393,7 @@ export function normalizeCompactAssets(
       if (inferred && !pickUrl(files.transformBaseUrl)) files.transformBaseUrl = inferred;
       next.files = files;
     }
-    return slimPersistedAsset(next, keys) ?? next;
+    return slimPersistedAsset(next) ?? next;
   });
 }
 
@@ -401,69 +406,92 @@ function slimWebImage(
   return { url };
 }
 
-function slimTags(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const tags = value
-    .map((item) => pickString(item))
-    .filter((item): item is string => Boolean(item))
-    .slice(0, 20);
-  return tags.length ? tags : undefined;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Keep only the fields this editor, DAT, and delivery need. */
+function slimAuthorAdditional(
+  asset: Record<string, unknown>,
+  additionalProperties?: readonly string[]
+): Record<string, string | number | boolean> | undefined {
+  const nested = cleanAdditionalValues(asset.additional) ?? {};
+  const authorKeys = additionalProperties ?? Object.keys(nested);
+  const additional: Record<string, string | number | boolean> = {};
+  for (const key of authorKeys) {
+    const direct = asset[key];
+    const value =
+      typeof direct === "string" || typeof direct === "boolean" || (typeof direct === "number" && Number.isFinite(direct))
+        ? direct
+        : nested[key];
+    if (typeof value === "string" && value === "") continue;
+    if (typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) {
+      additional[key] = value;
+    }
+  }
+  return Object.keys(additional).length ? additional : undefined;
+}
+
+/** Documents: identity + view URL + download URL. No crop / DAT / alt / mobile. */
+function slimDocumentAsset(
+  raw: unknown,
+  parsed: ParsedBynderAsset,
+  options?: { omitName?: boolean; additionalProperties?: readonly string[] }
+): Record<string, unknown> {
+  const asset = firstAsset(raw) ?? {};
+  const next: Record<string, unknown> = {
+    id: parsed.databaseId ?? parsed.id,
+    type: "DOCUMENT",
+  };
+  if (!options?.omitName && parsed.name) next.name = parsed.name;
+  const fileUrl =
+    resolveDocumentFileUrl(raw) ??
+    (typeof asset.url === "string" && asset.url ? asset.url : undefined);
+  if (fileUrl) {
+    next.url = fileUrl;
+    next.downloadUrl =
+      (typeof asset.downloadUrl === "string" && asset.downloadUrl) || withBynderDownloadParam(fileUrl);
+  }
+  const additional = slimAuthorAdditional(asset, options?.additionalProperties);
+  if (additional) next.additional = additional;
+  return next;
+}
+
+/** Keep only the fields this editor, DAT, and delivery need. No optional DAM metadata. */
 export function slimPersistedAsset(
   raw: unknown,
-  keys: readonly PersistAssetKey[] = REQUIRED_PERSIST_KEYS,
-  options?: { omitWebImage?: boolean; additionalProperties?: readonly string[] }
+  options?: { omitWebImage?: boolean; omitName?: boolean; additionalProperties?: readonly string[] }
 ): Record<string, unknown> | null {
   const parsed = parseBynderAsset(raw);
   if (!parsed) return null;
+  if (isDocumentAsset(parsed)) return slimDocumentAsset(raw, parsed, options);
+
   const asset = firstAsset(raw) ?? {};
   const filesIn = filesMap(asset);
-  const want = new Set<string>(keys);
   const next: Record<string, unknown> = {};
   const mediaId = parsed.databaseId ?? parsed.id;
-  if (want.has("id")) next.id = mediaId;
-  if (want.has("name") && parsed.name) next.name = parsed.name;
-  if (want.has("type") && parsed.type) next.type = parsed.type;
-  if (want.has("transformBaseUrl") && parsed.transformBaseUrl) {
-    next.transformBaseUrl = parsed.transformBaseUrl;
-  }
+  next.id = mediaId;
+  if (!options?.omitName && parsed.name) next.name = parsed.name;
+  if (parsed.type) next.type = parsed.type;
+  if (parsed.transformBaseUrl) next.transformBaseUrl = parsed.transformBaseUrl;
   const webImage =
     slimWebImage(filesIn, parsed.transformBaseUrl ? undefined : parsed.sourceUrl) ??
     slimWebImage({ webImage: asset.webImage }, parsed.transformBaseUrl ? undefined : parsed.sourceUrl);
   if (webImage && !options?.omitWebImage) next.webImage = webImage;
-  if (want.has("description")) {
-    const description = pickString(asset.description);
-    if (description) next.description = description;
-  }
-  if (want.has("originalUrl")) {
-    const originalUrl = pickString(asset.originalUrl) ?? pickUrl(filesIn.original);
-    if (originalUrl) next.originalUrl = originalUrl;
-  }
-  if (want.has("publishedAt")) {
-    const publishedAt = pickString(asset.publishedAt);
-    if (publishedAt) next.publishedAt = publishedAt;
-  }
-  if (want.has("updatedAt")) {
-    const updatedAt = pickString(asset.updatedAt);
-    if (updatedAt) next.updatedAt = updatedAt;
-  }
-  if (want.has("tags")) {
-    const tags = slimTags(asset.tags);
-    if (tags) next.tags = tags;
-  }
-  if (want.has("fileType") && parsed.fileType) next.fileType = parsed.fileType;
-  if (want.has("fileSize") && parsed.fileSize) next.fileSize = parsed.fileSize;
-  if (want.has("width") && parsed.width) next.width = parsed.width;
-  if (want.has("height") && parsed.height) next.height = parsed.height;
+  const savedWidth = pickNumber(asset.originalAssetWidth);
+  const savedHeight = pickNumber(asset.originalAssetHeight);
+  const measured = savedWidth || savedHeight ? {} : assetPixelSize(raw);
+  const originalWidth = savedWidth ?? measured.width;
+  const originalHeight = savedHeight ?? measured.height;
+  if (originalWidth) next.originalAssetWidth = Math.round(originalWidth);
+  if (originalHeight) next.originalAssetHeight = Math.round(originalHeight);
+  const savedAspect = typeof asset.aspectRatio === "string" ? asset.aspectRatio.trim() : "";
+  const aspectRatio = aspectRatioFromPixels(originalWidth, originalHeight) ?? (parseAspect(savedAspect) ? savedAspect : undefined);
+  if (aspectRatio) next.aspectRatio = aspectRatio;
   if (isRecord(asset.focalPoint)) next.focalPoint = asset.focalPoint;
   if (isRecord(asset.transform)) next.transform = asset.transform;
-  if (typeof asset.url === "string" && asset.url) next.url = asset.url;
+  for (const key of ["operation", "extendBackground", "extendBackgroundColor"]) {
+    if (asset[key] !== undefined) next[key] = asset[key];
+  }
   if (isRecord(asset.mobile)) {
     const mobile = { ...asset.mobile };
     const nested = isRecord(mobile.asset) ? mobile.asset : undefined;
@@ -477,27 +505,15 @@ export function slimPersistedAsset(
       if (!mobile.webImage && nested.webImage) mobile.webImage = nested.webImage;
       delete mobile.asset;
     }
+    delete mobile.damFocusPoint;
     next.mobile = mobile;
   }
   if (asset.differentMobileAsset === true) next.differentMobileAsset = true;
   if (typeof asset.alt === "string") next.alt = asset.alt;
   const video = cleanVideoPlayback(asset.video);
   if (video && isVideoAsset(parsed)) next.video = video;
-  const nested = cleanAdditionalValues(asset.additional) ?? {};
-  const authorKeys = options?.additionalProperties ?? Object.keys(nested);
-  const additional: Record<string, string | number | boolean> = {};
-  for (const key of authorKeys) {
-    const direct = asset[key];
-    const value =
-      typeof direct === "string" || typeof direct === "boolean" || (typeof direct === "number" && Number.isFinite(direct))
-        ? direct
-        : nested[key];
-    if (typeof value === "string" && value === "") continue;
-    if (typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value))) {
-      additional[key] = value;
-    }
-  }
-  if (Object.keys(additional).length) next.additional = additional;
+  const additional = slimAuthorAdditional(asset, options?.additionalProperties);
+  if (additional) next.additional = additional;
   return next;
 }
 
@@ -542,11 +558,10 @@ export function cleanAdditionalValues(value: unknown): Record<string, string | n
 
 export function slimPersistedAssets(
   assets: unknown[] | undefined,
-  keys: readonly PersistAssetKey[] = REQUIRED_PERSIST_KEYS,
-  options?: { omitWebImage?: boolean; additionalProperties?: readonly string[] }
+  options?: { omitWebImage?: boolean; omitName?: boolean; additionalProperties?: readonly string[] }
 ): unknown[] | undefined {
   if (!Array.isArray(assets) || !assets.length) return undefined;
-  return assets.map((item) => slimPersistedAsset(item, keys, options) ?? item);
+  return assets.map((item) => slimPersistedAsset(item, options) ?? item);
 }
 
 /**
@@ -623,7 +638,19 @@ export function parseBynderAsset(raw: unknown): ParsedBynderAsset | null {
   };
 }
 
-/** Original pixel size when present, otherwise the web image. Not saved on the asset. */
+function pixelSize(record: Record<string, unknown> | null | undefined): { width?: number; height?: number } | undefined {
+  if (!record) return undefined;
+  const width = pickNumber(record.width);
+  const height = pickNumber(record.height);
+  if (!width && !height) return undefined;
+  return { width, height };
+}
+
+/**
+ * Original pixel size, then the selected file, then the web image.
+ * GraphQL `width` / `height` are the original file. `selectedFile` is often a smaller derivative.
+ * Saved as `originalAssetWidth` / `originalAssetHeight`.
+ */
 export function assetPixelSize(
   raw: unknown,
   extra?: unknown
@@ -633,19 +660,13 @@ export function assetPixelSize(
   const passed = asRecord(extra);
   const selected = asRecord(passed?.selectedFile) ?? asRecord(additionalInfo(asset).selectedFile);
   const files = filesMap(asset);
-  const records = [
-    asRecord(files.original) ?? asRecord(files.Original),
-    selected,
-    asset,
-    asRecord(files.webImage ?? files.webimage),
-  ];
-  for (const record of records) {
-    if (!record) continue;
-    const width = pickNumber(record.width);
-    const height = pickNumber(record.height);
-    if (width || height) return { width, height };
-  }
-  return {};
+  return (
+    pixelSize(asRecord(files.original) ?? asRecord(files.Original)) ??
+    pixelSize(asset) ??
+    pixelSize(selected) ??
+    pixelSize(asRecord(files.webImage ?? files.webimage)) ??
+    {}
+  );
 }
 
 /** DAT and the crop editor apply to images. Videos need Bynder Studio / derivatives / clip. */
@@ -664,11 +685,51 @@ export function isVideoAsset(
  * and no desktop/mobile pair.
  */
 export function isDocumentAsset(
-  asset?: { type?: string; fileType?: string; sourceUrl?: string; name?: string } | null
+  asset?: { type?: string; fileType?: string; sourceUrl?: string; name?: string; url?: string } | null
 ): boolean {
   if (!asset) return false;
   if (asset.type?.trim().toUpperCase() === "DOCUMENT") return true;
   const fileType = asset.fileType?.trim() ?? "";
   if (DOCUMENT_FILE.test(fileType)) return true;
-  return DOCUMENT_EXT.test(asset.sourceUrl ?? "") || DOCUMENT_EXT.test(asset.name ?? "");
+  return (
+    DOCUMENT_EXT.test(asset.sourceUrl ?? "") ||
+    DOCUMENT_EXT.test(asset.name ?? "") ||
+    DOCUMENT_EXT.test(asset.url ?? "")
+  );
+}
+
+/** Append Bynder `download=true` so the public file URL triggers a download. */
+export function withBynderDownloadParam(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set("download", "true");
+    return parsed.toString();
+  } catch {
+    if (/[?&]download=/i.test(url)) return url;
+    return url.includes("?") ? `${url}&download=true` : `${url}?download=true`;
+  }
+}
+
+/**
+ * Public original file URL for a document (PDF / office). Prefer `originalUrl` /
+ * `files.original` over preview derivatives (often a WebP thumbnail).
+ */
+export function resolveDocumentFileUrl(raw: unknown): string | undefined {
+  const asset = firstAsset(raw);
+  if (!asset) return undefined;
+  const files = filesMap(asset);
+  const candidates = [
+    pickString(asset.originalUrl),
+    pickUrl(files.original) ?? pickUrl(files.Original),
+    pickString(asset.url),
+    pickString(asset.downloadUrl)?.replace(/([?&])download=[^&]*/i, "").replace(/[?&]$/, ""),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    // Prefer real document files; skip image preview derivatives when possible.
+    if (DOCUMENT_EXT.test(candidate) || !/\.(webp|jpe?g|png|gif|avif)(?:$|\?)/i.test(candidate)) {
+      return candidate;
+    }
+  }
+  return candidates.find(Boolean);
 }

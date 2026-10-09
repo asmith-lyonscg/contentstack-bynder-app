@@ -174,17 +174,12 @@
   cursor: default;
 }
 
-.asset-preview.is-desktop {
+.asset-preview {
   position: relative;
+}
+
+.asset-preview.is-desktop {
   max-width: var(--thumb-desktop-w);
-}
-
-.asset-preview:has(.asset-caption) {
-  gap: 0;
-}
-
-.asset-preview:has(.asset-caption) .asset-thumb {
-  border-bottom: 0;
 }
 
 .thumb-link {
@@ -211,22 +206,38 @@
   height: 14px;
 }
 
+/* Overlays the bottom of the thumb; shown on hover or keyboard focus. */
 .asset-caption {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   box-sizing: border-box;
-  width: 0;
+  width: max-content;
   min-width: 100%;
   margin: 0;
   padding: 3px 4px 3px 8px;
   border: 1px solid #e0e4ee;
-  border-radius: 0 0 4px 4px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.95);
   font: 500 11px/1.35 Inter, system-ui, sans-serif;
   color: #6e6e8a;
   cursor: default;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 120ms ease,
+    visibility 0s linear 120ms;
+}
+
+.asset-preview:hover .asset-caption,
+.asset-preview:has(:focus-visible) .asset-caption {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 120ms ease;
 }
 
 .asset-caption-text {
@@ -286,13 +297,15 @@
   --fitted-w: calc(var(--raw-w) * var(--fit));
   --fitted-h: calc(var(--raw-h) * var(--fit));
   --min-w: 40px;
-  --boost: max(1, calc(40px / min(var(--fitted-w), var(--fitted-h))));
+  /* Grow both sides together so the thumb keeps the crop's aspect ratio, then fit back in the box. */
+  --boost: max(1, calc(40px / min(var(--fitted-w), var(--fitted-h))), calc(var(--min-w) / var(--fitted-w)));
   --grown-w: calc(var(--fitted-w) * var(--boost));
   --grown-h: calc(var(--fitted-h) * var(--boost));
+  --refit: min(1, calc(var(--box-w) / var(--grown-w)), calc(var(--box-h) / var(--grown-h)));
   position: relative;
   box-sizing: border-box;
-  width: min(var(--box-w), max(var(--min-w), var(--grown-w)));
-  height: min(var(--box-h), var(--grown-h));
+  width: calc(var(--grown-w) * var(--refit));
+  height: calc(var(--grown-h) * var(--refit));
   padding: 0;
   border: 1px solid #e6eaf2;
   border-radius: 0;
@@ -306,8 +319,13 @@
   --crop-h: var(--mob-crop-h, 1);
   --box-w: var(--thumb-mobile-w);
   --box-h: var(--thumb-mobile-h);
-  /* Four 22px actions, caption padding, and a few characters of truncated text. */
-  --min-w: 160px;
+  /* Six 22px actions, caption padding, and a few characters of truncated text. */
+  --min-w: 180px;
+}
+
+/* A tall crop can end up narrower than --min-w; keep the caption wide enough for its actions. */
+.asset-preview.is-mobile {
+  min-width: 180px;
 }
 
 .compact-assets li.is-focused .asset-thumb.is-active {
@@ -327,6 +345,11 @@
 
 .asset-thumb img.is-fit {
   object-fit: contain;
+}
+
+.asset-thumb img.is-framed {
+  object-fit: fill;
+  object-position: center;
 }
 
 .asset-thumb img.is-crop {

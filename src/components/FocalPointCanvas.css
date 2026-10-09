@@ -31,14 +31,14 @@
 
 .focal-crosshair {
   position: absolute;
-  width: 22px;
-  height: 22px;
+  width: 56px;
+  height: 56px;
   transform: translate(-50%, -50%);
   pointer-events: none;
   border-radius: 50%;
-  background: #e03131;
-  border: 2.5px solid #fff;
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.95);
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.35),
-    0 1px 4px rgba(0, 0, 0, 0.35);
+    0 0 0 1px rgba(0, 0, 0, 0.2),
+    0 0 6px rgba(0, 0, 0, 0.35);
 }

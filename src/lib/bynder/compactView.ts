@@ -31,6 +31,11 @@ export const COMPACT_ASSET_FIELD_SELECTION = `
     thumbnail
     webImage
   }
+  files
+  ... on Image {
+    width
+    height
+  }
   ... on Video {
     previewUrls
     streamingLinks {

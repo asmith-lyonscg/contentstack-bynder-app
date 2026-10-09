@@ -1,21 +1,65 @@
 export type DatOperation = "fill" | "fit" | "crop" | "scale";
 export type DatFormat = "webp" | "avif" | "jpg" | "png";
+/** Letterbox fill for Fit (`transform:extend`). Always emitted as DAT `background:` (Bynder defaults to white without it). */
+export type ExtendBackgroundMode = "auto" | "transparent" | "black" | "white" | "custom";
 
 export interface FocalPoint {
   x: number;
   y: number;
 }
 
+/**
+ * Editor-side transform for one viewport. `operation` and `extend*` are the author's choice.
+ * `width`, `height`, `aspect`, `format`, and `quality` come from the render profile and are not saved per asset.
+ */
 export interface TransformSettings {
   operation: DatOperation;
   width?: number | null;
   height?: number | null;
   aspect?: string | null;
-  /** Used when operation is `scale` (1 = 100%). Omitted or 1 means no extra zoom. */
-  zoom?: number | null;
+  /** Fit/extend letterbox color mode. */
+  extendBackground?: ExtendBackgroundMode | null;
+  /** Hex for `extendBackground: "custom"` (with or without `#`). */
+  extendBackgroundColor?: string | null;
   format?: DatFormat | null;
   quality?: number | null;
-  extraQuery?: string | null;
+}
+
+/** One viewport of an App Config render profile. */
+export interface RenderProfileViewport {
+  aspectRatio: string;
+  maxWidth: number;
+}
+
+/** App Config `profiles.<name>`. */
+export interface RenderProfile {
+  desktop: RenderProfileViewport;
+  mobile: RenderProfileViewport;
+  quality: number;
+  format: DatFormat;
+}
+
+/**
+ * Saved per viewport. `targetWidth` is the widest image the site should request.
+ * No `aspectRatio` means no profile: use the asset's own aspect ratio, never wider than the original.
+ */
+export interface ProfileViewportSettings {
+  aspectRatio?: string;
+  targetWidth: number;
+}
+
+/** App Config caps on `maxWidth`, and the target width when no profile applies. */
+export interface MaxWidths {
+  desktop: number;
+  mobile: number;
+}
+
+/** Snapshot of the resolved profile, saved on the entry so the site needs no App Config. */
+export interface ProfileSettings {
+  desktop: ProfileViewportSettings;
+  mobile: ProfileViewportSettings;
+  quality: number;
+  format: DatFormat;
 }
 
 export type CompactSelectionMode = "SingleSelect" | "SingleSelectFile" | "MultiSelect";
@@ -71,21 +115,21 @@ export interface CompactViewConfig {
 
 export type ViewportKind = "desktop" | "mobile";
 
-export interface DatQueries {
-  "1x": string;
-  "2x": string;
+export interface ViewportCropSettings {
+  /** Omitted on document assets (no crop editor). */
+  focalPoint?: FocalPoint;
+  /** In memory only. The entry saves `operation` and `extend*` flat on the asset instead. */
+  transform?: TransformSettings;
 }
 
-export interface ViewportCropSettings {
-  focalPoint: FocalPoint;
-  transform: TransformSettings;
-  /**
-   * DAT query strings for this viewport. Join with the asset `transformBaseUrl`.
-   * `2x` is the single static image. A different mobile file uses `mobile.transformBaseUrl`.
-   */
-  dat?: DatQueries;
-  /** @deprecated Older saves stored a full URL. New saves use `dat` plus `transformBaseUrl`. */
-  url?: string;
+/**
+ * Original file size from Bynder, saved so the site can lay out without an API call.
+ * `aspectRatio` is that size reduced (4000×3000 → `"4:3"`), recalled when no profile sets one.
+ */
+export interface OriginalAssetSize {
+  originalAssetWidth?: number;
+  originalAssetHeight?: number;
+  aspectRatio?: string;
 }
 
 /**
@@ -93,7 +137,7 @@ export interface ViewportCropSettings {
  * and `transformBaseUrl` sit here in the same shape as the desktop asset.
  * When those are omitted, mobile uses the desktop file.
  */
-export interface MobileViewportSettings extends ViewportCropSettings {
+export interface MobileViewportSettings extends ViewportCropSettings, OriginalAssetSize {
   id?: string;
   name?: string;
   type?: string;
@@ -115,28 +159,22 @@ export interface AssetCropSettings extends ViewportCropSettings {
   alt?: string;
 }
 
-/** Entry JSON for one picked asset: identity + crop + composed DAT URL. */
-export interface SavedBynderAsset extends AssetCropSettings {
+/** Entry JSON for one picked asset: identity + crop + composed DAT URL (or document links). */
+export interface SavedBynderAsset extends AssetCropSettings, OriginalAssetSize {
   id: string;
   name?: string;
-  /** Compact View media type, e.g. IMAGE or VIDEO. Always saved so video UI survives reopen. */
+  /** Compact View media type, e.g. IMAGE, VIDEO, or DOCUMENT. Always saved. */
   type?: string;
   transformBaseUrl?: string;
-  /** Original file extension. Saved only when `persistAssetKeys` includes `fileType`. */
-  fileType?: string;
-  /** Original file size in bytes. Saved only when `persistAssetKeys` includes `fileSize`. */
-  fileSize?: number;
-  /** Original pixel width. Saved only when `persistAssetKeys` includes `width`. Not the CSS crop width. */
-  width?: number;
-  /** Original pixel height. Saved only when `persistAssetKeys` includes `height`. Not the CSS crop height. */
-  height?: number;
   /** Original/web image. Only persisted when DAT is off or the asset has no transformBaseUrl. */
   webImage?: { url: string };
-  description?: string;
-  originalUrl?: string;
-  publishedAt?: string;
-  updatedAt?: string;
-  tags?: string[];
+  /** Document / PDF: public file URL for viewing (no `download` param). */
+  url?: string;
+  /**
+   * Document / PDF: same as `url` with Bynder `download=true` so the browser downloads the file.
+   * Omitted for images and videos.
+   */
+  downloadUrl?: string;
   /** Web playback flags. Present on video assets. */
   video?: VideoPlayback;
   /**
@@ -147,7 +185,11 @@ export interface SavedBynderAsset extends AssetCropSettings {
 }
 
 export interface BynderImageSettings {
-  v: 1;
+  v: 2;
+  /** Render profile name from App Config. Saved as `profile.id`. */
+  profile?: string;
+  /** Resolved values of `profile` at save time. Saved as `profile.settings`. */
+  profileSettings?: ProfileSettings;
   assets?: SavedBynderAsset[];
   /** UI-only: which thumb is focused. Not persisted; reopen has none selected. */
   activeAssetId?: string;
@@ -177,41 +219,23 @@ export interface ParsedBynderAsset {
   alt?: string;
 }
 
-export interface ViewportCropPreset {
-  aspect?: string;
-  width?: number;
-  height?: number;
-  lockAspect: boolean;
-  lockWidth: boolean;
-  lockHeight: boolean;
-}
-
 export interface CropFieldConfig {
-  aspect?: string;
-  width?: number;
-  height?: number;
-  /** Dual-mode mobile presets. Omitted values inherit the desktop/single fields. */
-  mobileAspect?: string;
-  mobileWidth?: number;
-  mobileHeight?: number;
-  format?: DatFormat;
-  lockAspect: boolean;
-  lockWidth: boolean;
-  lockHeight: boolean;
-  /** Dual-mode mobile locks. `false` is distinct from omitted (omitted inherits desktop). */
-  lockAspectMobile?: boolean;
-  lockWidthMobile?: boolean;
-  lockHeightMobile?: boolean;
-  lockFormat: boolean;
-  hideFormat: boolean;
+  /** Valid App Config profiles. May be empty. */
+  profiles: Record<string, RenderProfile>;
+  /** Profiles authors may pick, in dropdown order. */
+  allowedProfiles: string[];
+  /** Field `profile` or `defaultProfile`. Undefined means new entries use the original aspect ratio. */
+  defaultProfile?: string;
+  /** Authors may choose "Original aspect ratio". True unless the field sets `defaultProfile`. */
+  allowOriginal: boolean;
+  maxWidths: MaxWidths;
+  /** Profile the editor is applying right now. Undefined: original aspect ratio. */
+  profile?: string;
+  /** Resolved sizes for `profile`. A profile missing from App Config keeps the entry's saved snapshot. */
+  active: ProfileSettings;
   showOperation: boolean;
-  showAspect: boolean;
-  showWidth: boolean;
-  showHeight: boolean;
-  showQuality: boolean;
-  showAdvancedQuery: boolean;
-  showDatPreset: boolean;
-  aspectPresets: string[];
+  /** Authors may choose Fit (letterbox). Default false, so Transform type stays hidden. */
+  allowFit: boolean;
   /** Dual desktop/mobile crops. Default true. Set false for a single crop per asset. */
   desktopMobileMode?: boolean;
 }
@@ -231,27 +255,27 @@ export interface AppInstallationConfig {
   enableDat?: boolean;
   /** @deprecated Static/Pages build. Stripped on App Config save. */
   enableAssetTracker?: boolean;
-  /** Extra Bynder keys to keep on the entry JSON. Required keys are always saved. */
-  persistAssetKeys?: string[];
   /** Dual desktop/mobile crops. Default true. */
   desktopMobileMode?: boolean;
   /** @deprecated Use `desktopMobileMode`. Still read from field/app JSON. */
   desktopMobile?: boolean;
   /** Cap on assets in this field. Default 1. Values above 1 use Compact View MultiSelect. */
   maxNumberOfAssets?: number;
-  aspect?: string | { desktop?: string; mobile?: string };
-  width?: number | { desktop?: number; mobile?: number };
-  height?: number | { desktop?: number; mobile?: number };
-  /** DAT output file type. Default `webp`. */
-  format?: DatFormat;
-  lockAspect?: boolean | { desktop?: boolean; mobile?: boolean };
-  lockWidth?: boolean | { desktop?: boolean; mobile?: boolean };
-  lockHeight?: boolean | { desktop?: boolean; mobile?: boolean };
-  lockFormat?: boolean;
-  /** Hide the DAT file-type control. The configured `format` is still applied. */
-  hideFormat?: boolean;
-  /** Dropdown options. Omit to use the built-in list (16:9, 1:1, 4:3, 4:5). */
-  aspectPresets?: string[];
+  /** Widest desktop image any profile may request. Default 2000. */
+  maxDesktopWidth?: number;
+  /** Widest mobile image any profile may request. Default 960. */
+  maxMobileWidth?: number;
+  /** Named render profiles. Without one, assets keep their original aspect ratio. */
+  profiles?: Record<string, RenderProfile>;
+  /** Show Transform type. Default true. Field Config Parameter can override. Hidden anyway when Fit is off. */
+  showFieldOperation?: boolean;
+  /** Offer Fit (letterbox) as well as Fill. Default false. */
+  allowFit?: boolean;
+  /** Video playback checkboxes. Default true. */
+  showFieldAutoplay?: boolean;
+  showFieldMuted?: boolean;
+  showFieldControls?: boolean;
+  showFieldLoop?: boolean;
 }
 
 export interface VideoPlayback {
@@ -277,24 +301,17 @@ export interface AdditionalFieldDefinition {
   label: string;
 }
 
-export const ASPECT_PRESETS = ["16:9", "1:1", "4:3", "4:5"] as const;
-
-export const DAT_FILE_TYPES: { value: Extract<DatFormat, "jpg" | "png" | "webp">; label: string }[] = [
-  { value: "jpg", label: "JPG" },
-  { value: "png", label: "PNG" },
-  { value: "webp", label: "WebP" },
-];
-
 export const DEFAULT_COMPACT_ASSET_TYPES: CompactAssetType[] = ["IMAGE", "VIDEO"];
 
 export const DEFAULT_FOCAL_POINT: FocalPoint = { x: 0.5, y: 0.5 };
 
+export const DEFAULT_MAX_WIDTHS: MaxWidths = { desktop: 2000, mobile: 960 };
+export const DEFAULT_QUALITY = 80;
+export const DEFAULT_FORMAT: DatFormat = "webp";
+
 export const DEFAULT_TRANSFORM: TransformSettings = {
   operation: "fill",
-  width: 1200,
-  height: 675,
-  aspect: "16:9",
-  format: "webp",
-  quality: 80,
-  extraQuery: "",
+  width: DEFAULT_MAX_WIDTHS.desktop,
+  format: DEFAULT_FORMAT,
+  quality: DEFAULT_QUALITY,
 };

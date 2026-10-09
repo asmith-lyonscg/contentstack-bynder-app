@@ -1,4 +1,12 @@
-import type { FocalPoint, TransformSettings } from "../types";
+import type {
+  DatOperation,
+  ExtendBackgroundMode,
+  FocalPoint,
+  ProfileSettings,
+  TransformSettings,
+} from "../types";
+
+const DEFAULT_FOCAL: FocalPoint = { x: 0.5, y: 0.5 };
 
 const POSITIVE = (n: unknown): number | undefined => {
   const value = typeof n === "number" ? n : Number(n);
@@ -152,35 +160,51 @@ function gravityFromFocal(focal: FocalPoint): string {
   return `${row}${col}` || "center";
 }
 
-/** Bynder DAT only knows fill / fit / crop. Scale is fill + author zoom in the editor/CSS. */
-export function datIoOperation(operation: string | null | undefined): "fill" | "fit" | "crop" {
-  if (operation === "fit" || operation === "crop") return operation;
+/**
+ * Map our Transform type to a Bynder DAT `io` operation.
+ * Fit uses `extend` (letterbox). Anything else, including a legacy `scale`, uses `fill`.
+ */
+export function datIoOperation(operation: string | null | undefined): "fill" | "extend" | "crop" {
+  if (operation === "fit") return "extend";
+  if (operation === "crop") return "crop";
   return "fill";
 }
 
-function buildIoParam(operation: string, width?: number, height?: number, gravity?: string): string {
+/** DAT `background:` value for Fit/extend. Always set — Bynder defaults to white without it. */
+export function resolveExtendBackground(transform: {
+  extendBackground?: string | null;
+  extendBackgroundColor?: string | null;
+}): string {
+  const mode = transform.extendBackground ?? "auto";
+  if (mode === "transparent") return "00000000";
+  if (mode === "black") return "000000";
+  if (mode === "white") return "ffffff";
+  if (mode === "custom") {
+    const hex = String(transform.extendBackgroundColor ?? "")
+      .trim()
+      .replace(/^#/, "")
+      .toLowerCase();
+    if (/^[0-9a-f]{6}([0-9a-f]{2})?$/.test(hex)) return hex;
+    return "auto";
+  }
+  return "auto";
+}
+
+function buildIoParam(
+  operation: string,
+  width?: number,
+  height?: number,
+  gravity?: string,
+  background?: string
+): string {
   const parts = [`transform:${datIoOperation(operation)}`];
   if (width) parts.push(`width:${width}`);
   if (height) parts.push(`height:${height}`);
   if (gravity) parts.push(`gravity:${gravity}`);
+  if (datIoOperation(operation) === "extend") {
+    parts.push(`background:${background || "auto"}`);
+  }
   return `io=${parts.join(",")}`;
-}
-
-function sanitizeExtraQuery(extra: string | null | undefined): string {
-  if (!extra) return "";
-  return extra
-    .trim()
-    .replace(/^[?&]+/, "")
-    .replace(/^\/+/, "");
-}
-
-export function physicalTransform(transform: TransformSettings, dpr: number): TransformSettings {
-  const dims = resolveDimensions(transform);
-  return {
-    ...transform,
-    width: dims.width ? Math.round(dims.width * dpr) : null,
-    height: dims.height ? Math.round(dims.height * dpr) : null,
-  };
 }
 
 /** Query string only. Join with `transformBaseUrl` at delivery time. */
@@ -192,32 +216,60 @@ export function composeDatQuery(options: {
   const operation = options.transform.operation || "fill";
   const focal = options.focalPoint ? normalizeFocalPoint(options.focalPoint) : null;
   const gravity = operation === "crop" && focal ? gravityFromFocal(focal) : undefined;
-  const fragments: string[] = [buildIoParam(operation, width, height, gravity)];
-  if (focal) fragments.push(`focuspoint=${focal.x},${focal.y}`);
+  const background = operation === "fit" ? resolveExtendBackground(options.transform) : undefined;
+  const fragments: string[] = [buildIoParam(operation, width, height, gravity, background)];
+  if (focal && operation !== "fit") fragments.push(`focuspoint=${focal.x},${focal.y}`);
   const format = options.transform.format;
   if (format) fragments.push(`format=${format}`);
   const quality = POSITIVE(options.transform.quality);
   if (quality && format !== "png") fragments.push(`quality=${Math.min(100, quality)}`);
-  const extra = sanitizeExtraQuery(options.transform.extraQuery);
-  if (extra) fragments.push(extra);
   return fragments.join("&");
+}
+
+/** The author's per-viewport choices, as saved on the entry. */
+export interface DatCrop {
+  focalPoint?: FocalPoint | null;
+  operation?: DatOperation | null;
+  extendBackground?: ExtendBackgroundMode | null;
+  extendBackgroundColor?: string | null;
+}
+
+/**
+ * DAT query for one image `width` wide, at the profile aspect ratio, format, and quality.
+ * Without an aspect ratio the image is resized proportionally (`transform:scale`).
+ */
+export function datQueryForWidth(
+  crop: DatCrop,
+  profile: Pick<ProfileSettings, "format" | "quality"> & { aspectRatio?: string },
+  width: number
+): string {
+  const w = Math.max(1, Math.round(width));
+  const parsed = parseAspect(profile.aspectRatio);
+  if (!parsed) {
+    const fragments = [`io=transform:scale,width:${w}`, `format=${profile.format}`];
+    if (profile.format !== "png") fragments.push(`quality=${Math.min(100, Math.max(1, Math.round(profile.quality)))}`);
+    return fragments.join("&");
+  }
+  const operation = crop.operation === "fit" ? "fit" : "fill";
+  return composeDatQuery({
+    focalPoint: crop.focalPoint ?? DEFAULT_FOCAL,
+    transform: {
+      operation,
+      width: w,
+      height: Math.max(1, Math.round((w * parsed.h) / parsed.w)),
+      aspect: profile.aspectRatio,
+      format: profile.format,
+      quality: profile.quality,
+      extendBackground: crop.extendBackground,
+      extendBackgroundColor: crop.extendBackgroundColor,
+    },
+  });
 }
 
 export function joinDatUrl(transformBaseUrl: string, query: string): string {
   const base = stripTrailingSlash(transformBaseUrl.trim());
   if (!base || !query) return base;
   return appendQuery(base, query);
-}
-
-/** 1× is the CSS layout size. 2× is the single static image. */
-export function datQueriesForSlice(slice: {
-  focalPoint?: FocalPoint | null;
-  transform: TransformSettings;
-}): { "1x": string; "2x": string } {
-  return {
-    "1x": composeDatQuery({ focalPoint: slice.focalPoint, transform: physicalTransform(slice.transform, 1) }),
-    "2x": composeDatQuery({ focalPoint: slice.focalPoint, transform: physicalTransform(slice.transform, 2) }),
-  };
 }
 
 export function composeDatUrl(
@@ -230,29 +282,5 @@ export function composeDatUrl(
   const base = stripTrailingSlash(transformBaseUrl.trim());
   if (!base) return "";
 
-  const { width, height } = resolveDimensions(options.transform);
-  const operation = options.transform.operation || "fill";
-  const focal = options.focalPoint ? normalizeFocalPoint(options.focalPoint) : null;
-  const gravity = operation === "crop" && focal ? gravityFromFocal(focal) : undefined;
-  const fragments: string[] = [buildIoParam(operation, width, height, gravity)];
-  if (focal) {
-    fragments.push(`focuspoint=${focal.x},${focal.y}`);
-  }
-
-  const format = options.transform.format;
-  if (format) {
-    fragments.push(`format=${format}`);
-  }
-
-  const quality = POSITIVE(options.transform.quality);
-  if (quality && format !== "png") {
-    fragments.push(`quality=${Math.min(100, quality)}`);
-  }
-
-  const extra = sanitizeExtraQuery(options.transform.extraQuery);
-  if (extra) {
-    fragments.push(extra);
-  }
-
-  return appendQuery(base, fragments.join("&"));
+  return joinDatUrl(base, composeDatQuery(options));
 }

@@ -13,6 +13,7 @@ import {
   slimPersistedAsset,
   pickBynderAltText,
   pickBynderAsset,
+  withBynderDownloadParam,
 } from "./parseAsset";
 
 describe("inferTransformBaseUrl", () => {
@@ -148,6 +149,15 @@ describe("assetPixelSize", () => {
       )
     ).toEqual({ width: 4000, height: 3000 });
   });
+
+  it("prefers the asset's original width over the selected derivative", () => {
+    expect(
+      assetPixelSize(
+        { id: "a", width: 4000, height: 2667 },
+        { selectedFile: { url: "https://cdn.example/web.jpg", width: 800, height: 600 } }
+      )
+    ).toEqual({ width: 4000, height: 2667 });
+  });
 });
 
 describe("normalizeCompactAssets", () => {
@@ -173,7 +183,7 @@ describe("normalizeCompactAssets", () => {
     });
   });
 
-  it("keeps only media id, name, webImage URL, and transformBaseUrl", () => {
+  it("keeps only media id, name, webImage URL, transformBaseUrl, and the original pixel size", () => {
     const [normalized] = normalizeCompactAssets([
       {
         id: "graphql-id",
@@ -198,8 +208,31 @@ describe("normalizeCompactAssets", () => {
       type: "IMAGE",
       transformBaseUrl: "https://portal.bynder.com/transform/abc/hero.jpg",
       webImage: { url: "https://cdn.example/web.jpg" },
+      originalAssetWidth: 4000,
+      originalAssetHeight: 3000,
+      aspectRatio: "4:3",
     });
     expect(JSON.stringify(normalized).length).toBeLessThan(500);
+  });
+
+  it("stores GraphQL width and height when the original file object is absent", () => {
+    const [normalized] = normalizeCompactAssets([
+      {
+        id: "gql",
+        databaseId: "guid",
+        name: "Photo",
+        type: "IMAGE",
+        width: 4000,
+        height: 3000,
+        derivatives: { webImage: "https://cdn.example/web.jpg" },
+        files: { transformBaseUrl: "https://portal.bynder.com/transform/abc/photo" },
+      },
+    ]);
+    expect(normalized).toMatchObject({
+      originalAssetWidth: 4000,
+      originalAssetHeight: 3000,
+      aspectRatio: "4:3",
+    });
   });
 
   it("keeps a PDF as a document when the Bynder badge is pdf and the preview is webp", () => {
@@ -218,9 +251,26 @@ describe("normalizeCompactAssets", () => {
       id: "pdf-guid",
       name: "T342703-CZLHD_IntegratedDiverter_Infographic",
       type: "DOCUMENT",
+      url: "https://assets.example/m/pdf-guid/original/T342703-CZLHD_IntegratedDiverter_Infographic.pdf",
+      downloadUrl:
+        "https://assets.example/m/pdf-guid/original/T342703-CZLHD_IntegratedDiverter_Infographic.pdf?download=true",
     });
     expect(normalized).not.toHaveProperty("extensions");
+    expect(normalized).not.toHaveProperty("webImage");
+    expect(normalized).not.toHaveProperty("transform");
+    expect(normalized).not.toHaveProperty("focalPoint");
     expect(isDocumentAsset(parseBynderAsset(normalized))).toBe(true);
+  });
+});
+
+describe("withBynderDownloadParam", () => {
+  it("adds download=true with ? or &", () => {
+    expect(withBynderDownloadParam("https://cdn.example/m/hash/original/file.pdf")).toBe(
+      "https://cdn.example/m/hash/original/file.pdf?download=true"
+    );
+    expect(withBynderDownloadParam("https://cdn.example/m/hash/original/file.pdf?foo=1")).toBe(
+      "https://cdn.example/m/hash/original/file.pdf?foo=1&download=true"
+    );
   });
 });
 
@@ -429,7 +479,7 @@ describe("isDocumentAsset", () => {
 });
 
 describe("slimPersistedAsset", () => {
-  it("saves file type and original pixels only when those keys are requested", () => {
+  it("never saves optional DAM metadata", () => {
     const raw = {
       id: "asset-1",
       name: "Hero",
@@ -438,14 +488,16 @@ describe("slimPersistedAsset", () => {
       fileSize: 2457600,
       width: 4000,
       height: 3000,
+      description: "A hero",
+      tags: ["bottle"],
       files: { webImage: { url: "https://cdn.example/hero.jpg" } },
     };
-    expect(slimPersistedAsset(raw)).not.toHaveProperty("fileType");
-    expect(slimPersistedAsset(raw, ["id", "name", "type", "transformBaseUrl", "fileType", "width", "height"])).toMatchObject({
-      fileType: "jpg",
-      width: 4000,
-      height: 3000,
-    });
+    const slim = slimPersistedAsset(raw);
+    expect(slim).toMatchObject({ id: "asset-1", name: "Hero", type: "IMAGE" });
+    expect(slim).not.toHaveProperty("fileType");
+    expect(slim).not.toHaveProperty("width");
+    expect(slim).not.toHaveProperty("description");
+    expect(slim).not.toHaveProperty("tags");
   });
 
   it("keeps video playback and additional author values", () => {
@@ -471,7 +523,6 @@ describe("slimPersistedAsset", () => {
         video: { autoplay: true, controls: true },
         uniqueId: false,
       },
-      undefined,
       { additionalProperties: ["uniqueId"] }
     );
     expect(image).not.toHaveProperty("video");
