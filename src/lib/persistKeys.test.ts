@@ -1,25 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { resolvePersistKeys, resolvePersistPolicy, REQUIRED_PERSIST_KEYS } from "./persistKeys";
+import { resolvePersistPolicy, REQUIRED_PERSIST_KEYS } from "./persistKeys";
 
-describe("resolvePersistKeys", () => {
-  it("always includes the slim required set", () => {
-    expect(resolvePersistKeys()).toEqual([...REQUIRED_PERSIST_KEYS]);
-    expect(resolvePersistKeys(["files", "metaproperties", "description"])).toEqual([
-      ...REQUIRED_PERSIST_KEYS,
-      "description",
-    ]);
+describe("REQUIRED_PERSIST_KEYS", () => {
+  it("is the fixed slim identity set", () => {
+    expect([...REQUIRED_PERSIST_KEYS]).toEqual(["id", "name", "type", "transformBaseUrl"]);
   });
 });
 
 describe("resolvePersistPolicy", () => {
-  it("lets field config suppress Bynder metadata", () => {
-    expect(resolvePersistPolicy({ suppressMetadata: true }, { persistAssetKeys: ["description"] })).toEqual({
-      keys: ["id", "type", "transformBaseUrl"],
+  it("defaults to keeping name and webImage", () => {
+    expect(resolvePersistPolicy({}, {})).toEqual({ omitWebImage: false, omitName: false });
+  });
+
+  it("suppressMetadata drops name and webImage", () => {
+    expect(resolvePersistPolicy({ suppressMetadata: true }, {})).toEqual({
       omitWebImage: true,
+      omitName: true,
     });
-    expect(resolvePersistPolicy({ persistAssetKeys: ["tags"] }, { persistAssetKeys: ["description"] }).keys).toEqual([
-      ...REQUIRED_PERSIST_KEYS,
-      "tags",
-    ]);
   });
 });

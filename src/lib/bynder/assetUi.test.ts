@@ -51,7 +51,7 @@ describe("listThumbForAsset", () => {
     expect(thumb.operation).toBe("fill");
     expect(thumb.aspectW).toBe(1200);
     expect(thumb.aspectH).toBe(675);
-    expect(thumb.caption).toBe("1200 × 675 · WebP");
+    expect(thumb.caption).toBe("16:9 · WebP · 1200w");
   });
 
   it("falls back to the original image when there is no transform URL", () => {
@@ -90,12 +90,20 @@ describe("scaleToMinSide", () => {
 });
 
 describe("thumbCaption", () => {
-  it("joins dimensions, type, and file size when they exist", () => {
-    expect(thumbCaption({ width: 1200, height: 675, format: "webp", fileSize: 2 * 1024 * 1024 })).toBe(
-      "1200 × 675 · WebP · 2.0 MB"
-    );
-    expect(thumbCaption({ width: 800, height: 600, fileType: "jpg" })).toBe("800 × 600 · JPG");
+  it("joins aspect, type, target width, and file size when they exist", () => {
+    expect(thumbCaption({ aspect: "16:9", format: "webp", targetWidth: 2000 })).toBe("16:9 · WebP · 2000w");
+    expect(thumbCaption({ aspect: "4:3", fileType: "jpg", fileSize: 2 * 1024 * 1024 })).toBe("4:3 · JPG · 2.0 MB");
     expect(thumbCaption({})).toBeUndefined();
+  });
+
+  it("shows the profile width with DAT and the file size without it", () => {
+    const asset = { id: "a", sourceUrl: "https://x/a.jpg", fileType: "jpg", fileSize: 1024 };
+    const transform = { ...DEFAULT_TRANSFORM, width: 960, height: 720, aspect: "4:3" };
+    expect(listThumbForAsset({ asset, live: { transform }, datAllowed: false }).caption).toBe("4:3 · JPG · 1.0 KB");
+    expect(
+      listThumbForAsset({ asset: { ...asset, transformBaseUrl: "https://x/t" }, live: { transform }, datAllowed: true })
+        .caption
+    ).toBe("4:3 · WebP · 960w");
   });
 });
 

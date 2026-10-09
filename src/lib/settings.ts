@@ -1,15 +1,32 @@
-import { parseBynderAsset, cleanAdditionalValues, cleanVideoPlayback, slimPersistedAssets } from "./bynder/parseAsset";
-import { datQueriesForSlice, normalizeFocalPoint } from "./bynder/composeDatUrl";
-import { REQUIRED_PERSIST_KEYS, type PersistAssetKey } from "./persistKeys";
+import {
+  parseBynderAsset,
+  assetPixelSize,
+  cleanAdditionalValues,
+  cleanVideoPlayback,
+  isDocumentAsset,
+  isVideoAsset,
+  resolveDocumentFileUrl,
+  slimPersistedAssets,
+  withBynderDownloadParam,
+} from "./bynder/parseAsset";
+import { normalizeFocalPoint, parseAspect } from "./bynder/composeDatUrl";
+import {
+  applyProfileTransform,
+  aspectRatioFromPixels,
+  asProfileSettings,
+  originalProfileSettings,
+  profileOperation,
+  viewportAssetSize,
+} from "./profiles";
 import {
   DEFAULT_FOCAL_POINT,
   DEFAULT_TRANSFORM,
   type AdditionalFieldDefinition,
   type BynderImageSettings,
-  type DatFormat,
-  type DatOperation,
   type FocalPoint,
   type MobileViewportSettings,
+  type OriginalAssetSize,
+  type ProfileSettings,
   type SavedBynderAsset,
   type TransformSettings,
   type ViewportCropSettings,
@@ -21,27 +38,14 @@ import {
   viewportCropsEqual,
 } from "./viewportCrop";
 
-const OPERATIONS: DatOperation[] = ["fill", "fit", "crop", "scale"];
-const FORMATS: DatFormat[] = ["webp", "avif", "jpg", "png"];
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function asOperation(value: unknown): DatOperation {
-  return OPERATIONS.includes(value as DatOperation) ? (value as DatOperation) : DEFAULT_TRANSFORM.operation;
-}
-
-function asFormat(value: unknown): DatFormat | null {
-  if (value == null || value === "" || value === "auto") return null;
-  if (typeof value === "string" && value.trim().toLowerCase() === "jpeg") return "jpg";
-  return FORMATS.includes(value as DatFormat) ? (value as DatFormat) : DEFAULT_TRANSFORM.format ?? "webp";
-}
-
-function asOptionalNumber(value: unknown): number | null {
-  if (value == null || value === "") return null;
+function asPositiveInt(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
   const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : undefined;
 }
 
 function asFocalPoint(value: unknown): FocalPoint {
@@ -52,58 +56,70 @@ function asFocalPoint(value: unknown): FocalPoint {
   });
 }
 
-function asZoom(value: unknown): number | null {
-  if (value == null || value === "") return null;
-  const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(n) || n <= 1) return null;
-  return Math.min(3, Math.round(n * 100) / 100);
+function asExtendBackground(value: unknown): TransformSettings["extendBackground"] {
+  if (value === "auto" || value === "transparent" || value === "black" || value === "white" || value === "custom") {
+    return value;
+  }
+  return null;
 }
 
+/**
+ * Author choices from an in-memory `transform` or the flat v2 keys. Size, aspect, format, and
+ * quality start at the defaults; `buildSettingsPayload` replaces them with the profile's.
+ */
 function asTransform(value: unknown): TransformSettings {
-  const transformRaw = isRecord(value) ? value : {};
-  const zoom = asZoom(transformRaw.zoom);
+  const raw = isRecord(value) ? value : {};
+  const operation = profileOperation(
+    typeof raw.operation === "string" ? (raw.operation as TransformSettings["operation"]) : null
+  );
+  const extendBackground = operation === "fit" ? asExtendBackground(raw.extendBackground) : null;
+  const extendBackgroundColor = typeof raw.extendBackgroundColor === "string" ? raw.extendBackgroundColor : null;
   return {
-    operation: asOperation(transformRaw.operation),
-    width: asOptionalNumber(transformRaw.width) ?? DEFAULT_TRANSFORM.width,
-    height: asOptionalNumber(transformRaw.height) ?? DEFAULT_TRANSFORM.height,
-    aspect: typeof transformRaw.aspect === "string" ? transformRaw.aspect : DEFAULT_TRANSFORM.aspect,
-    ...(zoom != null ? { zoom } : {}),
-    format: asFormat(transformRaw.format) ?? DEFAULT_TRANSFORM.format,
-    quality: asOptionalNumber(transformRaw.quality) ?? DEFAULT_TRANSFORM.quality,
-    extraQuery: typeof transformRaw.extraQuery === "string" ? transformRaw.extraQuery : "",
+    ...DEFAULT_TRANSFORM,
+    operation,
+    ...(extendBackground && extendBackground !== "auto" ? { extendBackground } : {}),
+    ...(extendBackground === "custom" && extendBackgroundColor ? { extendBackgroundColor } : {}),
   };
-}
-
-function asDatQueries(value: unknown): { "1x": string; "2x": string } | undefined {
-  if (!isRecord(value)) return undefined;
-  const one = typeof value["1x"] === "string" ? value["1x"] : undefined;
-  const two = typeof value["2x"] === "string" ? value["2x"] : undefined;
-  if (!one || !two) return undefined;
-  return { "1x": one, "2x": two };
 }
 
 function asViewportCrop(value: unknown): ViewportCropSettings | undefined {
   if (!isRecord(value)) return undefined;
-  if (!isRecord(value.focalPoint) && !isRecord(value.transform)) return undefined;
+  const nested = isRecord(value.transform) ? value.transform : undefined;
+  if (!isRecord(value.focalPoint) && !nested && typeof value.operation !== "string") return undefined;
   return {
     focalPoint: asFocalPoint(value.focalPoint),
-    transform: asTransform(value.transform),
-    dat: asDatQueries(value.dat),
+    transform: asTransform(nested ?? value),
   };
 }
 
-function asMobileIdentity(
-  value: unknown
-): Pick<MobileViewportSettings, "id" | "name" | "type" | "transformBaseUrl" | "webImage"> | undefined {
+function asOriginalSize(record: Record<string, unknown>, raw?: unknown): OriginalAssetSize {
+  const measured = raw === undefined ? {} : assetPixelSize(raw);
+  const width = asPositiveInt(record.originalAssetWidth) ?? asPositiveInt(measured.width);
+  const height = asPositiveInt(record.originalAssetHeight) ?? asPositiveInt(measured.height);
+  const stored = typeof record.aspectRatio === "string" ? record.aspectRatio.trim() : "";
+  const aspectRatio = aspectRatioFromPixels(width, height) ?? (parseAspect(stored) ? stored : undefined);
+  const next: OriginalAssetSize = {};
+  if (width) next.originalAssetWidth = width;
+  if (height) next.originalAssetHeight = height;
+  if (aspectRatio) next.aspectRatio = aspectRatio;
+  return next;
+}
+
+type MobileIdentity = Pick<
+  MobileViewportSettings,
+  "id" | "name" | "type" | "transformBaseUrl" | "webImage"
+> &
+  OriginalAssetSize;
+
+function asMobileIdentity(value: unknown): MobileIdentity | undefined {
   if (!isRecord(value) || typeof value.id !== "string" || !value.id) return undefined;
   const webImage = asWebImage(value.webImage);
-  const next: Pick<MobileViewportSettings, "id" | "name" | "type" | "transformBaseUrl" | "webImage"> = {
-    id: value.id,
-  };
+  const next: MobileIdentity = { id: value.id };
   if (typeof value.name === "string" && value.name) next.name = value.name;
   if (typeof value.type === "string" && value.type) next.type = value.type;
   if (typeof value.transformBaseUrl === "string" && value.transformBaseUrl) next.transformBaseUrl = value.transformBaseUrl;
   if (webImage && !next.transformBaseUrl) next.webImage = webImage;
+  Object.assign(next, asOriginalSize(value));
   return next;
 }
 
@@ -115,7 +131,6 @@ function asMobileViewport(value: unknown): MobileViewportSettings | undefined {
   return {
     focalPoint: crop?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
     transform: crop?.transform ?? { ...DEFAULT_TRANSFORM },
-    dat: crop?.dat,
     ...identity,
     alt: typeof value.alt === "string" ? value.alt : undefined,
   };
@@ -132,6 +147,26 @@ export function asSavedAsset(raw: unknown, additionalProperties?: readonly strin
   const parsed = parseBynderAsset(raw);
   if (!parsed) return null;
   const record = isRecord(raw) ? raw : {};
+
+  if (isDocumentAsset(parsed) || isDocumentAsset(record as unknown as SavedBynderAsset)) {
+    const fileUrl =
+      (typeof record.url === "string" && record.url) ||
+      resolveDocumentFileUrl(raw) ||
+      undefined;
+    const next: SavedBynderAsset = {
+      id: parsed.id,
+      name: parsed.name,
+      type: "DOCUMENT",
+    };
+    if (fileUrl) {
+      next.url = fileUrl;
+      next.downloadUrl =
+        (typeof record.downloadUrl === "string" && record.downloadUrl) || withBynderDownloadParam(fileUrl);
+    }
+    copyAuthorProperties(next, record, additionalProperties);
+    return next;
+  }
+
   const files = isRecord(record.files) ? record.files : {};
   const crop = asViewportCrop(record);
   const mobile = isRecord(record.mobile) ? asMobileViewport(record.mobile) : undefined;
@@ -149,24 +184,12 @@ export function asSavedAsset(raw: unknown, additionalProperties?: readonly strin
     alt: typeof record.alt === "string" ? record.alt : parsed.alt,
     transformBaseUrl,
     webImage,
+    ...asOriginalSize(record, raw),
     focalPoint: crop?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
     transform: crop?.transform ?? { ...DEFAULT_TRANSFORM },
-    dat: crop?.dat,
     mobile,
     differentMobileAsset: record.differentMobileAsset === true ? true : undefined,
   };
-  if (typeof record.description === "string" && record.description) next.description = record.description;
-  if (typeof record.originalUrl === "string" && record.originalUrl) next.originalUrl = record.originalUrl;
-  if (typeof record.publishedAt === "string" && record.publishedAt) next.publishedAt = record.publishedAt;
-  if (typeof record.updatedAt === "string" && record.updatedAt) next.updatedAt = record.updatedAt;
-  if (Array.isArray(record.tags)) {
-    const tags = record.tags.filter((item): item is string => typeof item === "string" && Boolean(item));
-    if (tags.length) next.tags = tags;
-  }
-  if (typeof record.fileType === "string" && record.fileType) next.fileType = record.fileType;
-  if (typeof record.fileSize === "number" && record.fileSize > 0) next.fileSize = record.fileSize;
-  if (typeof record.width === "number" && record.width > 0) next.width = record.width;
-  if (typeof record.height === "number" && record.height > 0) next.height = record.height;
   const video = cleanVideoPlayback(record.video);
   if (video) next.video = video;
   copyAuthorProperties(next, record, additionalProperties);
@@ -232,7 +255,7 @@ export function defaultTransform(): TransformSettings {
 
 export function emptySettings(): BynderImageSettings {
   return {
-    v: 1,
+    v: 2,
     focalPoint: { ...DEFAULT_FOCAL_POINT },
     transform: defaultTransform(),
   };
@@ -262,28 +285,134 @@ export function parseSavedSettings(raw: unknown): BynderImageSettings {
   const base = emptySettings();
   if (!isRecord(raw) || Object.keys(raw).length === 0) return base;
 
-  const assets = asSavedAssets(raw.assets);
+  const next: BynderImageSettings = {
+    ...base,
+    assets: asSavedAssets(raw.assets),
+  };
+  const savedProfile = readSavedProfile(raw);
+  if (savedProfile.profile) next.profile = savedProfile.profile;
+  if (savedProfile.profileSettings) next.profileSettings = savedProfile.profileSettings;
+  return next;
+}
 
+/**
+ * Current entries store `profile: { id, settings }`. Older entries stored the name as a string
+ * and the snapshot as a sibling `profileSettings`.
+ */
+function readSavedProfile(raw: Record<string, unknown>): { profile?: string; profileSettings?: ProfileSettings } {
+  const nested = isRecord(raw.profile) ? raw.profile : undefined;
+  if (nested) {
+    const id = typeof nested.id === "string" ? nested.id.trim() : "";
+    const profileSettings = asProfileSettings(nested.settings);
+    return {
+      ...(id ? { profile: id } : {}),
+      ...(profileSettings ? { profileSettings } : {}),
+    };
+  }
+  const name = typeof raw.profile === "string" ? raw.profile.trim() : "";
+  const profileSettings = asProfileSettings(raw.profileSettings);
   return {
-    v: 1,
-    assets,
-    focalPoint: { ...DEFAULT_FOCAL_POINT },
-    transform: defaultTransform(),
+    ...(name ? { profile: name } : {}),
+    ...(profileSettings ? { profileSettings } : {}),
   };
 }
 
-export function persistedPayload(settings: BynderImageSettings): Pick<BynderImageSettings, "v" | "assets"> {
-  const next: Pick<BynderImageSettings, "v" | "assets"> = { v: 1 };
-  if (settings.assets?.length) next.assets = settings.assets;
+/** Saved per viewport: focal point and the author's mode. Letterbox only for Fit. */
+function persistedCrop(slice: ViewportCropSettings): Record<string, unknown> {
+  const transform = slice.transform ?? DEFAULT_TRANSFORM;
+  const operation = profileOperation(transform.operation);
+  const out: Record<string, unknown> = {
+    focalPoint: normalizeFocalPoint(slice.focalPoint),
+    operation,
+  };
+  if (operation === "fit" && transform.extendBackground && transform.extendBackground !== "auto") {
+    out.extendBackground = transform.extendBackground;
+    if (transform.extendBackground === "custom" && transform.extendBackgroundColor) {
+      out.extendBackgroundColor = transform.extendBackgroundColor;
+    }
+  }
+  return out;
+}
+
+function persistedIdentity(asset: SavedBynderAsset | MobileViewportSettings): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (asset.id) out.id = asset.id;
+  if (asset.name) out.name = asset.name;
+  if (asset.type) out.type = asset.type;
+  if (asset.transformBaseUrl) out.transformBaseUrl = asset.transformBaseUrl;
+  if (asset.webImage?.url) out.webImage = { url: asset.webImage.url };
+  if (typeof asset.alt === "string") out.alt = asset.alt;
+  if (asset.originalAssetWidth) out.originalAssetWidth = asset.originalAssetWidth;
+  if (asset.originalAssetHeight) out.originalAssetHeight = asset.originalAssetHeight;
+  const aspectRatio =
+    aspectRatioFromPixels(asset.originalAssetWidth, asset.originalAssetHeight) ??
+    (asset.aspectRatio && parseAspect(asset.aspectRatio) ? asset.aspectRatio : undefined);
+  if (aspectRatio) out.aspectRatio = aspectRatio;
+  return out;
+}
+
+function persistedAsset(asset: SavedBynderAsset): Record<string, unknown> {
+  if (isDocumentAsset(asset)) return { ...asDocumentAsset(asset) };
+  const image = !isVideoAsset(asset);
+  const out = persistedIdentity(asset);
+  if (image) Object.assign(out, persistedCrop(asset));
+  if (asset.mobile) {
+    const mobile = {
+      ...(image ? persistedCrop(asset.mobile) : {}),
+      ...(asset.mobile.id ? persistedIdentity(asset.mobile) : {}),
+    };
+    if (Object.keys(mobile).length) out.mobile = mobile;
+  }
+  if (asset.differentMobileAsset) out.differentMobileAsset = true;
+  if (asset.video) out.video = asset.video;
+  if (asset.additional) out.additional = asset.additional;
+  return out;
+}
+
+/**
+ * Entry JSON. The profile name and its resolved snapshot are one object.
+ * No `id` means the original aspect ratio (`settings` then has no `aspectRatio`).
+ */
+export function persistedPayload(settings: BynderImageSettings): Record<string, unknown> {
+  if (!settings.assets?.length) return { v: 2 };
+  const snapshot = settings.profileSettings ?? originalProfileSettings();
+  return {
+    v: 2,
+    profile: {
+      ...(settings.profile ? { id: settings.profile } : {}),
+      settings: snapshot,
+    },
+    assets: settings.assets.map(persistedAsset),
+  };
+}
+
+function withProfileSizes(asset: SavedBynderAsset, profile: ProfileSettings): SavedBynderAsset {
+  if (isDocumentAsset(asset)) return asset;
+  const next: SavedBynderAsset = {
+    ...asset,
+    transform: applyProfileTransform(asset.transform ?? DEFAULT_TRANSFORM, profile, "desktop", true, asset),
+  };
+  if (asset.mobile) {
+    next.mobile = {
+      ...asset.mobile,
+      transform: applyProfileTransform(
+        asset.mobile.transform ?? DEFAULT_TRANSFORM,
+        profile,
+        "mobile",
+        true,
+        viewportAssetSize(asset, "mobile")
+      ),
+    };
+  }
   return next;
 }
 
 export function buildSettingsPayload(
   settings: BynderImageSettings,
-  extras?: Partial<Pick<BynderImageSettings, "activeAssetId" | "activeViewport">> & {
+  extras?: Partial<Pick<BynderImageSettings, "activeAssetId" | "activeViewport" | "profile" | "profileSettings">> & {
     assets?: unknown[];
-    persistAssetKeys?: readonly PersistAssetKey[];
     omitWebImage?: boolean;
+    omitName?: boolean;
     enableDat?: boolean;
     authorFields?: readonly Pick<AdditionalFieldDefinition, "property" | "type">[];
   }
@@ -294,13 +423,18 @@ export function buildSettingsPayload(
   ) => (extras && Object.prototype.hasOwnProperty.call(extras, key) ? extras[key] : fallback);
 
   const enableDat = extras?.enableDat !== false;
-  const persistKeys = extras?.persistAssetKeys ?? REQUIRED_PERSIST_KEYS;
+  const profile = extras && Object.prototype.hasOwnProperty.call(extras, "profile") ? extras.profile : settings.profile;
+  const profileSettings = extras?.profileSettings ?? settings.profileSettings ?? originalProfileSettings();
   const additionalProperties = extras?.authorFields?.map((field) => field.property);
   const activeAssetId = pick("activeAssetId", settings.activeAssetId) || undefined;
   const activeViewport = pick("activeViewport", settings.activeViewport) === "mobile" ? "mobile" : undefined;
   const incoming = extras && Object.prototype.hasOwnProperty.call(extras, "assets") ? extras.assets : settings.assets;
   const slimIdentity = Array.isArray(incoming) && incoming.length
-    ? slimPersistedAssets(incoming, persistKeys, { omitWebImage: extras?.omitWebImage, additionalProperties })
+    ? slimPersistedAssets(incoming, {
+        omitWebImage: extras?.omitWebImage,
+        omitName: extras?.omitName,
+        additionalProperties,
+      })
     : undefined;
   const merged = mergeIdentityAndCrops(slimIdentity, incoming, additionalProperties);
   const stashed = stashActiveCrop(
@@ -312,9 +446,10 @@ export function buildSettingsPayload(
     },
     activeAssetId
   );
+  const cleaned = cleanAssets(stashed.assets, enableDat)?.map((asset) => withProfileSizes(asset, profileSettings));
   const assets = extras?.authorFields?.length
-    ? attachAssetUrls(stashed.assets, enableDat)?.map((asset) => applyAuthorFields(asset, extras.authorFields ?? []))
-    : attachAssetUrls(stashed.assets, enableDat);
+    ? cleaned?.map((asset) => applyAuthorFields(asset, extras.authorFields ?? []))
+    : cleaned;
   const focused = savedAssetById({ assets }, activeAssetId);
   const live = focused
     ? liveFromAsset(focused, activeViewport === "mobile" ? "mobile" : "desktop")
@@ -325,20 +460,44 @@ export function buildSettingsPayload(
       };
 
   const next: BynderImageSettings = {
-    v: 1,
+    v: 2,
+    profile,
+    profileSettings,
     assets,
     activeAssetId: focused?.id,
     activeViewport,
     focalPoint: live.focalPoint,
-    transform: live.transform,
+    transform: applyProfileTransform(
+      live.transform,
+      profileSettings,
+      activeViewport ?? "desktop",
+      true,
+      viewportAssetSize(focused, activeViewport ?? "desktop")
+    ),
     alt: live.alt,
   };
 
+  if (!next.profile) delete next.profile;
   if (!next.assets?.length) delete next.assets;
   if (!next.activeAssetId) delete next.activeAssetId;
   if (!next.activeViewport) delete next.activeViewport;
   if (next.alt == null) delete next.alt;
 
+  return next;
+}
+
+/** Drop legacy optional DAM metadata that used to live behind persistAssetKeys. */
+function withoutDamMetadata(asset: SavedBynderAsset): SavedBynderAsset {
+  const next = { ...asset } as SavedBynderAsset & Record<string, unknown>;
+  delete next.description;
+  delete next.originalUrl;
+  delete next.publishedAt;
+  delete next.updatedAt;
+  delete next.tags;
+  delete next.fileType;
+  delete next.fileSize;
+  delete next.width;
+  delete next.height;
   return next;
 }
 
@@ -355,67 +514,73 @@ function mergeIdentityAndCrops(
     const identity = asSavedAsset(raw, additionalProperties);
     if (!identity) continue;
     const existing = byId.get(identity.id);
+    if (isDocumentAsset(identity) || isDocumentAsset(existing)) {
+      next.push(
+        asDocumentAsset({
+          ...identity,
+          name: identity.name ?? existing?.name,
+          url: identity.url ?? existing?.url,
+          downloadUrl: identity.downloadUrl ?? existing?.downloadUrl,
+          additional: identity.additional ?? existing?.additional,
+        })
+      );
+      continue;
+    }
     next.push(
-      existing
-        ? {
-            ...existing,
-            id: identity.id,
-            name: identity.name ?? existing.name,
-            type: identity.type ?? existing.type,
-            transformBaseUrl: identity.transformBaseUrl ?? existing.transformBaseUrl,
-            webImage: identity.webImage ?? existing.webImage,
-            alt: existing.alt ?? identity.alt,
-            additional: existing.additional ?? identity.additional,
-          }
-        : identity
+      withoutDamMetadata(
+        existing
+          ? {
+              ...existing,
+              id: identity.id,
+              name: identity.name ?? existing.name,
+              type: identity.type ?? existing.type,
+              transformBaseUrl: identity.transformBaseUrl ?? existing.transformBaseUrl,
+              webImage: identity.webImage ?? existing.webImage,
+              originalAssetWidth: existing.originalAssetWidth ?? identity.originalAssetWidth,
+              originalAssetHeight: existing.originalAssetHeight ?? identity.originalAssetHeight,
+              alt: existing.alt ?? identity.alt,
+              additional: existing.additional ?? identity.additional,
+            }
+          : identity
+      )
     );
   }
   return next.length ? next : undefined;
 }
 
-function composeViewportUrl(baseUrl: string | undefined, slice: ViewportCropSettings, enableDat: boolean) {
-  if (!enableDat || !baseUrl) return undefined;
-  return datQueriesForSlice(slice);
+function asDocumentAsset(asset: SavedBynderAsset): SavedBynderAsset {
+  const fileUrl = asset.url;
+  const next: SavedBynderAsset = {
+    id: asset.id,
+    type: "DOCUMENT",
+  };
+  if (asset.name) next.name = asset.name;
+  if (fileUrl) {
+    next.url = fileUrl;
+    next.downloadUrl = asset.downloadUrl || withBynderDownloadParam(fileUrl);
+  } else if (asset.downloadUrl) {
+    next.downloadUrl = asset.downloadUrl;
+  }
+  if (asset.additional) next.additional = asset.additional;
+  return next;
 }
 
-function attachAssetUrls(assets: SavedBynderAsset[] | undefined, enableDat: boolean): SavedBynderAsset[] | undefined {
+/** `webImage` only without DAT; document links only on documents; matching mobile relinked. */
+function cleanAssets(assets: SavedBynderAsset[] | undefined, enableDat: boolean): SavedBynderAsset[] | undefined {
   if (!assets?.length) return undefined;
   return assets.map((asset) => {
+    if (isDocumentAsset(asset)) return asDocumentAsset(asset);
     const datOn = Boolean(enableDat && asset.transformBaseUrl);
-    const url = composeViewportUrl(asset.transformBaseUrl, asset, datOn);
-    const mobileBase = asset.mobile?.id
-      ? asset.mobile.transformBaseUrl
-      : asset.differentMobileAsset
-        ? undefined
-        : asset.transformBaseUrl;
-    const mobileUrl = asset.mobile ? composeViewportUrl(mobileBase, asset.mobile, Boolean(enableDat && mobileBase)) : undefined;
     const next: SavedBynderAsset = { ...asset };
-    if (url) next.dat = url;
-    else delete next.dat;
     delete next.url;
-    if (next.mobile) {
-      if (mobileUrl) {
-        const { url: _legacy, ...mobile } = next.mobile;
-        next.mobile = { ...mobile, dat: mobileUrl };
-      } else {
-        const { dat: _drop, ...mobile } = next.mobile;
-        next.mobile = mobile;
-      }
-    }
+    delete next.downloadUrl;
     if (datOn) delete next.webImage;
-    else if (!next.webImage && asset.webImage) next.webImage = asset.webImage;
     if (next.mobile?.transformBaseUrl) {
       const { webImage: _mobileWebImage, ...mobileRest } = next.mobile;
       next.mobile = mobileRest;
     }
-    const transform = { ...next.transform };
-    if (!transform.extraQuery) delete transform.extraQuery;
-    next.transform = transform;
-    if (next.mobile) {
-      const mobileTransform = { ...next.mobile.transform };
-      if (!mobileTransform.extraQuery) delete mobileTransform.extraQuery;
-      next.mobile = { ...next.mobile, transform: mobileTransform };
-    }
+    if (!next.originalAssetWidth) delete next.originalAssetWidth;
+    if (!next.originalAssetHeight) delete next.originalAssetHeight;
     return stripMatchingMobile(next) as SavedBynderAsset;
   });
 }
@@ -431,9 +596,7 @@ export function stashActiveCrop(settings: BynderImageSettings, assetId?: string)
     if (asset.id !== assetId) return asset;
     const existing = asset;
     const desktop: ViewportCropSettings =
-      viewport === "mobile"
-        ? { focalPoint: existing.focalPoint, transform: existing.transform, dat: existing.dat }
-        : live;
+      viewport === "mobile" ? { focalPoint: existing.focalPoint, transform: existing.transform } : live;
     const mobileIdentity = existing.mobile?.id
       ? {
           id: existing.mobile.id,
@@ -441,14 +604,18 @@ export function stashActiveCrop(settings: BynderImageSettings, assetId?: string)
           type: existing.mobile.type,
           transformBaseUrl: existing.mobile.transformBaseUrl,
           webImage: existing.mobile.webImage,
+          originalAssetWidth: existing.mobile.originalAssetWidth,
+          originalAssetHeight: existing.mobile.originalAssetHeight,
         }
       : {};
     const mobileLive: MobileViewportSettings = { ...live, ...mobileIdentity };
+    const linkedToDesktop = { ...existing, ...desktop };
+    delete linkedToDesktop.mobile;
     const withLive: SavedBynderAsset =
       viewport === "mobile"
         ? existing.differentMobileAsset || existing.mobile?.id || !viewportCropsEqual(live, desktop)
           ? { ...existing, ...desktop, mobile: mobileLive }
-          : { ...existing, ...desktop }
+          : linkedToDesktop
         : { ...existing, ...live, mobile: existing.mobile };
     const separateMobile = Boolean(existing.differentMobileAsset || existing.mobile?.id);
     if (viewport === "mobile" && separateMobile) {

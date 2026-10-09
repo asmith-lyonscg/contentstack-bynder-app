@@ -29,7 +29,6 @@ export function viewportCrop(
   return {
     focalPoint: crop.focalPoint,
     transform: crop.transform,
-    dat: crop.dat,
   };
 }
 
@@ -71,33 +70,43 @@ export function withoutMobileCrop(crop: AssetCropSettings | undefined): AssetCro
   return desktop;
 }
 
+/** Only the author's choices. Size, aspect, format, and quality come from the profile per viewport. */
 function normalizeTransform(transform: TransformSettings): Record<string, unknown> {
+  const operation = transform.operation === "fit" ? "fit" : "fill";
+  const fit = operation === "fit";
+  const background = fit ? transform.extendBackground || "auto" : null;
   return {
-    operation: transform.operation,
-    width: transform.width ?? null,
-    height: transform.height ?? null,
-    aspect: transform.aspect || null,
-    format: transform.format ?? null,
-    quality: transform.quality ?? null,
-    extraQuery: transform.extraQuery || "",
+    operation,
+    background,
+    color: background === "custom" ? transform.extendBackgroundColor ?? "" : null,
   };
 }
 
 /** True when mobile still follows desktop (no separate mobile crop). */
 export function viewportCropsEqual(a: ViewportCropSettings, b: ViewportCropSettings): boolean {
+  const ax = a.focalPoint?.x ?? 0.5;
+  const ay = a.focalPoint?.y ?? 0.5;
+  const bx = b.focalPoint?.x ?? 0.5;
+  const by = b.focalPoint?.y ?? 0.5;
+  if (!a.transform || !b.transform) return !a.transform && !b.transform && ax === bx && ay === by;
   return (
-    Math.round(a.focalPoint.x * 1000) === Math.round(b.focalPoint.x * 1000) &&
-    Math.round(a.focalPoint.y * 1000) === Math.round(b.focalPoint.y * 1000) &&
+    Math.round(ax * 1000) === Math.round(bx * 1000) &&
+    Math.round(ay * 1000) === Math.round(by * 1000) &&
     JSON.stringify(normalizeTransform(a.transform)) === JSON.stringify(normalizeTransform(b.transform))
   );
 }
 
-/** Drop `mobile` when it still matches desktop. Presence of `mobile` means unmatched. */
-export function stripMatchingMobile<T extends AssetCropSettings>(crop: T): T {
-  const separate = Boolean(crop.differentMobileAsset || crop.mobile?.id);
-  if (!crop.mobile) return crop;
-  if (separate || !viewportCropsEqual(crop, crop.mobile)) return crop;
-  const { mobile: _mobile, ...desktop } = crop;
+/**
+ * Drop `mobile` when it still matches desktop. Presence of `mobile` means unmatched.
+ * A "different" mobile file that is the desktop file with the same crop and alt is relinked.
+ */
+export function stripMatchingMobile<T extends AssetCropSettings & { id?: string }>(crop: T): T {
+  const mobile = crop.mobile;
+  if (!mobile) return crop;
+  const sameFile = mobile.id ? mobile.id === crop.id : !crop.differentMobileAsset;
+  if (!sameFile || !viewportCropsEqual(crop, mobile)) return crop;
+  if (mobile.id && mobile.alt && mobile.alt !== (crop.alt ?? "")) return crop;
+  const { mobile: _mobile, differentMobileAsset: _flag, ...desktop } = crop;
   return desktop as T;
 }
 

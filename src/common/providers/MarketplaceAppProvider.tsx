@@ -42,7 +42,8 @@ export function MarketplaceAppProvider({ children }: ProviderProps) {
     );
   }
 
-  if (!appSdk) {
+  // Field hydrate is one-shot, so it must see App Config on its first run.
+  if (!appSdk || appConfig === null) {
     return <div className="app-loading">Loading Bynder Image Settings…</div>;
   }
 

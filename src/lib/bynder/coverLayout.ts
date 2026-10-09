@@ -105,13 +105,12 @@ export function frameLayout(
   cropH?: number | null,
   zoom = 1
 ): CoverLayout {
-  // Fit / Fill / Crop do not use zoom. Scale is cover + zoom (mutually exclusive with Fill).
+  // Fit letterboxes. Fill covers the frame. Legacy crop is a pixel window.
   if (operation === "fit") return containLayout(naturalW, naturalH, frameW, frameH, 1);
   if (operation === "crop" && cropW && cropH) {
     return cropWindowLayout(naturalW, naturalH, frameW, frameH, cropW, cropH, 1);
   }
-  if (operation === "scale") return coverLayout(naturalW, naturalH, frameW, frameH, zoom);
-  return coverLayout(naturalW, naturalH, frameW, frameH, 1);
+  return coverLayout(naturalW, naturalH, frameW, frameH, zoom);
 }
 
 export function offsetFromFocal(

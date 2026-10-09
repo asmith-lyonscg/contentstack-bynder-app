@@ -3,7 +3,6 @@ import type { FocalPoint, TransformSettings } from "../lib/types";
 import { fitPreviewBox, previewIsToScale } from "../lib/bynder/composeDatUrl";
 import {
   clampOffset,
-  clampZoom,
   focalFromOffset,
   frameLayout,
   imagePointFromPointer,
@@ -16,15 +15,31 @@ import "./CropFocalEditor.css";
 /** Flip to true to let authors pan a cropped image by dragging it. */
 const ALLOW_CROP_PAN = false;
 
+function fitLetterboxCss(transform: TransformSettings): string | undefined {
+  if ((transform.operation || "fill") !== "fit") return undefined;
+  const mode = transform.extendBackground ?? "auto";
+  if (mode === "transparent") return "transparent";
+  if (mode === "black") return "#000000";
+  if (mode === "white") return "#ffffff";
+  if (mode === "custom") {
+    const raw = (transform.extendBackgroundColor ?? "").trim();
+    if (!raw) return "#808080";
+    return raw.startsWith("#") ? raw.slice(0, 9) : `#${raw.slice(0, 8)}`;
+  }
+  return "#dfe3ea";
+}
+
 interface CropFocalEditorProps {
   src: string;
   alt?: string;
   focalPoint: FocalPoint;
   transform: TransformSettings;
   onChange: (point: FocalPoint) => void;
+  /** `src` is the finished Fit transform, letterbox included. Fill still loads the full image. */
+  fitImage?: boolean;
 }
 
-export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: CropFocalEditorProps) {
+export function CropFocalEditor({ src, alt, focalPoint, transform, onChange, fitImage = false }: CropFocalEditorProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -37,7 +52,6 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
 
   const box = fitPreviewBox(transform, maxWidth, 360);
   const toScale = previewIsToScale(box);
-  const zoom = clampZoom(transform.zoom);
 
   useEffect(() => {
     setNatural({ w: 0, h: 0 });
@@ -62,6 +76,7 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
   }, []);
 
   const operation = transform.operation || "fill";
+  const isFit = operation === "fit";
   const layout = frameLayout(
     operation,
     natural.w,
@@ -69,8 +84,7 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
     box.width,
     box.height,
     transform.width,
-    transform.height,
-    zoom
+    transform.height
   );
   const baseOffset = offsetForOperation(operation, focalPoint, layout, box.width, box.height);
   const offset = dragOffset ?? baseOffset;
@@ -94,7 +108,7 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
   };
 
   const onFrameDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
+    if (isFit || event.button !== 0) return;
     const img = imageRef.current;
     if (!img) return;
 
@@ -145,12 +159,18 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
     }
   };
 
+  const letterbox = fitImage ? undefined : fitLetterboxCss(transform);
+
   return (
     <div ref={shellRef} className="crop-editor-shell">
       <div
         ref={frameRef}
-        className={`crop-editor${canPan ? " is-pannable" : ""}${dragOffset ? " is-panning" : ""}`}
-        style={{ width: box.width, height: box.height }}
+        className={`crop-editor${isFit ? " is-fit" : ""}${canPan ? " is-pannable" : ""}${dragOffset ? " is-panning" : ""}`}
+        style={{
+          width: box.width,
+          height: box.height,
+          ...(letterbox ? { background: letterbox } : {}),
+        }}
         onPointerDown={onFrameDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -159,17 +179,22 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
         {src && !loaded ? <ImageSpinner /> : null}
         <div
           className={`crop-image-layer${loaded ? "" : " is-loading"}`}
-          style={{
-            width: layout.dispW,
-            height: layout.dispH,
-            transform: `translate(${offset.x}px, ${offset.y}px)`,
-          }}
+          style={
+            fitImage
+              ? { width: "100%", height: "100%" }
+              : {
+                  width: layout.dispW,
+                  height: layout.dispH,
+                  transform: `translate(${offset.x}px, ${offset.y}px)`,
+                }
+          }
         >
           <img
             ref={imageRef}
             src={src}
             alt={alt ?? "Bynder image"}
             draggable={false}
+            style={fitImage ? { width: "100%", height: "100%", objectFit: "fill" } : undefined}
             onLoad={(event) => {
               setLoaded(true);
               setNatural({
@@ -179,14 +204,16 @@ export function CropFocalEditor({ src, alt, focalPoint, transform, onChange }: C
             }}
             onError={() => setLoaded(true)}
           />
-          <div
-            className="focal-crosshair is-handle"
-            style={{ left: `${focalPoint.x * 100}%`, top: `${focalPoint.y * 100}%` }}
-            onPointerDown={onMarkerDown}
-            aria-hidden
-          />
+          {isFit ? null : (
+            <div
+              className="focal-crosshair is-handle"
+              style={{ left: `${focalPoint.x * 100}%`, top: `${focalPoint.y * 100}%` }}
+              onPointerDown={onMarkerDown}
+              aria-hidden
+            />
+          )}
         </div>
-        {!toScale && <div className="crop-scale-note">Not to scale</div>}
+        {loaded && !toScale ? <div className="crop-scale-note">Not to scale</div> : null}
       </div>
     </div>
   );

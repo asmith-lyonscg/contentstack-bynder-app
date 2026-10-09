@@ -44,7 +44,7 @@ interface CompactPickerProps {
   desktopMobileMode?: boolean;
   /** Row ids whose mobile thumb is a separate Bynder file (or an empty chooser). */
   separateMobileIds?: string[];
-  /** Row ids whose desktop and mobile file and crop still match. */
+  /** Row ids whose desktop and mobile asset, crop, and focal point are the same. */
   linkedIds?: string[];
   /** Separate mobile slots that do not have a file yet. */
   emptyMobileIds?: string[];
@@ -72,6 +72,7 @@ function ThumbImage({
   operation = "fill",
   cropW,
   cropH,
+  framed = false,
 }: {
   src: string;
   fallback: string;
@@ -79,6 +80,8 @@ function ThumbImage({
   operation?: DatOperation;
   cropW?: number;
   cropH?: number;
+  /** The src is already the Fit transform. Fill the thumb instead of letterboxing again. */
+  framed?: boolean;
 }) {
   const [shown, setShown] = useState(src);
   const shownRef = useRef(shown);
@@ -136,7 +139,12 @@ function ThumbImage({
         src={shown}
         alt=""
         draggable={false}
-        className={[operation === "fit" ? "is-fit" : "", cropLayout ? "is-crop" : "", loading ? "is-loading" : ""]
+        className={[
+          operation === "fit" && !framed ? "is-fit" : "",
+          framed ? "is-framed" : "",
+          cropLayout ? "is-crop" : "",
+          loading ? "is-loading" : "",
+        ]
           .filter(Boolean)
           .join(" ") || undefined}
         style={
@@ -146,7 +154,7 @@ function ThumbImage({
                 height: cropLayout.dispH,
                 transform: `translate(${cropOffset.x}px, ${cropOffset.y}px)`,
               }
-            : { objectPosition: operation === "fit" ? "50% 50%" : objectPosition }
+            : { objectFit: framed ? "fill" : undefined, objectPosition: operation === "fit" || framed ? "50% 50%" : objectPosition }
         }
         onLoad={(event) => {
           setLoadedSrc(shown);
@@ -682,6 +690,7 @@ export function CompactPicker({
                         operation={desktopThumb?.operation}
                         cropW={desktopThumb?.aspectW}
                         cropH={desktopThumb?.aspectH}
+                        framed={desktopThumb?.framed}
                       />
                       {thumbMark}
                     </span>
@@ -691,6 +700,14 @@ export function CompactPicker({
                       </span>
                     ) : null}
                     <ThumbCaption caption={desktopThumb?.caption}>
+                      {selectable ? (
+                        <IconButton
+                          label={showMobile ? "Edit desktop crop" : "Edit"}
+                          onClick={() => onFocus(asset.id, showMobile ? "desktop" : undefined)}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                      ) : null}
                       <AssetIconSet
                         previewUrl={asset.sourceUrl}
                         bynderUrl={bynderMediaUrl(portalUrl, asset)}
@@ -755,10 +772,14 @@ export function CompactPicker({
                         operation={mobileThumb?.operation}
                         cropW={mobileThumb?.aspectW}
                         cropH={mobileThumb?.aspectH}
+                        framed={mobileThumb?.framed}
                       />
                       {thumbMark}
                     </span>
                     <ThumbCaption caption={mobileThumb?.caption}>
+                      <IconButton label="Edit mobile crop" onClick={() => onFocus(asset.id, "mobile")}>
+                        <EditIcon />
+                      </IconButton>
                       {separateMobile ? (
                         <>
                           <AssetIconSet
@@ -781,7 +802,7 @@ export function CompactPicker({
                           </IconButton>
                         </>
                       ) : (
-                        <IconButton label="Change mobile asset" onClick={() => openPicker(asset.id)}>
+                        <IconButton label="Use a different asset for mobile" onClick={() => openPicker(asset.id)}>
                           <SwapIcon />
                         </IconButton>
                       )}
@@ -950,6 +971,21 @@ function SwapIcon() {
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
       <path fill="none" stroke="currentColor" strokeWidth="1.4" d="M5 3.5 2.5 6 5 8.5M2.5 6h8" />
       <path fill="none" stroke="currentColor" strokeWidth="1.4" d="M11 7.5 13.5 10 11 12.5M13.5 10h-8" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+      <path
+        d="M10.6 3.2 12.8 5.4 6 12.2 3.3 12.7 3.8 10Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path stroke="currentColor" strokeWidth="1.4" d="M9.3 4.5 11.5 6.7" />
     </svg>
   );
 }

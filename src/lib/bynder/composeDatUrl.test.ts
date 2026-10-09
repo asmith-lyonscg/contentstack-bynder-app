@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { composeDatUrl, cssCropBox, datQueriesForSlice, fitPreviewBox, lockToAspect, parseAspect, previewIsToScale, resolveDimensions } from "./composeDatUrl";
+import { composeDatUrl, cssCropBox, datQueryForWidth, fitPreviewBox, lockToAspect, parseAspect, previewIsToScale, resolveDimensions } from "./composeDatUrl";
 import { DEFAULT_TRANSFORM } from "../types";
 
 describe("parseAspect", () => {
@@ -92,23 +92,41 @@ describe("composeDatUrl", () => {
   it("omits quality for png", () => {
     const url = composeDatUrl(base, {
       focalPoint: { x: 0.5, y: 0.5 },
-      transform: { operation: "fit", width: 800, format: "png", quality: 80 },
+      transform: { operation: "fit", width: 800, height: 600, format: "png", quality: 80 },
     });
+    expect(url).toContain("io=transform:extend,width:800,height:600");
     expect(url).toContain("format=png");
     expect(url).not.toContain("quality=");
+    expect(url).not.toContain("focuspoint=");
   });
 
-  it("appends extra query fragments", () => {
-    const url = composeDatUrl(base, {
-      transform: {
-        operation: "crop",
-        width: 400,
-        height: 400,
-        extraQuery: "?io=filter:grayscale",
-      },
-    });
-    expect(url).toContain("io=transform:crop,width:400,height:400");
-    expect(url).toContain("io=filter:grayscale");
+  it("adds extend background for Fit letterbox colors", () => {
+    expect(
+      composeDatUrl(base, {
+        transform: {
+          operation: "fit",
+          width: 110,
+          height: 100,
+          extendBackground: "transparent",
+        },
+      })
+    ).toContain("io=transform:extend,width:110,height:100,background:00000000");
+    expect(
+      composeDatUrl(base, {
+        transform: {
+          operation: "fit",
+          width: 110,
+          height: 100,
+          extendBackground: "custom",
+          extendBackgroundColor: "#1a2b3c",
+        },
+      })
+    ).toContain("background:1a2b3c");
+    expect(
+      composeDatUrl(base, {
+        transform: { operation: "fit", width: 110, height: 100, extendBackground: "auto" },
+      })
+    ).toContain("io=transform:extend,width:110,height:100,background:auto");
   });
 
   it("positions a crop with gravity from the focal point", () => {
@@ -127,24 +145,31 @@ describe("composeDatUrl", () => {
     expect(url).toContain("focuspoint=1,0");
   });
 
-  it("maps scale to DAT fill (zoom is editor/CSS only)", () => {
+  it("maps a legacy scale operation to DAT fill", () => {
     const url = composeDatUrl(base, {
       focalPoint: { x: 0.4, y: 0.6 },
-      transform: { operation: "scale", width: 1200, height: 675, zoom: 1.5, format: "webp" },
+      transform: { operation: "scale", width: 1200, height: 675, format: "webp" },
     });
     expect(url).toContain("io=transform:fill,width:1200,height:675");
     expect(url).not.toContain("scale");
     expect(url).toContain("focuspoint=0.4,0.6");
   });
 
-  it("builds 1x and 2x query strings from CSS layout size", () => {
-    const sources = datQueriesForSlice({
-      focalPoint: { x: 0.5, y: 0.5 },
-      transform: { ...DEFAULT_TRANSFORM, width: 1200, height: 675 },
-    });
-    expect(sources["1x"]).toContain("width:1200");
-    expect(sources["1x"]).not.toContain("https://");
-    expect(sources["2x"]).toContain("width:2400");
-    expect(sources["2x"]).toContain("height:1350");
+});
+
+describe("datQueryForWidth", () => {
+  const profile = { aspectRatio: "16:9", format: "webp" as const, quality: 80 };
+
+  it("sizes one query to the requested width at the profile aspect", () => {
+    expect(datQueryForWidth({ focalPoint: { x: 0.25, y: 0.75 }, operation: "fill" }, profile, 640)).toBe(
+      "io=transform:fill,width:640,height:360&focuspoint=0.25,0.75&format=webp&quality=80"
+    );
+  });
+
+  it("maps Scale to fill and Fit to extend with its letterbox", () => {
+    expect(datQueryForWidth({ operation: "scale" }, profile, 1280)).toContain("io=transform:fill,width:1280,height:720");
+    const fit = datQueryForWidth({ operation: "fit", extendBackground: "black" }, { ...profile, aspectRatio: "4:3" }, 960);
+    expect(fit).toContain("io=transform:extend,width:960,height:720,background:000000");
+    expect(fit).not.toContain("focuspoint=");
   });
 });

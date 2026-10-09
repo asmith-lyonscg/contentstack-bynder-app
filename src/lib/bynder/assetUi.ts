@@ -6,7 +6,7 @@ import {
   type ParsedBynderAsset,
   type TransformSettings,
 } from "../types";
-import { normalizeFocalPoint } from "./composeDatUrl";
+import { normalizeFocalPoint, parseAspect } from "./composeDatUrl";
 
 export const LIST_THUMB_MOBILE = { width: 200, height: 200 };
 export const LIST_THUMB_DESKTOP = { width: 300, height: 200 };
@@ -22,6 +22,8 @@ export interface ListThumb {
   aspectW?: number;
   aspectH?: number;
   operation?: DatOperation;
+  /** This URL is already the Fit transform, letterbox included. Draw it filling the thumb. */
+  framed?: boolean;
 }
 
 export interface AssetListThumbs {
@@ -39,8 +41,8 @@ export function listThumbForAsset(input: {
   asset: ParsedBynderAsset;
   crop?: AssetCropSettings;
   live?: {
-    focalPoint: FocalPoint;
-    transform: TransformSettings;
+    focalPoint?: FocalPoint;
+    transform?: TransformSettings;
     datEnabled?: boolean;
     url?: string;
   };
@@ -55,11 +57,11 @@ export function listThumbForAsset(input: {
   const cropWidth = transform?.width;
   const cropHeight = transform?.height;
   const caption = thumbCaption({
-    width: cropWidth,
-    height: cropHeight,
+    aspect: cropAspectLabel(transform),
     format: datOn ? transform?.format : input.asset.fileType,
     fileType: input.asset.fileType,
-    fileSize: input.asset.fileSize,
+    targetWidth: datOn ? cropWidth : undefined,
+    fileSize: datOn ? undefined : input.asset.fileSize,
   });
 
   return {
@@ -86,17 +88,34 @@ export function formatFileType(value?: string | null): string | undefined {
   return raw.toUpperCase();
 }
 
+function gcd(a: number, b: number): number {
+  return b ? gcd(b, a % b) : a || 1;
+}
+
+function cropAspectLabel(transform?: TransformSettings): string | undefined {
+  const aspect = parseAspect(transform?.aspect);
+  if (aspect) return `${aspect.w}:${aspect.h}`;
+  if (!transform?.width || !transform.height) return undefined;
+  const w = Math.max(1, Math.round(transform.width));
+  const h = Math.max(1, Math.round(transform.height));
+  const g = gcd(w, h);
+  return `${w / g}:${h / g}`;
+}
+
+/** e.g. `16:9 · WebP · 2000w` (DAT) or `16:9 · JPG · 2.1 MB` (original file). */
 export function thumbCaption(input: {
-  width?: number | null;
-  height?: number | null;
+  aspect?: string | null;
   format?: string | null;
   fileType?: string | null;
+  /** Widest delivered image (profile `targetWidth`). */
+  targetWidth?: number | null;
   fileSize?: number;
 }): string | undefined {
   const parts: string[] = [];
-  if (input.width && input.height) parts.push(`${Math.round(input.width)} × ${Math.round(input.height)}`);
+  if (input.aspect) parts.push(input.aspect);
   const type = formatFileType(input.format) ?? formatFileType(input.fileType);
   if (type) parts.push(type);
+  if (input.targetWidth) parts.push(`${Math.round(input.targetWidth)}w`);
   const size = formatFileSize(input.fileSize);
   if (size) parts.push(size);
   return parts.length ? parts.join(" · ") : undefined;
