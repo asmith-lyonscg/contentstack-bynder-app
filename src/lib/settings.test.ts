@@ -40,7 +40,6 @@ describe("buildSettingsPayload", () => {
           transformBaseUrl: "https://portal.bynder.com/transform/earth.jpg",
           originalAssetWidth: 4000,
           originalAssetHeight: 2667,
-          aspectRatio: "4000:2667",
           focalPoint: { x: 0.35, y: 0.42 },
           operation: "fill",
         },
@@ -104,10 +103,12 @@ describe("buildSettingsPayload", () => {
     const parsed = parseSavedSettings(legacy);
     expect(parsed.profile).toBe("hero");
     expect(parsed.profileSettings).toEqual(HERO);
+    const { aspectRatio, ...asset } = legacy.assets[0];
+    expect(aspectRatio).toBe("3:2");
     expect(persistedPayload(buildSettingsPayload(parsed, { assets: parsed.assets }))).toEqual({
       v: 2,
       profile: { id: "hero", settings: HERO },
-      assets: legacy.assets,
+      assets: [asset],
     });
   });
 
@@ -132,7 +133,12 @@ describe("buildSettingsPayload", () => {
       ],
     };
     const parsed = parseSavedSettings(raw);
-    expect(persistedPayload(buildSettingsPayload(parsed, { assets: parsed.assets }))).toEqual(raw);
+    const { aspectRatio, ...asset } = raw.assets[0];
+    expect(aspectRatio).toBe("3:2");
+    expect(persistedPayload(buildSettingsPayload(parsed, { assets: parsed.assets }))).toEqual({
+      ...raw,
+      assets: [asset],
+    });
 
     const original = parseSavedSettings({
       v: 2,

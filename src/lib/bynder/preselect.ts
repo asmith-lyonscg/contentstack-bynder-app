@@ -36,6 +36,18 @@ export function compactViewPreselectAsset(asset: CompactPreselectAsset) {
   };
 }
 
+/**
+ * Ids for Compact View's `selectedAssets`.
+ * MultiSelect selects every id. Any other mode selects one id; 6.0.1 uses the
+ * first entry and the docs say the last, so pass that one id by itself.
+ */
+export function selectedAssetsForPicker(ids: string[], mode: string): string[] {
+  const clean = [...new Set(ids.filter(Boolean))];
+  if (mode === "MultiSelect") return clean;
+  const last = clean[clean.length - 1];
+  return last ? [last] : [];
+}
+
 export function compactPreselectFromParsed(assets: ParsedBynderAsset[]): CompactPreselectAsset[] {
   const seen = new Set<string>();
   const preselect: CompactPreselectAsset[] = [];

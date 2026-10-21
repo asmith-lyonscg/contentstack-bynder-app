@@ -1,6 +1,7 @@
 import { parseAspect } from "./bynder/composeDatUrl";
 import {
   DEFAULT_FORMAT,
+  DEFAULT_MAX_DIMENSION,
   DEFAULT_MAX_WIDTHS,
   DEFAULT_QUALITY,
   type DatFormat,
@@ -62,6 +63,26 @@ export function resolveMaxWidths(appConfig: unknown): MaxWidths {
   };
 }
 
+/** App Config `maxDimension`, or 2000. Bynder's limit on either side of a transform. */
+export function resolveMaxDimension(appConfig: unknown): number {
+  return positiveInt(pickRaw(appConfig, "maxDimension")) ?? DEFAULT_MAX_DIMENSION;
+}
+
+/**
+ * Largest width at `aspectRatio` whose width and height are both within `maxDimension`.
+ * Without an aspect, only the width is capped.
+ */
+export function widthWithinMaxDimension(width: number, aspectRatio: string | undefined, maxDimension: number): number {
+  const max = Math.max(1, Math.round(maxDimension));
+  let next = Math.max(1, Math.min(Math.round(width), max));
+  if (!aspectRatio || heightForWidth(aspectRatio, next) <= max) return next;
+  const parsed = parseAspect(aspectRatio);
+  if (!parsed) return next;
+  next = Math.max(1, Math.floor((max * parsed.w) / parsed.h));
+  while (next > 1 && heightForWidth(aspectRatio, next) > max) next -= 1;
+  return next;
+}
+
 /**
  * Dotted paths of object keys that appear more than once in JSON `text`. `JSON.parse` silently keeps
  * the last one, so this reads the raw text. Top-level paths are profile names.
@@ -110,6 +131,7 @@ function parseProfileViewport(
   raw: unknown,
   where: string,
   cap: { width: number; key: string } | undefined,
+  maxDimension: number,
   errors: string[]
 ): RenderProfileViewport | undefined {
   const record = asRecord(raw);
@@ -124,17 +146,28 @@ function parseProfileViewport(
   if (record.maxWidth === undefined) errors.push(`${where}.maxWidth is required, in pixels.`);
   else if (!maxWidth) errors.push(`${where}.maxWidth must be a positive number of pixels.`);
   if (!parseAspect(aspectRatio) || !maxWidth) return undefined;
-  if (cap && maxWidth > cap.width) {
-    errors.push(`${where}.maxWidth (${maxWidth}) is above ${cap.key} (${cap.width}).`);
-    return { aspectRatio, maxWidth: cap.width };
+  if (maxWidth > maxDimension) {
+    errors.push(`${where}.maxWidth (${maxWidth}) is above maxDimension (${maxDimension}).`);
   }
-  return { aspectRatio, maxWidth };
+  let width = maxWidth;
+  if (cap && width > cap.width) {
+    errors.push(`${where}.maxWidth (${width}) is above ${cap.key} (${cap.width}).`);
+    width = cap.width;
+  }
+  const height = heightForWidth(aspectRatio, width);
+  if (height > maxDimension && width <= maxDimension) {
+    errors.push(
+      `${where} would be ${width}×${height}, above the Bynder max dimension of ${maxDimension}. Bynder returns the original file when either side is larger.`
+    );
+  }
+  return { aspectRatio, maxWidth: width };
 }
 
 function parseProfile(
   raw: unknown,
   name: string,
   maxWidths: MaxWidths | undefined,
+  maxDimension: number,
   errors: string[]
 ): RenderProfile | undefined {
   const where = `profiles.${name}`;
@@ -147,12 +180,14 @@ function parseProfile(
     record.desktop,
     `${where}.desktop`,
     maxWidths && { width: maxWidths.desktop, key: "maxDesktopWidth" },
+    maxDimension,
     errors
   );
   const mobile = parseProfileViewport(
     record.mobile,
     `${where}.mobile`,
     maxWidths && { width: maxWidths.mobile, key: "maxMobileWidth" },
+    maxDimension,
     errors
   );
 
@@ -188,9 +223,13 @@ export interface ParsedRenderProfiles {
 
 /**
  * Validates App Config `profiles`. Malformed profiles are dropped; a `maxWidth` above the App Config
- * cap is reported and clamped. Duplicate names are only detectable when `raw` is the JSON text.
+ * cap or above `maxDimension` is reported. Duplicate names are only detectable when `raw` is the JSON text.
  */
-export function parseRenderProfiles(raw: unknown, maxWidths?: MaxWidths): ParsedRenderProfiles {
+export function parseRenderProfiles(
+  raw: unknown,
+  maxWidths?: MaxWidths,
+  maxDimension = DEFAULT_MAX_DIMENSION
+): ParsedRenderProfiles {
   const value = parseJson(raw);
   if (value === undefined || value === null || value === "") return { profiles: {}, errors: [] };
   const record = asRecord(value);
@@ -212,7 +251,7 @@ export function parseRenderProfiles(raw: unknown, maxWidths?: MaxWidths): Parsed
       errors.push(`Profile name "${name}" must start with a letter and use only letters, numbers, "_", or "-".`);
       continue;
     }
-    const profile = parseProfile(item, name, maxWidths, errors);
+    const profile = parseProfile(item, name, maxWidths, maxDimension, errors);
     if (profile) profiles[name] = profile;
   }
   return { profiles, errors };
@@ -250,7 +289,8 @@ export interface ResolvedProfiles {
  */
 export function resolveProfiles(fieldConfig: unknown, appConfig: unknown): ResolvedProfiles {
   const maxWidths = resolveMaxWidths(appConfig);
-  const profiles = parseRenderProfiles(pickRaw(appConfig, "profiles"), maxWidths).profiles;
+  const maxDimension = resolveMaxDimension(appConfig);
+  const profiles = parseRenderProfiles(pickRaw(appConfig, "profiles"), maxWidths, maxDimension).profiles;
   const names = Object.keys(profiles);
   const locked = pickRaw(fieldConfig, "profile");
   const lockedName = typeof locked === "string" ? locked.trim() : "";
@@ -274,23 +314,37 @@ export function resolveProfiles(fieldConfig: unknown, appConfig: unknown): Resol
   return { profiles, allowed, defaultProfile, allowOriginal: !defaultProfile, profileLocked: false, maxWidths };
 }
 
-/** No profile: each asset keeps its own aspect ratio, capped at the App Config max widths. */
-export function originalProfileSettings(maxWidths: MaxWidths = DEFAULT_MAX_WIDTHS): ProfileSettings {
-  return {
-    desktop: { targetWidth: maxWidths.desktop },
-    mobile: { targetWidth: maxWidths.mobile },
-    quality: DEFAULT_QUALITY,
-    format: DEFAULT_FORMAT,
-  };
+function withMaxDimension(settings: ProfileSettings, maxDimension: number): ProfileSettings {
+  if (maxDimension === DEFAULT_MAX_DIMENSION) return settings;
+  return { ...settings, maxDimension };
 }
 
-export function profileSettingsFrom(profile: RenderProfile): ProfileSettings {
-  return {
-    desktop: { aspectRatio: profile.desktop.aspectRatio, targetWidth: profile.desktop.maxWidth },
-    mobile: { aspectRatio: profile.mobile.aspectRatio, targetWidth: profile.mobile.maxWidth },
-    quality: profile.quality,
-    format: profile.format,
-  };
+/** No profile: each asset keeps its own aspect ratio, capped at the App Config max widths. */
+export function originalProfileSettings(
+  maxWidths: MaxWidths = DEFAULT_MAX_WIDTHS,
+  maxDimension = DEFAULT_MAX_DIMENSION
+): ProfileSettings {
+  return withMaxDimension(
+    {
+      desktop: { targetWidth: maxWidths.desktop },
+      mobile: { targetWidth: maxWidths.mobile },
+      quality: DEFAULT_QUALITY,
+      format: DEFAULT_FORMAT,
+    },
+    maxDimension
+  );
+}
+
+export function profileSettingsFrom(profile: RenderProfile, maxDimension = DEFAULT_MAX_DIMENSION): ProfileSettings {
+  return withMaxDimension(
+    {
+      desktop: { aspectRatio: profile.desktop.aspectRatio, targetWidth: profile.desktop.maxWidth },
+      mobile: { aspectRatio: profile.mobile.aspectRatio, targetWidth: profile.mobile.maxWidth },
+      quality: profile.quality,
+      format: profile.format,
+    },
+    maxDimension
+  );
 }
 
 function asViewportSettings(raw: unknown): ProfileViewportSettings | undefined {
@@ -313,11 +367,13 @@ export function asProfileSettings(raw: unknown): ProfileSettings | undefined {
   const quality = positiveInt(record.quality);
   const format = parseDatFormat(record.format);
   if (!desktop || !mobile) return undefined;
+  const maxDimension = positiveInt(record.maxDimension);
   return {
     desktop,
     mobile,
     quality: quality && quality <= 100 ? quality : DEFAULT_QUALITY,
     format: format ?? DEFAULT_FORMAT,
+    ...(maxDimension ? { maxDimension } : {}),
   };
 }
 
@@ -325,7 +381,13 @@ export function profileSettingsEqual(a: ProfileSettings | undefined, b: ProfileS
   if (!a || !b) return a === b;
   const same = (x: ProfileViewportSettings, y: ProfileViewportSettings) =>
     x.aspectRatio === y.aspectRatio && x.targetWidth === y.targetWidth;
-  return same(a.desktop, b.desktop) && same(a.mobile, b.mobile) && a.quality === b.quality && a.format === b.format;
+  return (
+    same(a.desktop, b.desktop) &&
+    same(a.mobile, b.mobile) &&
+    a.quality === b.quality &&
+    a.format === b.format &&
+    (a.maxDimension ?? DEFAULT_MAX_DIMENSION) === (b.maxDimension ?? DEFAULT_MAX_DIMENSION)
+  );
 }
 
 function sameAspect(a?: string, b?: string): boolean {
@@ -391,19 +453,37 @@ export interface ViewportImageSize {
  * Profile aspect and `targetWidth`. Without a profile aspect: the asset's own aspect ratio, and never
  * wider than the original file.
  */
-export function viewportImageSize(slice: ProfileViewportSettings, size?: OriginalAssetSize): ViewportImageSize {
+export function viewportImageSize(
+  slice: ProfileViewportSettings,
+  size?: OriginalAssetSize,
+  maxDimension = DEFAULT_MAX_DIMENSION
+): ViewportImageSize {
   if (slice.aspectRatio) {
+    const width = widthWithinMaxDimension(slice.targetWidth, slice.aspectRatio, maxDimension);
     return {
       aspectRatio: slice.aspectRatio,
-      width: slice.targetWidth,
-      height: heightForWidth(slice.aspectRatio, slice.targetWidth),
+      width,
+      height: heightForWidth(slice.aspectRatio, width),
     };
   }
   const stored = size?.aspectRatio && parseAspect(size.aspectRatio) ? size.aspectRatio.trim() : undefined;
   const aspectRatio = assetAspectRatio(size) ?? stored;
   const original = positiveInt(size?.originalAssetWidth);
-  const width = original ? Math.min(slice.targetWidth, original) : slice.targetWidth;
+  const uncapped = original ? Math.min(slice.targetWidth, original) : slice.targetWidth;
+  const width = widthWithinMaxDimension(uncapped, aspectRatio, maxDimension);
   return aspectRatio ? { aspectRatio, width, height: heightForWidth(aspectRatio, width) } : { width };
+}
+
+/** Configured size when it would exceed Bynder's max dimension. Delivery still requests `limited`. */
+export function viewportSizeBeyondMaxDimension(
+  slice: ProfileViewportSettings,
+  maxDimension: number,
+  size?: OriginalAssetSize
+): { configured: ViewportImageSize; limited: ViewportImageSize } | undefined {
+  const configured = viewportImageSize(slice, size, Number.MAX_SAFE_INTEGER);
+  const limited = viewportImageSize(slice, size, maxDimension);
+  if (configured.width === limited.width && configured.height === limited.height) return undefined;
+  return { configured, limited };
 }
 
 /** Profiles lock size, so authors choose Fill or Fit. Legacy `crop` and `scale` are Fill. Fit stays only when the field allows it. */
@@ -421,7 +501,7 @@ export function applyProfileTransform(
   allowFit = true
 ): TransformSettings {
   const slice = profile[desktopMobileMode && viewport === "mobile" ? "mobile" : "desktop"];
-  const image = viewportImageSize(slice, size);
+  const image = viewportImageSize(slice, size, profile.maxDimension ?? DEFAULT_MAX_DIMENSION);
   return {
     ...transform,
     operation: profileOperation(transform.operation, allowFit),

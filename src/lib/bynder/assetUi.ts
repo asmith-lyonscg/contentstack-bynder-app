@@ -60,7 +60,6 @@ export function listThumbForAsset(input: {
     aspect: cropAspectLabel(transform),
     format: datOn ? transform?.format : input.asset.fileType,
     fileType: input.asset.fileType,
-    targetWidth: datOn ? cropWidth : undefined,
     fileSize: datOn ? undefined : input.asset.fileSize,
   });
 
@@ -102,20 +101,17 @@ function cropAspectLabel(transform?: TransformSettings): string | undefined {
   return `${w / g}:${h / g}`;
 }
 
-/** e.g. `16:9 · WebP · 2000w` (DAT) or `16:9 · JPG · 2.1 MB` (original file). */
+/** e.g. `16:9 · WebP` (DAT) or `16:9 · JPG · 2.1 MB` (original file). */
 export function thumbCaption(input: {
   aspect?: string | null;
   format?: string | null;
   fileType?: string | null;
-  /** Widest delivered image (profile `targetWidth`). */
-  targetWidth?: number | null;
   fileSize?: number;
 }): string | undefined {
   const parts: string[] = [];
   if (input.aspect) parts.push(input.aspect);
   const type = formatFileType(input.format) ?? formatFileType(input.fileType);
   if (type) parts.push(type);
-  if (input.targetWidth) parts.push(`${Math.round(input.targetWidth)}w`);
   const size = formatFileSize(input.fileSize);
   if (size) parts.push(size);
   return parts.length ? parts.join(" · ") : undefined;

@@ -1,0 +1,38 @@
+<!--
+  largeHero, from samples/bynder-field-large-hero.json.
+  Drawn across the viewport (sizes="100vw").
+
+  width and height are the desktop file the profile asks Bynder for:
+  targetWidth at that aspect ratio, capped so neither side passes 2000.
+  They are not the CSS display size, and they are not the mobile size.
+  Desktop 16:9 at targetWidth 2000 is 2000×1125.
+  Mobile 5:3 at targetWidth 960 is 960×576, from the separate mobile file.
+  src is the largest desktop file. sizes is the display size the browser
+  multiplies by the screen density when it picks a srcset candidate.
+
+  The narrower example is samples/bynder-picture-split-left-right.html.
+-->
+<picture>
+  <source
+    media="(max-width: 767px)"
+    sizes="100vw"
+    srcset="
+      https://assets.deltafaucet.com/transform/d3e57cf2-6be6-4f16-a85a-5599ab54da27/35903LF-BL_BETTER_PACKAGING?io=transform:fill,width:640,height:384&focuspoint=0.5,0.5&format=webp&quality=80 640w,
+      https://assets.deltafaucet.com/transform/d3e57cf2-6be6-4f16-a85a-5599ab54da27/35903LF-BL_BETTER_PACKAGING?io=transform:fill,width:960,height:576&focuspoint=0.5,0.5&format=webp&quality=80 960w"
+  />
+  <img
+    src="https://assets.deltafaucet.com/transform/09c73413-5f93-4d0d-b159-4ddb817e06ca/AVS3-WQ2101-SS_MODEL_WATER_09?io=transform:fill,width:2000,height:1125&focuspoint=0.5,0.5&format=webp&quality=80"
+    srcset="
+      https://assets.deltafaucet.com/transform/09c73413-5f93-4d0d-b159-4ddb817e06ca/AVS3-WQ2101-SS_MODEL_WATER_09?io=transform:fill,width:640,height:360&focuspoint=0.5,0.5&format=webp&quality=80 640w,
+      https://assets.deltafaucet.com/transform/09c73413-5f93-4d0d-b159-4ddb817e06ca/AVS3-WQ2101-SS_MODEL_WATER_09?io=transform:fill,width:960,height:540&focuspoint=0.5,0.5&format=webp&quality=80 960w,
+      https://assets.deltafaucet.com/transform/09c73413-5f93-4d0d-b159-4ddb817e06ca/AVS3-WQ2101-SS_MODEL_WATER_09?io=transform:fill,width:1280,height:720&focuspoint=0.5,0.5&format=webp&quality=80 1280w,
+      https://assets.deltafaucet.com/transform/09c73413-5f93-4d0d-b159-4ddb817e06ca/AVS3-WQ2101-SS_MODEL_WATER_09?io=transform:fill,width:1600,height:900&focuspoint=0.5,0.5&format=webp&quality=80 1600w,
+      https://assets.deltafaucet.com/transform/09c73413-5f93-4d0d-b159-4ddb817e06ca/AVS3-WQ2101-SS_MODEL_WATER_09?io=transform:fill,width:1920,height:1080&focuspoint=0.5,0.5&format=webp&quality=80 1920w,
+      https://assets.deltafaucet.com/transform/09c73413-5f93-4d0d-b159-4ddb817e06ca/AVS3-WQ2101-SS_MODEL_WATER_09?io=transform:fill,width:2000,height:1125&focuspoint=0.5,0.5&format=webp&quality=80 2000w"
+    sizes="100vw"
+    width="2000"
+    height="1125"
+    alt=""
+    style="width:100%;height:auto;object-position:50% 50%"
+  />
+</picture>

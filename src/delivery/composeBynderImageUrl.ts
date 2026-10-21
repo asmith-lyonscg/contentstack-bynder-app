@@ -5,8 +5,10 @@ import {
   originalProfileSettings,
   srcsetWidths,
   viewportImageSize,
+  widthWithinMaxDimension,
   type ViewportImageSize,
 } from "../lib/profiles";
+import { DEFAULT_MAX_DIMENSION } from "../lib/types";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
@@ -73,11 +75,16 @@ function resolveSlice(value: unknown, options?: BynderImageOptions): ResolvedSli
   const nested = asRecord(root?.profile);
   const profile =
     asProfileSettings(nested?.settings) ?? asProfileSettings(root?.profileSettings) ?? originalProfileSettings();
-  const image = viewportImageSize(profile[viewport], {
-    originalAssetWidth: positive(file.originalAssetWidth),
-    originalAssetHeight: positive(file.originalAssetHeight),
-    aspectRatio: asString(file.aspectRatio),
-  });
+  const maxDimension = profile.maxDimension ?? DEFAULT_MAX_DIMENSION;
+  const image = viewportImageSize(
+    profile[viewport],
+    {
+      originalAssetWidth: positive(file.originalAssetWidth),
+      originalAssetHeight: positive(file.originalAssetHeight),
+      aspectRatio: asString(file.aspectRatio),
+    },
+    maxDimension
+  );
   return {
     base: asString(file.transformBaseUrl),
     webImage: asString(asRecord(file.webImage)?.url),
@@ -115,7 +122,12 @@ function urlForWidth(slice: ResolvedSlice, width: number): string | undefined {
 export function composeBynderImageUrl(value: unknown, options?: BynderImageOptions & { width?: number }): string {
   const slice = resolveSlice(value, options);
   if (!slice) return "";
-  const width = options?.width ?? slice.image.width;
+  const maxDimension = slice.profile.maxDimension ?? DEFAULT_MAX_DIMENSION;
+  const width = widthWithinMaxDimension(
+    options?.width ?? slice.image.width,
+    slice.image.aspectRatio,
+    maxDimension
+  );
   return urlForWidth(slice, width) ?? slice.webImage ?? "";
 }
 

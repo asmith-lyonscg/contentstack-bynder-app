@@ -21,6 +21,11 @@ export function routerBasename(): string {
   return routerBasenameFrom(appBase());
 }
 
+/** Picker popup (`/picker` or `/picker.html`), including a Vite `base` prefix. */
+export function isPickerPath(pathname: string): boolean {
+  return /(?:^|\/)picker(?:\.html)?\/?$/.test(pathname);
+}
+
 /** Same-origin URL for an app route such as `picker?id=…`. */
 export function appHref(path: string): string {
   return new URL(joinAppPath(appBase(), path), window.location.origin).href;

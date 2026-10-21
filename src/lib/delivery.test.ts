@@ -37,6 +37,22 @@ describe("composeBynderImageUrl", () => {
     expect(composeBynderImageUrl(entry, { viewport: "mobile" })).toContain("width:960,height:720&focuspoint=0.25,0.75");
   });
 
+  it("limits a request so neither side passes the Bynder max dimension", () => {
+    const tall = {
+      ...entry,
+      profile: {
+        id: "poster",
+        settings: {
+          ...profileSettings,
+          desktop: { aspectRatio: "9:16", targetWidth: 2000 },
+          maxDimension: 2000,
+        },
+      },
+    };
+    expect(composeBynderImageUrl(tall)).toContain("width:1125,height:2000");
+    expect(composeBynderImageUrl(entry, { width: 4000 })).toContain("width:2000,height:1125");
+  });
+
   it("composes any width and keeps the focal point", () => {
     const url = composeBynderImageUrl(entry, { width: 400 });
     expect(url).toContain("width:400,height:225");

@@ -60,6 +60,11 @@ export interface ProfileSettings {
   mobile: ProfileViewportSettings;
   quality: number;
   format: DatFormat;
+  /**
+   * Bynder limit on either side, copied from App Config so delivery can cap requests
+   * without App Config. Omitted when it is the default 2000.
+   */
+  maxDimension?: number;
 }
 
 export type CompactSelectionMode = "SingleSelect" | "SingleSelectFile" | "MultiSelect";
@@ -124,7 +129,8 @@ export interface ViewportCropSettings {
 
 /**
  * Original file size from Bynder, saved so the site can lay out without an API call.
- * `aspectRatio` is that size reduced (4000×3000 → `"4:3"`), recalled when no profile sets one.
+ * The ratio is `originalAssetWidth` / `originalAssetHeight`. `aspectRatio` is a legacy
+ * string from older entries and is still read; new saves do not write it.
  */
 export interface OriginalAssetSize {
   originalAssetWidth?: number;
@@ -231,6 +237,8 @@ export interface CropFieldConfig {
   /** Field Config Parameter `"profile"` names one profile. The dropdown stays hidden. */
   profileLocked: boolean;
   maxWidths: MaxWidths;
+  /** Bynder limit on either side of a transformed image. Default 2000. */
+  maxDimension: number;
   /** Profile the editor is applying right now. Undefined: original aspect ratio. */
   profile?: string;
   /** Resolved sizes for `profile`. A profile missing from App Config keeps the entry's saved snapshot. */
@@ -263,6 +271,11 @@ export interface AppInstallationConfig {
   desktopMobile?: boolean;
   /** Cap on assets in this field. Default 1. Values above 1 use Compact View MultiSelect. */
   maxNumberOfAssets?: number;
+  /**
+   * Bynder DAT limit on either side of a transformed image. Default 2000.
+   * A request above this comes back as the original file.
+   */
+  maxDimension?: number;
   /** Widest desktop image any profile may request. Default 2000. */
   maxDesktopWidth?: number;
   /** Widest mobile image any profile may request. Default 960. */
@@ -308,6 +321,8 @@ export const DEFAULT_COMPACT_ASSET_TYPES: CompactAssetType[] = ["IMAGE", "VIDEO"
 export const DEFAULT_FOCAL_POINT: FocalPoint = { x: 0.5, y: 0.5 };
 
 export const DEFAULT_MAX_WIDTHS: MaxWidths = { desktop: 2000, mobile: 960 };
+/** Bynder returns the original file when a transform is larger than this on either side. */
+export const DEFAULT_MAX_DIMENSION = 2000;
 export const DEFAULT_QUALITY = 80;
 export const DEFAULT_FORMAT: DatFormat = "webp";
 

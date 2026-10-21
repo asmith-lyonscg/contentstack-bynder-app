@@ -41,7 +41,13 @@ import {
 } from "../../lib/fieldConfig";
 import { composeBynderImageUrl } from "../../delivery/composeBynderImageUrl";
 import { hydrateFieldValue } from "../../lib/hydrate";
-import { viewportAssetSize, aspectRatioFromPixels, profileCropsCanMatch, viewportImageSize } from "../../lib/profiles";
+import {
+  viewportAssetSize,
+  aspectRatioFromPixels,
+  profileCropsCanMatch,
+  viewportImageSize,
+  viewportSizeBeyondMaxDimension,
+} from "../../lib/profiles";
 import { resolvePersistPolicy } from "../../lib/persistKeys";
 import {
   asSavedAsset,
@@ -1240,6 +1246,16 @@ export default function CustomField() {
   };
 
   const playback = focusedSaved?.video ?? videoDefaults;
+  const dimensionOverflows = (["desktop", "mobile"] as const)
+    .filter((viewport) => desktopMobileMode || viewport === "desktop")
+    .flatMap((viewport) => {
+      const beyond = viewportSizeBeyondMaxDimension(
+        cropConfig.active[viewport],
+        cropConfig.maxDimension,
+        viewportAssetSize(focusedSaved, viewport)
+      );
+      return beyond ? [{ viewport, ...beyond }] : [];
+    });
 
   if (!customField) {
     return (
@@ -1315,6 +1331,29 @@ export default function CustomField() {
           <strong>Unsaved changes.</strong> This field’s settings changed since the entry was last saved, so its
           saved value was updated to match (for example the render profile, the original image size, or DAT
           on/off). Save the entry to keep it.
+        </div>
+      ) : null}
+
+      {dimensionOverflows.length ? (
+        <div className="notice-card error" role="alert">
+          <strong>
+            This image is configured above the Bynder max dimension of {cropConfig.maxDimension}px.
+          </strong>
+          <p>
+            Bynder returns the original file when either side is larger, so the request is limited to that
+            dimension. Lower the profile size, or raise <code>maxDimension</code> in App Configuration if Bynder
+            has raised the limit for this portal.
+          </p>
+          <ul>
+            {dimensionOverflows.map((item) => (
+              <li key={item.viewport}>
+                {item.viewport === "mobile" ? "Mobile" : "Desktop"} is configured at {item.configured.width}
+                {item.configured.height ? `×${item.configured.height}` : " wide"} and is requested at{" "}
+                {item.limited.width}
+                {item.limited.height ? `×${item.limited.height}` : " wide"}.
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
 
@@ -1703,7 +1742,7 @@ export default function CustomField() {
                     changeLabel={activeViewport === "mobile" ? "Change mobile asset" : "Change desktop asset"}
                     removeLabel={
                       activeViewport === "mobile" && focusedSaved?.differentMobileAsset
-                        ? "Remove mobile asset"
+                        ? "Remove mobile asset (Use desktop for both)."
                         : "Remove"
                     }
                     onChange={() => {

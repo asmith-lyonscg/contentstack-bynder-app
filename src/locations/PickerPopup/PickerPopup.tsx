@@ -84,7 +84,6 @@ export default function PickerPopup() {
             compact={payload.compact}
             portalUrl={payload.portalUrl}
             selectedAssets={payload.selectedAssets}
-            preselect={payload.preselect}
             onSuccess={(assets, additionalInfo) => {
               if (!assets.length) {
                 finish(false);

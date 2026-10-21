@@ -11,7 +11,7 @@ import {
   seedAssetCrop,
   withActiveProfile,
 } from "./fieldConfig";
-import { duplicateJsonKeys, originalProfileSettings, parseRenderProfiles, profileCropsCanMatch, profileSettingsFrom, srcsetWidths } from "./profiles";
+import { duplicateJsonKeys, originalProfileSettings, parseRenderProfiles, profileCropsCanMatch, profileSettingsFrom, srcsetWidths, viewportImageSize, widthWithinMaxDimension } from "./profiles";
 import { DEFAULT_TRANSFORM } from "./types";
 
 describe("resolveBynderFieldUid", () => {
@@ -300,11 +300,57 @@ describe("parseRenderProfiles", () => {
       { desktop: 2000, mobile: 960 }
     );
     expect(errors).toEqual([
+      "profiles.wide.desktop.maxWidth (2560) is above maxDimension (2000).",
       "profiles.wide.desktop.maxWidth (2560) is above maxDesktopWidth (2000).",
       "profiles.wide.mobile.maxWidth (1200) is above maxMobileWidth (960).",
     ]);
     expect(profiles.wide.desktop.maxWidth).toBe(2000);
     expect(profiles.wide.mobile.maxWidth).toBe(960);
+  });
+
+  it("rejects a profile that is taller or wider than the Bynder max dimension", () => {
+    const { profiles, errors } = parseRenderProfiles(
+      {
+        poster: { desktop: { aspectRatio: "9:16", maxWidth: 1600 }, mobile: { aspectRatio: "9:16", maxWidth: 960 } },
+      },
+      { desktop: 2000, mobile: 960 },
+      2000
+    );
+    expect(errors).toEqual([
+      "profiles.poster.desktop would be 1600×2844, above the Bynder max dimension of 2000. Bynder returns the original file when either side is larger.",
+    ]);
+    expect(profiles.poster.desktop.maxWidth).toBe(1600);
+    expect(viewportImageSize(profileSettingsFrom(profiles.poster).desktop, undefined, 2000)).toEqual({
+      aspectRatio: "9:16",
+      width: 1125,
+      height: 2000,
+    });
+    expect(widthWithinMaxDimension(2000, "9:16", 2000)).toBe(1125);
+  });
+
+  it("reports a desktop or mobile maxWidth above maxDimension", () => {
+    const { errors } = parseRenderProfiles(
+      {
+        wide: { desktop: { aspectRatio: "16:9", maxWidth: 2400 }, mobile: { aspectRatio: "4:3", maxWidth: 2100 } },
+      },
+      { desktop: 3000, mobile: 2400 },
+      2000
+    );
+    expect(errors).toEqual([
+      "profiles.wide.desktop.maxWidth (2400) is above maxDimension (2000).",
+      "profiles.wide.mobile.maxWidth (2100) is above maxDimension (2000).",
+    ]);
+  });
+
+  it("allows a larger profile when the Bynder max dimension is raised", () => {
+    const { errors } = parseRenderProfiles(
+      {
+        wide: { desktop: { aspectRatio: "16:9", maxWidth: 2560 }, mobile: { aspectRatio: "4:3", maxWidth: 960 } },
+      },
+      { desktop: 3840, mobile: 960 },
+      4000
+    );
+    expect(errors).toEqual([]);
   });
 
   it("rejects a profile name used twice in the JSON text", () => {

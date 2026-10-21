@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { rewriteGetAssetsByIdQuery, withoutNullNodes } from "./patchCompactViewGraphql";
 import {
   compactPreselectFromParsed,
   compactViewGraphqlId,
   compactViewPreselectAsset,
   compactViewTypename,
   keepGraphqlNodesDespiteErrors,
+  selectedAssetsForPicker,
 } from "./preselect";
 
 describe("compactViewGraphqlId", () => {
@@ -62,6 +64,54 @@ describe("compactPreselectFromParsed", () => {
         type: "IMAGE",
       },
     ]);
+  });
+});
+
+describe("selectedAssetsForPicker", () => {
+  const ids = ["id1", "id2", "id3"];
+
+  it("keeps every id for MultiSelect", () => {
+    expect(selectedAssetsForPicker(ids, "MultiSelect")).toEqual(ids);
+  });
+
+  it("passes one id when Compact View will only select one", () => {
+    expect(selectedAssetsForPicker(ids, "SingleSelect")).toEqual(["id3"]);
+    expect(selectedAssetsForPicker(ids, "SingleSelectFile")).toEqual(["id3"]);
+    expect(selectedAssetsForPicker([], "SingleSelect")).toEqual([]);
+  });
+});
+
+describe("rewriteGetAssetsByIdQuery", () => {
+  it("drops the duplicate files field that makes preselect fail", () => {
+    const query = `
+      query getAssetsById($ids: [ID!]!, $language: String) {
+        nodes(ids: $ids) {
+          ...on Asset {
+            ...DisplayAsset
+            files
+          }
+        }
+      }
+      fragment DisplayAsset on Asset { files }
+    `;
+    const rewritten = rewriteGetAssetsByIdQuery(query);
+    expect(rewritten).not.toContain("...DisplayAsset\n            files");
+    expect(rewritten).toContain("fragment DisplayAsset on Asset { files }");
+    expect(rewriteGetAssetsByIdQuery("query searchAssets { files }")).toContain("files");
+  });
+});
+
+describe("withoutNullNodes", () => {
+  it("removes null nodes so Compact View can sort the rest", () => {
+    const asset = { __typename: "Image", id: "abc" };
+    expect(withoutNullNodes({ data: { nodes: [null, asset, null] } })).toEqual({
+      data: { nodes: [asset] },
+    });
+  });
+
+  it("leaves a complete nodes list untouched", () => {
+    const payload = { data: { nodes: [{ id: "abc" }] } };
+    expect(withoutNullNodes(payload)).toBe(payload);
   });
 });
 

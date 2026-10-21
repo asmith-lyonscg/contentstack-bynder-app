@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppSdk } from "../../common/hooks/useAppSdk";
 import { normalizeBynderPortalUrl } from "../../lib/fieldConfig";
 import { parseRenderProfiles } from "../../lib/profiles";
-import { DEFAULT_MAX_WIDTHS, type AppInstallationConfig, type MaxWidths } from "../../lib/types";
+import { DEFAULT_MAX_DIMENSION, DEFAULT_MAX_WIDTHS, type AppInstallationConfig, type MaxWidths } from "../../lib/types";
 import "./AppConfig.css";
 
 interface InstallationData {
@@ -91,7 +91,11 @@ function profilesText(value: unknown): string {
 }
 
 /** Parsed `profiles`, or why it cannot be saved. Empty text or `{}` means no profiles. */
-function readProfilesText(text: string, maxWidths: MaxWidths): { value?: unknown; errors: string[] } {
+function readProfilesText(
+  text: string,
+  maxWidths: MaxWidths,
+  maxDimension: number
+): { value?: unknown; errors: string[] } {
   if (!text.trim()) return { errors: [] };
   let value: unknown;
   try {
@@ -99,7 +103,7 @@ function readProfilesText(text: string, maxWidths: MaxWidths): { value?: unknown
   } catch (error) {
     return { errors: [`Not valid JSON: ${error instanceof Error ? error.message : String(error)}`] };
   }
-  const parsed = parseRenderProfiles(text, maxWidths);
+  const parsed = parseRenderProfiles(text, maxWidths, maxDimension);
   if (!parsed.errors.length && !Object.keys(parsed.profiles).length) return { errors: [] };
   return { value, errors: parsed.errors };
 }
@@ -123,6 +127,7 @@ export default function AppConfig() {
   const [enableDat, setEnableDat] = useState(true);
   const [allowFit, setAllowFit] = useState(false);
   const [profilesDraft, setProfilesDraft] = useState("");
+  const [maxDimensionDraft, setMaxDimensionDraft] = useState(String(DEFAULT_MAX_DIMENSION));
   const [maxDesktopDraft, setMaxDesktopDraft] = useState(String(DEFAULT_MAX_WIDTHS.desktop));
   const [maxMobileDraft, setMaxMobileDraft] = useState(String(DEFAULT_MAX_WIDTHS.mobile));
   const [flags, setFlags] = useState<FlagState>(() => initialFlags({}));
@@ -131,14 +136,26 @@ export default function AppConfig() {
   const serverConfiguration = useRef<Record<string, unknown>>({});
   const stagedOnce = useRef(false);
   const stageQueue = useRef(Promise.resolve());
+  const maxDimensionRead = readWidth(maxDimensionDraft, "maxDimension");
   const maxDesktop = readWidth(maxDesktopDraft, "maxDesktopWidth");
   const maxMobile = readWidth(maxMobileDraft, "maxMobileWidth");
-  const widthErrors = [maxDesktop.error, maxMobile.error].filter((error): error is string => Boolean(error));
+  const maxDimension = maxDimensionRead.value ?? DEFAULT_MAX_DIMENSION;
+  const aboveDimension = (width: number | undefined, key: string) =>
+    width && maxDimensionRead.value && width > maxDimension
+      ? `${key} (${width}) is above the Bynder max dimension (${maxDimension}).`
+      : undefined;
+  const widthErrors = [
+    maxDimensionRead.error,
+    maxDesktop.error,
+    maxMobile.error,
+    aboveDimension(maxDesktop.value, "maxDesktopWidth"),
+    aboveDimension(maxMobile.value, "maxMobileWidth"),
+  ].filter((error): error is string => Boolean(error));
   const maxDesktopWidth = maxDesktop.value ?? DEFAULT_MAX_WIDTHS.desktop;
   const maxMobileWidth = maxMobile.value ?? DEFAULT_MAX_WIDTHS.mobile;
   const profiles = useMemo(
-    () => readProfilesText(profilesDraft, { desktop: maxDesktopWidth, mobile: maxMobileWidth }),
-    [profilesDraft, maxDesktopWidth, maxMobileWidth]
+    () => readProfilesText(profilesDraft, { desktop: maxDesktopWidth, mobile: maxMobileWidth }, maxDimension),
+    [profilesDraft, maxDesktopWidth, maxMobileWidth, maxDimension]
   );
 
   useEffect(() => {
@@ -157,6 +174,7 @@ export default function AppConfig() {
         setEnableDat(config.enableDat !== false);
         setAllowFit(config.allowFit === true);
         setProfilesDraft(profilesText(config.profiles));
+        setMaxDimensionDraft(widthText(config.maxDimension, DEFAULT_MAX_DIMENSION));
         setMaxDesktopDraft(widthText(config.maxDesktopWidth, DEFAULT_MAX_WIDTHS.desktop));
         setMaxMobileDraft(widthText(config.maxMobileWidth, DEFAULT_MAX_WIDTHS.mobile));
         setFlags(initialFlags(config as Record<string, unknown>));
@@ -179,7 +197,7 @@ export default function AppConfig() {
     </li>
   );
 
-  const widthError = maxDesktop.error ?? maxMobile.error;
+  const widthError = widthErrors[0];
   const profileError = profiles.errors[0];
 
   useEffect(() => {
@@ -203,6 +221,7 @@ export default function AppConfig() {
       compactLanguage: compactLanguage.trim() || "en_US",
       enableDat,
       allowFit,
+      maxDimension,
       maxDesktopWidth,
       maxMobileWidth,
     };
@@ -233,6 +252,7 @@ export default function AppConfig() {
     flags,
     loading,
     location,
+    maxDimension,
     maxDesktopWidth,
     maxMobileWidth,
     portalUrl,
@@ -287,10 +307,29 @@ export default function AppConfig() {
         Enable Bynder DAT transforms
       </label>
 
+      <h3>Bynder max dimension</h3>
+      <label>
+        Either side <code>maxDimension</code>
+        <input
+          type="number"
+          min={1}
+          step={1}
+          value={maxDimensionDraft}
+          aria-invalid={Boolean(maxDimensionRead.error)}
+          onChange={(event) => setMaxDimensionDraft(event.target.value)}
+        />
+      </label>
+      <p className="help">
+        Bynder’s DAT limit, in pixels. The default account limit is 2000. If a transform is taller or wider
+        than this, Bynder ignores it and returns the original file. Requests are kept inside this limit.
+        Raise it here only if Bynder has raised it for this portal.
+      </p>
+
       <h3>Maximum image widths</h3>
       <p className="help">
-        The widest image the site may request. No profile may go above these. Assets without a profile keep
-        their original aspect ratio and use these widths (never wider than the original file).
+        The widest image the site may request. No profile may go above these, and neither width may go above{" "}
+        <code>maxDimension</code>. Assets without a profile keep their original aspect ratio and use these
+        widths (never wider than the original file, and never past the max dimension on either side).
       </p>
       <div className="max-widths">
         <label>
@@ -300,7 +339,7 @@ export default function AppConfig() {
             min={1}
             step={1}
             value={maxDesktopDraft}
-            aria-invalid={Boolean(maxDesktop.error)}
+            aria-invalid={Boolean(maxDesktop.error || aboveDimension(maxDesktop.value, "maxDesktopWidth"))}
             onChange={(event) => setMaxDesktopDraft(event.target.value)}
           />
         </label>
@@ -311,7 +350,7 @@ export default function AppConfig() {
             min={1}
             step={1}
             value={maxMobileDraft}
-            aria-invalid={Boolean(maxMobile.error)}
+            aria-invalid={Boolean(maxMobile.error || aboveDimension(maxMobile.value, "maxMobileWidth"))}
             onChange={(event) => setMaxMobileDraft(event.target.value)}
           />
         </label>
@@ -328,7 +367,8 @@ export default function AppConfig() {
       <p className="help">
         Each profile needs a unique name and <code>desktop</code> and <code>mobile</code>, each with{" "}
         <code>aspectRatio</code> and <code>maxWidth</code> (at most <code>maxDesktopWidth</code> /{" "}
-        <code>maxMobileWidth</code>). Optional: DAT <code>quality</code> (default 80) and <code>format</code>{" "}
+        <code>maxMobileWidth</code>, and neither side above <code>maxDimension</code>). Optional: DAT{" "}
+        <code>quality</code> (default 80) and <code>format</code>{" "}
         (default webp). Entries save the profile name and a snapshot of these values; the site builds{" "}
         <code>srcset</code> from 640w up to <code>maxWidth</code>.
       </p>

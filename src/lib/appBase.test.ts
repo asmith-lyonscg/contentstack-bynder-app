@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinAppPath, routerBasenameFrom, withTrailingSlash } from "./appBase";
+import { isPickerPath, joinAppPath, routerBasenameFrom, withTrailingSlash } from "./appBase";
 
 describe("appBase", () => {
   it("normalizes Vite base to a trailing slash", () => {
@@ -11,6 +11,15 @@ describe("appBase", () => {
   it("strips the trailing slash for React Router basename", () => {
     expect(routerBasenameFrom("/")).toBe("");
     expect(routerBasenameFrom("/contentstack-bynder-app/")).toBe("/contentstack-bynder-app");
+  });
+
+  it("recognizes the picker popup path", () => {
+    expect(isPickerPath("/picker")).toBe(true);
+    expect(isPickerPath("/picker.html")).toBe(true);
+    expect(isPickerPath("/picker/")).toBe(true);
+    expect(isPickerPath("/contentstack-bynder-app/picker.html")).toBe(true);
+    expect(isPickerPath("/custom-field.html")).toBe(false);
+    expect(isPickerPath("/picker.html/extra")).toBe(false);
   });
 
   it("joins app routes under the public base", () => {

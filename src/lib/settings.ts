@@ -344,10 +344,6 @@ function persistedIdentity(asset: SavedBynderAsset | MobileViewportSettings): Re
   if (typeof asset.alt === "string") out.alt = asset.alt;
   if (asset.originalAssetWidth) out.originalAssetWidth = asset.originalAssetWidth;
   if (asset.originalAssetHeight) out.originalAssetHeight = asset.originalAssetHeight;
-  const aspectRatio =
-    aspectRatioFromPixels(asset.originalAssetWidth, asset.originalAssetHeight) ??
-    (asset.aspectRatio && parseAspect(asset.aspectRatio) ? asset.aspectRatio : undefined);
-  if (aspectRatio) out.aspectRatio = aspectRatio;
   return out;
 }
 

@@ -13,12 +13,13 @@ import type {
   VideoPlayback,
   ViewportKind,
 } from "./types";
-import { DEFAULT_FOCAL_POINT, DEFAULT_TRANSFORM } from "./types";
+import { DEFAULT_FOCAL_POINT, DEFAULT_MAX_DIMENSION, DEFAULT_TRANSFORM } from "./types";
 import { isDocumentAsset, parseBynderAsset } from "./bynder/parseAsset";
 import {
   applyProfileTransform,
   originalProfileSettings,
   profileSettingsFrom,
+  resolveMaxDimension,
   resolveProfiles,
   viewportAssetSize,
 } from "./profiles";
@@ -192,6 +193,7 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
     fieldConfig,
     appConfig
   );
+  const maxDimension = resolveMaxDimension(appConfig);
   return {
     profiles,
     allowedProfiles: allowed,
@@ -199,8 +201,11 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
     allowOriginal,
     profileLocked,
     maxWidths,
+    maxDimension,
     profile: defaultProfile,
-    active: defaultProfile ? profileSettingsFrom(profiles[defaultProfile]) : originalProfileSettings(maxWidths),
+    active: defaultProfile
+      ? profileSettingsFrom(profiles[defaultProfile], maxDimension)
+      : originalProfileSettings(maxWidths, maxDimension),
     showOperation: pickShowFlag(
       fieldConfig,
       appConfig,
@@ -223,10 +228,16 @@ export function withActiveProfile(
   name: string | undefined,
   snapshot?: ProfileSettings
 ): CropFieldConfig {
-  if (!name) return { ...crop, profile: undefined, active: originalProfileSettings(crop.maxWidths) };
+  const maxDimension = crop.maxDimension ?? DEFAULT_MAX_DIMENSION;
+  if (!name) return { ...crop, profile: undefined, active: originalProfileSettings(crop.maxWidths, maxDimension) };
   const defined = crop.profiles[name];
-  if (defined) return { ...crop, profile: name, active: profileSettingsFrom(defined) };
-  if (snapshot) return { ...crop, profile: name, active: snapshot };
+  if (defined) return { ...crop, profile: name, active: profileSettingsFrom(defined, maxDimension) };
+  if (snapshot) {
+    const active = { ...snapshot };
+    if (maxDimension === DEFAULT_MAX_DIMENSION) delete active.maxDimension;
+    else active.maxDimension = maxDimension;
+    return { ...crop, profile: name, active };
+  }
   return crop;
 }
 
