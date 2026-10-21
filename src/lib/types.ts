@@ -226,7 +226,7 @@ export interface ParsedBynderAsset {
 }
 
 export interface CropFieldConfig {
-  /** Valid App Config profiles. May be empty. */
+  /** Profiles this field can use: App Config, plus any `fieldProfiles` on the field. */
   profiles: Record<string, RenderProfile>;
   /** Profiles authors may pick, in dropdown order. */
   allowedProfiles: string[];
@@ -246,6 +246,10 @@ export interface CropFieldConfig {
   showOperation: boolean;
   /** Authors may choose Fit (letterbox). Default false, so Transform type stays hidden. */
   allowFit: boolean;
+  /** Authors may drag a custom aspect ratio. Default false. Field Config Parameter only. */
+  allowCustomAspect: boolean;
+  /** Problems in this field's `fieldProfiles`. Valid profiles are still offered. */
+  fieldProfileErrors: string[];
   /** Dual desktop/mobile crops. Default true. Set false for a single crop per asset. */
   desktopMobileMode?: boolean;
 }

@@ -44,9 +44,14 @@ import { hydrateFieldValue } from "../../lib/hydrate";
 import {
   viewportAssetSize,
   aspectRatioFromPixels,
+  CUSTOM_PROFILE_ID,
+  customProfileSettings,
+  isCustomProfile,
   profileCropsCanMatch,
+  profileSelectOptions,
   viewportImageSize,
   viewportSizeBeyondMaxDimension,
+  withViewportAspect,
 } from "../../lib/profiles";
 import { resolvePersistPolicy } from "../../lib/persistKeys";
 import {
@@ -397,7 +402,9 @@ export default function CustomField() {
     );
   const focalCentered = percent(settings.focalPoint.x) === "50" && percent(settings.focalPoint.y) === "50";
   const viewportsIdentical = sameMobileAsset && profileCropsCanMatch(cropConfig.active);
-  const profileName = cropConfig.profile || "Original aspect ratio";
+  const profileName = isCustomProfile(cropConfig.profile)
+    ? "Customize"
+    : cropConfig.profile || "Original aspect ratio";
   const desktopAspect = viewportImageSize(
     cropConfig.active.desktop,
     viewportAssetSize(focusedSaved, "desktop")
@@ -566,8 +573,23 @@ export default function CustomField() {
 
   const onProfileChange = useCallback(
     (name: string) => {
-      const next = withActiveProfile(fieldCropConfig, name || undefined);
       const source = settingsRef.current;
+      if (name === CUSTOM_PROFILE_ID) {
+        const asset = savedAssetById(source, source.activeAssetId);
+        const nextSettings = customProfileSettings(
+          source.profileSettings ?? cropConfig.active,
+          viewportAssetSize(asset, "desktop"),
+          viewportAssetSize(asset, "mobile")
+        );
+        persist({
+          ...stashActiveCrop(source, source.activeAssetId),
+          profile: CUSTOM_PROFILE_ID,
+          profileSettings: nextSettings,
+        });
+        setMissingProfile(undefined);
+        return;
+      }
+      const next = withActiveProfile(fieldCropConfig, name || undefined);
       persist({
         ...stashActiveCrop(source, source.activeAssetId),
         profile: next.profile,
@@ -575,7 +597,24 @@ export default function CustomField() {
       });
       setMissingProfile(undefined);
     },
-    [fieldCropConfig, persist]
+    [cropConfig.active, fieldCropConfig, persist]
+  );
+
+  const onCustomAspect = useCallback(
+    (aspectRatio: string) => {
+      const source = settingsRef.current;
+      if (!isCustomProfile(source.profile)) return;
+      const current = source.profileSettings ?? cropConfig.active;
+      const viewport = activeViewport === "mobile" ? "mobile" : "desktop";
+      const slice = viewport === "mobile" ? current.mobile : current.desktop;
+      if (slice.aspectRatio === aspectRatio) return;
+      persist({
+        ...source,
+        profile: CUSTOM_PROFILE_ID,
+        profileSettings: withViewportAspect(current, viewport, aspectRatio),
+      });
+    },
+    [activeViewport, cropConfig.active, persist]
   );
 
   const applyAssets = useCallback(
@@ -1134,28 +1173,14 @@ export default function CustomField() {
   const showCropChrome = Boolean(panel) && !isDocumentAsset(focused ?? panel);
   const hasDatUrl = Boolean(panel?.transformBaseUrl);
   const datActive = Boolean(configAllowsDat && hasDatUrl);
-  const profileOptions = [
-    ...(cropConfig.allowOriginal || !cropConfig.profile
-      ? [{ value: "", label: "Original aspect ratio" }]
-      : []),
-    ...cropConfig.allowedProfiles.map((name) => {
-      const profile = cropConfig.profiles[name];
-      const sizes = desktopMobileMode
-        ? `${profile.desktop.aspectRatio} desktop · ${profile.mobile.aspectRatio} mobile`
-        : profile.desktop.aspectRatio;
-      return { value: name, label: `${name} (${sizes})` };
-    }),
-    ...(cropConfig.profile && !cropConfig.allowedProfiles.includes(cropConfig.profile)
-      ? [{ value: cropConfig.profile, label: `${cropConfig.profile} (no longer available)` }]
-      : []),
-  ];
+  const profileOptions = profileSelectOptions(cropConfig, desktopMobileMode);
   const transformFields = {
     value: editorTransform,
     datEnabled: datActive,
     showOperation: cropConfig.showOperation,
     allowFit: cropConfig.allowFit,
     profiles: profileOptions,
-    showProfile: !cropConfig.profileLocked && profileOptions.length > 0,
+    showProfile: profileOptions.length > 0,
     profile: cropConfig.profile ?? "",
   };
   const previewSrc = panel?.sourceUrl;
@@ -1361,6 +1386,16 @@ export default function CustomField() {
         <div className="notice-card warning compact" role="status">
           <strong>Render profile “{missingProfile}” is no longer in App Configuration.</strong> This entry keeps
           its saved sizes. Pick another profile to update them.
+        </div>
+      ) : null}
+      {cropConfig.fieldProfileErrors.length ? (
+        <div className="notice-card warning compact" role="alert">
+          <strong>This field’s profile config has a problem.</strong>
+          <ul>
+            {cropConfig.fieldProfileErrors.map((error) => (
+              <li key={error}>{error}</li>
+            ))}
+          </ul>
         </div>
       ) : null}
 
@@ -1589,6 +1624,13 @@ export default function CustomField() {
           </div>
           ) : null}
 
+          {isCustomProfile(cropConfig.profile) ? (
+            <p className="notice-card warning compact custom-aspect-disclaimer" role="note">
+              Customize saves this aspect ratio on the asset. It will not necessarily appear at this ratio in
+              the browser. The React site decides how the image is rendered and at what size.
+            </p>
+          ) : null}
+
           {editorBooting ? (
             <EditorSkeleton width={fitPreviewBox(editorTransform).width} height={fitPreviewBox(editorTransform).height} />
           ) : (
@@ -1611,9 +1653,9 @@ export default function CustomField() {
                 <div className="panel-title">
                   <span className="panel-title-label">{datActive ? "Transforms" : "Crop frame"}</span>
                   <InfoTooltip>
-                    The render profile sets the aspect ratio, widest image, file type, and quality. The site
-                    builds a srcset from 640w up to the profile width. The focal point decides which part of
-                    the photo is kept when the image is cropped.
+                    {isCustomProfile(cropConfig.profile)
+                      ? "Drag the right edge of the preview to set the aspect ratio for this viewport. Past the edge of the canvas, the preview shrinks and the ratio keeps widening. Width, file type, and quality stay as they are."
+                      : "The render profile sets the aspect ratio, widest image, file type, and quality. The site builds a srcset from 640w up to the profile width. The focal point decides which part of the photo is kept when the image is cropped."}
                   </InfoTooltip>
                 </div>
                 <TransformForm
@@ -1720,12 +1762,14 @@ export default function CustomField() {
               ) : (
               <>
               <CropFocalEditor
-                key={`${panel?.id ?? ""}:${activeViewport}:${editorImage}`}
+                key={`${panel?.id ?? ""}:${activeViewport}`}
                 src={editorImage}
                 alt={panel?.name}
                 focalPoint={settings.focalPoint}
                 transform={editorTransform}
                 fitImage={Boolean(fitPreview)}
+                customAspect={isCustomProfile(cropConfig.profile)}
+                onAspectChange={onCustomAspect}
                 onChange={onFocalChange}
               />
               {focused ? (

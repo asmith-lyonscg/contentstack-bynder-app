@@ -74,7 +74,10 @@ export function TransformForm({
             Render profile
             <InfoTooltip>
               Sets the aspect ratio, widest image, file type, and quality for desktop and mobile. Applies to
-              every asset in this field.
+              every asset in this field. Picking a ratio other than the one prescribed for this slot does not
+              make the page render that ratio. The React site decides how the image is drawn and at what size,
+              because responsive images are more involved than a single ratio. That is especially true for
+              Customize.
             </InfoTooltip>
           </span>
           <select value={profile ?? profiles[0].value} onChange={(event) => onProfileChange(event.target.value)}>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyCropConfigToAssets, resolveCropConfig } from "./fieldConfig";
 import { hydrateFieldValue } from "./hydrate";
+import { CUSTOM_PROFILE_ID, aspectRatioFromPixels, customProfileSettings } from "./profiles";
 import { buildSettingsPayload, emptySettings, persistedPayload } from "./settings";
 import { DEFAULT_TRANSFORM, type CropFieldConfig, type SavedBynderAsset } from "./types";
 
@@ -180,5 +181,20 @@ describe("hydrateFieldValue", () => {
     expect(result.missingProfile).toBe("card");
     expect(result.changed).toBe(false);
     expect(result.settings.profileSettings).toEqual(stored.profile.settings);
+  });
+
+  it("keeps a dragged custom ratio and does not warn that the profile is missing", () => {
+    const base = resolveCropConfig({}, APP);
+    const settings = customProfileSettings(base.active, image, image);
+    const crop = { ...base, profile: CUSTOM_PROFILE_ID, active: settings };
+    const stored = savedBy([image], {}, crop);
+    const result = hydrateFieldValue(stored, { ...options, cropConfig: base });
+    expect(result.missingProfile).toBeUndefined();
+    expect(result.changed).toBe(false);
+    expect(result.settings.profile).toBe(CUSTOM_PROFILE_ID);
+    expect(result.settings.profileSettings?.desktop.aspectRatio).toBe(
+      aspectRatioFromPixels(image.originalAssetWidth, image.originalAssetHeight)
+    );
+    expect(stored.profile.id).toBe("custom");
   });
 });

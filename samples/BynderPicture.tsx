@@ -10,8 +10,11 @@ import field from "./bynder-field-large-hero.json";
  * `samples/bynder-picture-large-hero.html` (`sizes="100vw"`).
  * `samples/bynder-field-split-left-right.json` is the same Bynder files with a
  * splitLeftRight snapshot, rendered in `samples/bynder-picture-split-left-right.html`
- * at `sizes="40vw"`. `width` and `height` are the desktop request size. `sizes`
- * is the displayed width the browser uses to pick a candidate.
+ * at `sizes="40vw"`. `samples/bynder-field-custom.json` is those files again with
+ * `profile.id` `"custom"` (desktop 2:1, mobile 3:2), rendered in
+ * `samples/bynder-picture-custom.html` at `sizes="100vw"`. `width` and `height`
+ * are the desktop request size. `sizes` is the displayed width the browser uses
+ * to pick a candidate.
  *
  * The profile stores `targetWidth` and `aspectRatio`. It does not store a
  * target height. The request height is that width at the aspect ratio. Bynder

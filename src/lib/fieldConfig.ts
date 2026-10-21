@@ -189,10 +189,8 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
     pickBool(appConfig, "desktopMobileMode") ??
     pickBool(appConfig, "desktopMobile") ??
     true;
-  const { profiles, allowed, defaultProfile, allowOriginal, profileLocked, maxWidths } = resolveProfiles(
-    fieldConfig,
-    appConfig
-  );
+  const { profiles, allowed, defaultProfile, allowOriginal, profileLocked, maxWidths, fieldProfileErrors } =
+    resolveProfiles(fieldConfig, appConfig);
   const maxDimension = resolveMaxDimension(appConfig);
   return {
     profiles,
@@ -214,6 +212,8 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
       true
     ),
     allowFit: pickBool(fieldConfig, "allowFit") ?? pickBool(appConfig, "allowFit") ?? false,
+    allowCustomAspect: pickBool(fieldConfig, "allowCustomAspect") ?? false,
+    fieldProfileErrors,
     desktopMobileMode,
   };
 }

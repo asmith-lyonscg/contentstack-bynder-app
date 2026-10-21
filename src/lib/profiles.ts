@@ -4,6 +4,7 @@ import {
   DEFAULT_MAX_DIMENSION,
   DEFAULT_MAX_WIDTHS,
   DEFAULT_QUALITY,
+  type CropFieldConfig,
   type DatFormat,
   type DatOperation,
   type MaxWidths,
@@ -168,9 +169,10 @@ function parseProfile(
   name: string,
   maxWidths: MaxWidths | undefined,
   maxDimension: number,
-  errors: string[]
+  errors: string[],
+  label = "profiles"
 ): RenderProfile | undefined {
-  const where = `profiles.${name}`;
+  const where = `${label}.${name}`;
   const record = asRecord(raw);
   if (!record) {
     errors.push(`${where} must be an object with "desktop" and "mobile".`);
@@ -228,12 +230,13 @@ export interface ParsedRenderProfiles {
 export function parseRenderProfiles(
   raw: unknown,
   maxWidths?: MaxWidths,
-  maxDimension = DEFAULT_MAX_DIMENSION
+  maxDimension = DEFAULT_MAX_DIMENSION,
+  label = "profiles"
 ): ParsedRenderProfiles {
   const value = parseJson(raw);
   if (value === undefined || value === null || value === "") return { profiles: {}, errors: [] };
   const record = asRecord(value);
-  if (!record) return { profiles: {}, errors: ['"profiles" must be an object keyed by profile name.'] };
+  if (!record) return { profiles: {}, errors: [`"${label}" must be an object keyed by profile name.`] };
 
   const errors: string[] = [];
   if (typeof raw === "string") {
@@ -247,11 +250,15 @@ export function parseRenderProfiles(
   }
   const profiles: Record<string, RenderProfile> = {};
   for (const [name, item] of Object.entries(record)) {
+    if (name === CUSTOM_PROFILE_ID) {
+      errors.push(`Profile name "${CUSTOM_PROFILE_ID}" is reserved for the custom aspect ratio option.`);
+      continue;
+    }
     if (!PROFILE_NAME.test(name)) {
       errors.push(`Profile name "${name}" must start with a letter and use only letters, numbers, "_", or "-".`);
       continue;
     }
-    const profile = parseProfile(item, name, maxWidths, maxDimension, errors);
+    const profile = parseProfile(item, name, maxWidths, maxDimension, errors, label);
     if (profile) profiles[name] = profile;
   }
   return { profiles, errors };
@@ -280,18 +287,30 @@ export interface ResolvedProfiles {
   /** True only when the field Config Parameter sets `"profile"`. Authors get no dropdown. */
   profileLocked: boolean;
   maxWidths: MaxWidths;
+  /** Problems in the field Config Parameter `fieldProfiles` object. Valid profiles are still kept. */
+  fieldProfileErrors: string[];
 }
 
 /**
- * App Config defines `profiles`. A field may lock one with `"profile": "hero"` (no author choice),
- * narrow them with `"profiles": ["hero", …]`, and pick `"defaultProfile"`. Without a lock or a
- * default, entries start at the asset's original aspect ratio, and authors may keep it.
+ * App Config defines `profiles`. A field may add its own with `fieldProfiles` (same object shape;
+ * a matching name replaces the App Config profile for this field only). `"profile": "hero"` locks
+ * one profile and hides the dropdown. `"profiles": ["hero", …]` narrows the dropdown. Without that
+ * list, every App Config profile and every field profile is offered. Without a lock or a default,
+ * entries start at the asset's original aspect ratio, and authors may keep it.
  */
 export function resolveProfiles(fieldConfig: unknown, appConfig: unknown): ResolvedProfiles {
   const maxWidths = resolveMaxWidths(appConfig);
   const maxDimension = resolveMaxDimension(appConfig);
-  const profiles = parseRenderProfiles(pickRaw(appConfig, "profiles"), maxWidths, maxDimension).profiles;
-  const names = Object.keys(profiles);
+  const appProfiles = parseRenderProfiles(pickRaw(appConfig, "profiles"), maxWidths, maxDimension).profiles;
+  const fieldParsed = parseRenderProfiles(
+    pickRaw(fieldConfig, "fieldProfiles"),
+    maxWidths,
+    maxDimension,
+    "fieldProfiles"
+  );
+  const profiles = { ...appProfiles, ...fieldParsed.profiles };
+  const fieldNames = Object.keys(fieldParsed.profiles);
+  const names = [...fieldNames, ...Object.keys(appProfiles).filter((name) => !fieldNames.includes(name))];
   const locked = pickRaw(fieldConfig, "profile");
   const lockedName = typeof locked === "string" ? locked.trim() : "";
   if (lockedName && names.includes(lockedName)) {
@@ -302,6 +321,7 @@ export function resolveProfiles(fieldConfig: unknown, appConfig: unknown): Resol
       allowOriginal: false,
       profileLocked: true,
       maxWidths,
+      fieldProfileErrors: fieldParsed.errors,
     };
   }
   const requested = parseNameList(pickRaw(fieldConfig, "profiles"));
@@ -311,7 +331,15 @@ export function resolveProfiles(fieldConfig: unknown, appConfig: unknown): Resol
   const wanted = pickRaw(fieldConfig, "defaultProfile");
   const defaultProfile =
     typeof wanted === "string" && allowed.includes(wanted.trim()) ? wanted.trim() : undefined;
-  return { profiles, allowed, defaultProfile, allowOriginal: !defaultProfile, profileLocked: false, maxWidths };
+  return {
+    profiles,
+    allowed,
+    defaultProfile,
+    allowOriginal: !defaultProfile,
+    profileLocked: false,
+    maxWidths,
+    fieldProfileErrors: fieldParsed.errors,
+  };
 }
 
 function withMaxDimension(settings: ProfileSettings, maxDimension: number): ProfileSettings {
@@ -515,6 +543,81 @@ export function applyProfileTransform(
 
 /** Default srcset steps. Each list is cut at, and ends with, the viewport `targetWidth`. */
 export const SRCSET_WIDTHS = [640, 960, 1280, 1600, 1920, 2560, 3200, 3840] as const;
+
+/** Saved `profile.id` when the author drags a custom aspect ratio. Not an App Config profile name. */
+export const CUSTOM_PROFILE_ID = "custom";
+
+export function isCustomProfile(name: string | undefined): boolean {
+  return name === CUSTOM_PROFILE_ID;
+}
+
+function viewportWithAspect(
+  slice: ProfileViewportSettings,
+  size: OriginalAssetSize | undefined
+): ProfileViewportSettings {
+  const ratio = assetAspectRatio(size);
+  const next = { ...slice };
+  if (ratio) next.aspectRatio = ratio;
+  else delete next.aspectRatio;
+  return next;
+}
+
+/**
+ * Customize starts at each file's own aspect ratio. Target width, quality, and format stay as they
+ * were. Desktop and mobile each keep the file shown in that viewport.
+ */
+export function customProfileSettings(
+  current: ProfileSettings,
+  desktop?: OriginalAssetSize,
+  mobile?: OriginalAssetSize
+): ProfileSettings {
+  return {
+    ...current,
+    desktop: viewportWithAspect(current.desktop, desktop),
+    mobile: viewportWithAspect(current.mobile, mobile),
+  };
+}
+
+export function withViewportAspect(
+  settings: ProfileSettings,
+  viewport: ViewportKind,
+  aspectRatio: string
+): ProfileSettings {
+  const key = viewport === "mobile" ? "mobile" : "desktop";
+  return { ...settings, [key]: { ...settings[key], aspectRatio } };
+}
+
+/**
+ * Dropdown rows. Empty when the field is locked to one profile.
+ * Customize is included only when the field config sets `allowCustomAspect`, or this entry already
+ * uses it, so a saved custom ratio can still be seen and changed.
+ */
+export function profileSelectOptions(
+  crop: CropFieldConfig,
+  desktopMobileMode: boolean
+): { value: string; label: string }[] {
+  if (crop.profileLocked) return [];
+  const options: { value: string; label: string }[] = [];
+  if (crop.allowOriginal || !crop.profile) {
+    options.push({ value: "", label: "Original aspect ratio" });
+  }
+  for (const name of crop.allowedProfiles) {
+    if (name === CUSTOM_PROFILE_ID) continue;
+    const profile = crop.profiles[name];
+    if (!profile) continue;
+    const sizes = desktopMobileMode
+      ? `${profile.desktop.aspectRatio} desktop · ${profile.mobile.aspectRatio} mobile`
+      : profile.desktop.aspectRatio;
+    options.push({ value: name, label: `${name} (${sizes})` });
+  }
+  if (crop.profile && !isCustomProfile(crop.profile) && !crop.allowedProfiles.includes(crop.profile)) {
+    options.push({ value: crop.profile, label: `${crop.profile} (no longer available)` });
+  }
+  if (crop.allowCustomAspect || isCustomProfile(crop.profile)) {
+    options.push({ value: CUSTOM_PROFILE_ID, label: "Customize" });
+  }
+  return options;
+}
 
 export function srcsetWidths(targetWidth: number, widths: readonly number[] = SRCSET_WIDTHS): number[] {
   const target = Math.max(1, Math.round(targetWidth));

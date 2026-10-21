@@ -1,4 +1,5 @@
 import { applyCropConfig, applyCropConfigToAssets, withActiveProfile } from "./fieldConfig";
+import { CUSTOM_PROFILE_ID } from "./profiles";
 import { buildSettingsPayload, parseSavedSettings, persistedPayload } from "./settings";
 import type { AdditionalFieldDefinition, BynderImageSettings, CropFieldConfig } from "./types";
 import { withoutDesktopMobile } from "./viewportCrop";
@@ -47,6 +48,9 @@ export function resolveEntryProfile(
   crop: CropFieldConfig
 ): { cropConfig: CropFieldConfig; missingProfile?: string } {
   const name = saved.profile;
+  if (name === CUSTOM_PROFILE_ID && saved.profileSettings) {
+    return { cropConfig: withActiveProfile(crop, CUSTOM_PROFILE_ID, saved.profileSettings) };
+  }
   if (name && crop.profiles[name] && crop.allowedProfiles.includes(name)) {
     return { cropConfig: withActiveProfile(crop, name) };
   }

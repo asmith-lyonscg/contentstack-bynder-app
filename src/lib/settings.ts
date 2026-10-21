@@ -368,6 +368,7 @@ function persistedAsset(asset: SavedBynderAsset): Record<string, unknown> {
 /**
  * Entry JSON. The profile name and its resolved snapshot are one object.
  * No `id` means the original aspect ratio (`settings` then has no `aspectRatio`).
+ * `id: "custom"` is an author-dragged ratio, stored on `settings.desktop` and `settings.mobile`.
  */
 export function persistedPayload(settings: BynderImageSettings): Record<string, unknown> {
   if (!settings.assets?.length) return { v: 2 };

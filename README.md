@@ -193,7 +193,24 @@ Example field **Config Parameter** (field config wins over App Configuration):
 }
 ```
 
-`"profile": "hero"` locks this field to that one App Config profile. Authors do not get a dropdown, and every asset uses it. Omit `profile` and the **Render profile** dropdown stays visible, including after a profile is selected. `profiles` limits which App Config profiles this field offers when `profile` is omitted (all of them when that is omitted too; unknown names are ignored). `defaultProfile` is used for new entries and makes a profile required. Without `profile` or `defaultProfile`, new entries keep the original aspect ratio, and the dropdown also offers **Original aspect ratio**. The choice applies to every asset in the field.
+`"profile": "hero"` locks this field to that one profile. Authors do not get a dropdown, and every asset uses it. Omit `profile` and the **Render profile** dropdown stays visible, including after a profile is selected. `profiles` limits which profiles this field offers when `profile` is omitted. With no list, the dropdown offers every App Config profile and every profile defined on this field. Unknown names are ignored. `defaultProfile` is used for new entries and makes a profile required. Without `profile` or `defaultProfile`, new entries keep the original aspect ratio, and the dropdown also offers **Original aspect ratio**.
+
+`fieldProfiles` defines one or more profiles on this field, in the same shape as App Config `profiles`. A matching name replaces the App Config profile for this field only. List that name in `profiles` to offer it beside App Config profiles, or omit `profiles` to offer it with all of them.
+
+**Customize** (a dragged aspect ratio, saved as `profile.id` `"custom"`) is off unless this field sets `"allowCustomAspect": true`. It starts each viewport at that file’s own aspect ratio. Dragging the right edge of the preview sets a new ratio; once the edge reaches the canvas, further dragging shrinks the preview so the ratio can keep getting wider. The choice applies to every asset in the field. Do not name a profile `custom`.
+
+```json
+{
+  "fieldProfiles": {
+    "banner": {
+      "desktop": { "aspectRatio": "21:9", "maxWidth": 1600 },
+      "mobile": { "aspectRatio": "4:3", "maxWidth": 640 }
+    }
+  },
+  "profiles": ["banner", "hero"],
+  "allowCustomAspect": true
+}
+```
 
 `accept` is the simple media filter: `"image"`, `"video"`, `"pdf"`, or `"image/video"` (default). `"desktopMobileMode": false` turns off the desktop/mobile split; the editor then uses the profile's desktop values. `"suppressMetadata": true` stores only `id`, `type`, and `transformBaseUrl` (plus crop fields, alt, video playback, and `additional` author values) so a large Bynder payload can stay under Contentstack’s 10KB field limit.
 
@@ -243,8 +260,10 @@ Field **Config Parameter** unless marked App Config. Types, defaults, and aliase
 | `maxMobileWidth` (App Config) | `number` | `960` | | Widest mobile image. Caps every profile, and is the width for assets without a profile. |
 | `profiles` (App Config) | `object` | none | | Named render profiles, see above. |
 | `profile` (field) | `string` | none | | Lock this field to one App Config profile. No dropdown. Example: `"hero"` |
-| `profiles` (field) | `string[]` or comma-separated `string` | all App Config profiles | | Profiles this field allows, in dropdown order. Ignored when `profile` names a real profile. Example: `["hero","card"]` |
+| `fieldProfiles` (field) | `object` | none | | Profiles defined on this field, same shape as App Config `profiles`. Offered with the App Config profiles unless `profiles` lists a smaller set. A matching name replaces the App Config profile on this field. Example: `{ "banner": { "desktop": { "aspectRatio": "21:9", "maxWidth": 1600 }, "mobile": { "aspectRatio": "4:3", "maxWidth": 640 } } }` |
+| `profiles` (field) | `string[]` or comma-separated `string` | every App Config profile and every `fieldProfiles` name | | Profiles this field allows, in dropdown order. Names may be App Config profiles or `fieldProfiles` keys. Ignored when `profile` names a real profile. Example: `["banner","hero"]` |
 | `defaultProfile` | `string` | none (original aspect ratio) | | Profile for new entries, and for entries whose saved profile this field no longer allows. Setting it makes a profile required. Ignored when `profile` is set. Example: `"hero"` |
+| `allowCustomAspect` (field) | `boolean` | `false` | | Offer **Customize**, the dragged aspect ratio. Off unless this field sets it. Example: `true` |
 | `accept` | `"image"` \| `"video"` \| `"pdf"` \| `"image/video"` | `image/video` | `media` | Which Bynder types Compact View can select. Field config wins over `compactViewConfig.assetTypes`. Example: `"image"` |
 | `desktopMobileMode` | `boolean` | `true` | `desktopMobile` | Dual desktop/mobile crops. `false` = one crop per asset; the UI never says desktop or mobile. Example: `false` |
 | `suppressMetadata` | `boolean` | `false` | | Drop `name` and `webImage` from the saved JSON. Keeps `id`, `type`, `transformBaseUrl`, crop fields, and alt text. Use this when an entry will not save because the JSON field is over 10KB. Example: `true` |
@@ -389,7 +408,7 @@ If DAT is allowed but the asset has no `transformBaseUrl`, the field shows a war
 
 - Compact View strip with desktop/mobile thumbs (unless `desktopMobileMode: false`). Each thumb has the profile aspect ratio for its viewport.
 - Crop and focal controls appear only while an image thumbnail is selected. Videos open **Video settings**. Documents stay in the list but are not selectable.
-- **Render profile** dropdown whenever the field Config Parameter does not set `"profile"`. It stays visible after a profile is selected. **Original aspect ratio** is one of the choices when the field sets no `defaultProfile`. A field config `"profile": "hero"` assigns that profile and shows no dropdown. Changing a profile resizes every asset's crop frame and updates the saved snapshot.
+- **Render profile** dropdown whenever the field Config Parameter does not set `"profile"`. It stays visible after a profile is selected. **Original aspect ratio** is one of the choices when the field sets no `defaultProfile`. The other choices are every App Config profile plus any `fieldProfiles` on this field, unless `profiles` lists a smaller set. **Customize** is not one of them unless the field sets `allowCustomAspect`. A field config `"profile": "hero"` assigns that profile and shows no dropdown. Changing a profile resizes every asset's crop frame and updates the saved snapshot.
 - **Transform type** is hidden while Fill is the only choice. `allowFit` adds Fit and shows the menu. Fit offers a letterbox fill (auto / transparent / black / white / custom hex). A new pick starts with a centered focal point and Fill. A saved Fit on a field that does not allow it becomes Fill, and the field shows **Unsaved changes** until you save.
 - Fit does not use a focal point: Bynder `extend` always shows the whole image. The focal-point circle and X/Y fields are hidden, and the preview loads the real transform URL so the letterbox color (including Auto) is Bynder’s. Fill keeps the full image in the editor so moving the focal point does not reload it.
 - The crop editor header shows **Profile:** and the assigned name, or **Original aspect ratio** when none is assigned, then **Aspect Ratio:** for the viewport you are editing. Desktop shows the desktop ratio and mobile shows the mobile ratio. A profile uses its own ratio. Original uses that file’s ratio once the original pixel size is known.
@@ -422,7 +441,7 @@ If App Config no longer defines the entry's profile at all, the entry keeps its 
 
 Stored on the entry and returned by CDA / GraphQL:
 
-- `profile` is `{ id, settings }`. `id` is the profile name. `settings` is the snapshot of that profile's resolved values. App Configuration is not available to the website, so the snapshot is what the site reads.
+- `profile` is `{ id, settings }`. `id` is the profile name. `settings` is the snapshot of that profile's resolved values. App Configuration is not available to the website, so the snapshot is what the site reads. **Customize** saves `id: "custom"` and writes the dragged ratio on `settings.desktop.aspectRatio` and `settings.mobile.aspectRatio`. Target width, quality, and format stay on that same snapshot.
 - Without a profile, `id` is omitted and `settings` has only `targetWidth` per viewport (the max widths), e.g. `{ "desktop": { "targetWidth": 2000 }, "mobile": { "targetWidth": 960 }, "quality": 80, "format": "webp" }`. The site uses each asset’s `originalAssetWidth` / `originalAssetHeight`.
 - One `assets` array. Each asset has its identity (`id`, `name`, `type`, `transformBaseUrl`, `alt`), the original file size (`originalAssetWidth` / `originalAssetHeight`), the `focalPoint`, and `operation`. Those pixels are the Bynder original file (`files.original`, or the asset `width` / `height`), not a DAT derivative. An older entry that is missing them is filled in when the field opens, using the Compact View sign-in already stored in this browser, and the field shows **Unsaved changes** until you save.
 - `extendBackground` / `extendBackgroundColor` are saved only for Fit. `zoom` is not saved.
@@ -478,7 +497,7 @@ const mobile = buildBynderSources(entry.hero_image_settings, { viewport: "mobile
 const thumb = composeBynderImageUrl(entry.hero_image_settings, { width: 400 });
 ```
 
-[`samples/BynderPicture.tsx`](samples/BynderPicture.tsx) is that `<picture>` for [`samples/bynder-field-large-hero.json`](samples/bynder-field-large-hero.json). [`samples/bynder-picture-large-hero.html`](samples/bynder-picture-large-hero.html) is the filled-in markup at `sizes="100vw"` (the `img` is 2000×1125). [`samples/bynder-field-split-left-right.json`](samples/bynder-field-split-left-right.json) is the same Bynder files with a splitLeftRight snapshot, and [`samples/bynder-picture-split-left-right.html`](samples/bynder-picture-split-left-right.html) is that markup at `sizes="40vw"` (the `img` is 700×400). `width` and `height` are the desktop request size from the profile snapshot. `sizes` is how wide the image is drawn.
+[`samples/BynderPicture.tsx`](samples/BynderPicture.tsx) is that `<picture>` for [`samples/bynder-field-large-hero.json`](samples/bynder-field-large-hero.json). [`samples/bynder-picture-large-hero.html`](samples/bynder-picture-large-hero.html) is the filled-in markup at `sizes="100vw"` (the `img` is 2000×1125). [`samples/bynder-field-split-left-right.json`](samples/bynder-field-split-left-right.json) is the same Bynder files with a splitLeftRight snapshot, and [`samples/bynder-picture-split-left-right.html`](samples/bynder-picture-split-left-right.html) is that markup at `sizes="40vw"` (the `img` is 700×400). [`samples/bynder-field-custom.json`](samples/bynder-field-custom.json) is those files with `profile.id` `"custom"` (desktop 2:1, mobile 3:2), and [`samples/bynder-picture-custom.html`](samples/bynder-picture-custom.html) is that markup at `sizes="100vw"` (the `img` is 2000×1000). `width` and `height` are the desktop request size from the profile snapshot. `sizes` is how wide the image is drawn.
 
 - Pass `{ assetId }` to pick an asset other than the first.
 - Pass `{ widths: [...] }` to change the srcset steps. They are always cut at, and end with, the viewport `targetWidth`.

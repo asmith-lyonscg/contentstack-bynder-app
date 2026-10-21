@@ -397,8 +397,10 @@ export default function AppConfig() {
         <code className="example">{`{ "profile": "hero" }`}</code> locks the field to one profile, with no dropdown.
         Or offer a list, e.g.{" "}
         <code className="example">{`{ "profiles": ["hero", "largeHero"], "defaultProfile": "hero" }`}</code>
+        A field can also define its own profile and offer it beside these, e.g.{" "}
+        <code className="example">{`{ "fieldProfiles": { "banner": { "desktop": { "aspectRatio": "21:9", "maxWidth": 1600 }, "mobile": { "aspectRatio": "4:3", "maxWidth": 640 } } }, "profiles": ["banner", "hero"] }`}</code>
         Without <code>profile</code> or <code>defaultProfile</code>, new assets keep their original aspect ratio until the author picks a
-        profile. Changing a profile updates entries that use it; authors see an “Unsaved changes” note until
+        profile. <code>allowCustomAspect</code> on the field adds a dragged ratio. Changing a profile updates entries that use it; authors see an “Unsaved changes” note until
         they save.
       </p>
 

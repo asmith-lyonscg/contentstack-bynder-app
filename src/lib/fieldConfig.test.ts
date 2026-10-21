@@ -423,6 +423,50 @@ describe("resolveCropConfig", () => {
     expect(resolveCropConfig({ custom_settings: { profiles: ["card"] } }, APP_PROFILES).allowedProfiles).toEqual(["card"]);
   });
 
+  it("adds a field profile to the dropdown and can mix it with App Config profiles", () => {
+    const banner = {
+      desktop: { aspectRatio: "7:4", maxWidth: 700 },
+      mobile: { aspectRatio: "16:9", maxWidth: 354 },
+    };
+    const all = resolveCropConfig({ fieldProfiles: { banner } }, APP_PROFILES);
+    expect(all.allowedProfiles).toEqual(["banner", "hero", "largeHero", "card"]);
+    expect(all.profiles.banner.desktop).toEqual({ aspectRatio: "7:4", maxWidth: 700 });
+    expect(all.allowCustomAspect).toBe(false);
+    expect(all.fieldProfileErrors).toEqual([]);
+
+    const mixed = resolveCropConfig({ fieldProfiles: { banner }, profiles: ["banner", "hero", "nope"] }, APP_PROFILES);
+    expect(mixed.allowedProfiles).toEqual(["banner", "hero"]);
+    expect(resolveCropConfig({ fieldProfiles: { banner }, profile: "banner" }, APP_PROFILES).profileLocked).toBe(true);
+    expect(resolveCropConfig({ fieldProfiles: { banner }, defaultProfile: "banner" }, APP_PROFILES).profile).toBe("banner");
+  });
+
+  it("lets a field profile replace an App Config profile of the same name", () => {
+    const crop = resolveCropConfig(
+      { fieldProfiles: { hero: { desktop: { aspectRatio: "2:1", maxWidth: 1200 }, mobile: { aspectRatio: "1:1", maxWidth: 400 } } } },
+      APP_PROFILES
+    );
+    expect(crop.allowedProfiles.filter((name) => name === "hero")).toEqual(["hero"]);
+    expect(crop.profiles.hero.desktop).toEqual({ aspectRatio: "2:1", maxWidth: 1200 });
+  });
+
+  it("reports a bad field profile and keeps the valid ones", () => {
+    const crop = resolveCropConfig(
+      { fieldProfiles: { banner: { desktop: { aspectRatio: "nope" } }, custom: { desktop: { aspectRatio: "1:1", maxWidth: 100 }, mobile: { aspectRatio: "1:1", maxWidth: 100 } } } },
+      APP_PROFILES
+    );
+    expect(crop.profiles.banner).toBeUndefined();
+    expect(crop.profiles.custom).toBeUndefined();
+    expect(crop.fieldProfileErrors.some((error) => error.includes("fieldProfiles.banner"))).toBe(true);
+    expect(crop.fieldProfileErrors.some((error) => error.includes('name "custom" is reserved'))).toBe(true);
+    expect(crop.allowedProfiles).toEqual(["hero", "largeHero", "card"]);
+  });
+
+  it("turns on the custom aspect ratio option only from the field config", () => {
+    expect(resolveCropConfig({}, APP_PROFILES).allowCustomAspect).toBe(false);
+    expect(resolveCropConfig({ allowCustomAspect: true }, APP_PROFILES).allowCustomAspect).toBe(true);
+    expect(resolveCropConfig({}, { allowCustomAspect: true }).allowCustomAspect).toBe(false);
+  });
+
   it("clamps an App Config profile above the max widths", () => {
     const crop = resolveCropConfig({ defaultProfile: "hero" }, { ...APP_PROFILES, maxDesktopWidth: 1500 });
     expect(crop.active.desktop).toEqual({ aspectRatio: "16:9", targetWidth: 1500 });
