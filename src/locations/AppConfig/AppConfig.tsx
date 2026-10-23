@@ -226,7 +226,16 @@ export default function AppConfig() {
         </ul>
       ) : null}
 
-      <p className="help">Use <strong>Save</strong> in Contentstack to keep this configuration.</p>
+      <p className="help">
+        Use <strong>Save</strong> in Contentstack to keep this configuration.{" "}
+        <a
+          href="https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/README.md#app-settings"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          App settings in the README
+        </a>
+      </p>
 
       <details className="optional-read">
         <summary>

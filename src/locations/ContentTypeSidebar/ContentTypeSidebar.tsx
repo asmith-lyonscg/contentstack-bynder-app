@@ -7,7 +7,8 @@ import "./ContentTypeSidebar.css";
  * https://www.contentstack.com/docs/developer-hub/content-type-sidebar-location
  */
 
-const README_URL = "https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/README.md";
+const README_URL =
+  "https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/README.md#custom-field-configs";
 
 const SIMPLE_FIELD = `{
   "type": ["image"],

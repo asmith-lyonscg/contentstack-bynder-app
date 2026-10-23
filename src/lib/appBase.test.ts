@@ -27,8 +27,8 @@ describe("appBase", () => {
     expect(joinAppPath("/contentstack-bynder-app/", "/picker.html?id=abc")).toBe(
       "/contentstack-bynder-app/picker.html?id=abc"
     );
-    expect(joinAppPath("/contentstack-bynder-app/", "app-icon.svg")).toBe(
-      "/contentstack-bynder-app/app-icon.svg"
+    expect(joinAppPath("/contentstack-bynder-app/", "app-icon.png")).toBe(
+      "/contentstack-bynder-app/app-icon.png"
     );
   });
 });
