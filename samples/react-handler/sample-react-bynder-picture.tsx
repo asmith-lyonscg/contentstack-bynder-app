@@ -1,10 +1,10 @@
-import { buildBynderSources } from "../src/delivery";
-import field from "./bynder-field-large-hero.json";
+import { buildBynderSources } from "../../src/delivery";
+import field from "../payload/sample-payload-large-hero.json";
 
 /**
  * React `<picture>` for one image in a saved Bynder field.
  *
- * `value` is the custom field JSON (`samples/bynder-field-*.json`).
+ * `value` is a sample payload (`samples/payload/sample-payload-*.json`).
  * Copy this component with the delivery modules, and keep
  * their layout so the imports resolve:
  * `src/delivery/`, `src/lib/types.ts`, `src/lib/profiles.ts`, and
@@ -17,7 +17,7 @@ import field from "./bynder-field-large-hero.json";
  * `STANDARD_WIDTHS` at `sizes="100vw"`. splitLeftRight passes
  * `[480, 640, 800, 960, 1280]` at `sizes="40vw"`.
  *
- * The HTML files beside this one are the markup this component returns.
+ * The HTML files in `samples/html-output/` are the markup this component returns.
  * `width` and `height` on the `img` are the largest desktop request.
  * largeHero is 16:9, so that file is 2000×1125, and its mobile file (5:3) is
  * 2000×1200. custom (`profile.id` `"custom"`) is desktop 2:1 → 2000×1000 and

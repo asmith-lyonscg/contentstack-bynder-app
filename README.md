@@ -81,7 +81,9 @@ npm run build
 `npm run build` writes `dist/` (`404.html`, `.nojekyll`, and HTML shells for `/custom-field`, `/app-configuration`, `/content-type-sidebar`, and `/picker`).
 
 ```
-samples/                          Field JSON, the React <picture>, and the markup it returns
+samples/payload/                 Sample payloads (saved field JSON)
+samples/react-handler/           Sample React handler
+samples/html-output/             Sample HTML output
 src/locations/CustomField/        Custom Field UI
 src/locations/AppConfig/          Portal URL, max dimension, render profiles
 src/locations/ContentTypeSidebar/ Field Config Parameter guide
@@ -360,15 +362,31 @@ Mobile that still matches desktop is omitted. A mobile with its own focal point,
 
 ### Sample files
 
-These are field values, not full entries. The same two Bynder files are saved under three profiles. The React component and the HTML files are the picture that component returns.
+The same two Bynder files are saved under three profiles. A sample payload is the field value (`v`, `profile`, `assets`), not a full entry. The sample React handler turns a payload into a `<picture>`. The sample HTML output is the markup that handler returns.
 
-| Sample | Profile | Slot |
-|---|---|---|
-| [`bynder-field-large-hero.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/bynder-field-large-hero.json) | `largeHero`, desktop `16:9`, mobile `5:3` | [`bynder-picture-large-hero.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/bynder-picture-large-hero.html), `sizes="100vw"`, desktop `img` 2000×1125 |
-| [`bynder-field-split-left-right.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/bynder-field-split-left-right.json) | `splitLeftRight`, desktop `7:4`, mobile `16:9` | [`bynder-picture-split-left-right.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/bynder-picture-split-left-right.html), `sizes="40vw"`, desktop `img` 1280×731 |
-| [`bynder-field-custom.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/bynder-field-custom.json) | `id` `"custom"`, desktop `2:1`, mobile `3:2` | [`bynder-picture-custom.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/bynder-picture-custom.html), `sizes="100vw"`, desktop `img` 2000×1000 |
+#### Sample payload
 
-[`BynderPicture.tsx`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/BynderPicture.tsx) is the React `<picture>`. It calls `buildBynderSources`. Copy it and point the import at your copy of `src/delivery`. A centered focal point is omitted in the JSON and requested as `focuspoint=0.5,0.5`.
+| File | Profile |
+|---|---|
+| [`sample-payload-large-hero.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-large-hero.json) | `largeHero`, desktop `16:9`, mobile `5:3` |
+| [`sample-payload-split-left-right.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-split-left-right.json) | `splitLeftRight`, desktop `7:4`, mobile `16:9` |
+| [`sample-payload-custom.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-custom.json) | `id` `"custom"`, desktop `2:1`, mobile `3:2` |
+
+#### Sample React handler
+
+| File | What it does |
+|---|---|
+| [`sample-react-bynder-picture.tsx`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/react-handler/sample-react-bynder-picture.tsx) | React `<picture>` that calls `buildBynderSources`. The default `value` is the largeHero sample payload. Copy it and point the import at your copy of `src/delivery`. |
+
+A centered focal point is omitted in the payload and requested as `focuspoint=0.5,0.5`.
+
+#### Sample HTML output
+
+| File | Slot |
+|---|---|
+| [`sample-html-large-hero.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-large-hero.html) | `sizes="100vw"`, desktop `img` 2000×1125 |
+| [`sample-html-split-left-right.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-split-left-right.html) | `sizes="40vw"`, desktop `img` 1280×731 |
+| [`sample-html-custom.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-custom.html) | `sizes="100vw"`, desktop `img` 2000×1000 |
 
 Copy these and keep the layout so the imports still resolve:
 
@@ -381,7 +399,7 @@ lib/bynder/composeDatUrl.ts          ← src/lib/bynder/composeDatUrl.ts
 ```
 
 ```tsx
-import { BynderPicture } from "./BynderPicture";
+import { BynderPicture } from "./sample-react-bynder-picture";
 
 const value = entry.hero_image_settings;
 
