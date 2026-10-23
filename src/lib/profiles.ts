@@ -158,8 +158,18 @@ function parseProfile(
     } else format = f;
   }
 
-  if (!desktop || !mobile || !validQuality || !validFormat) return undefined;
-  return { desktop, mobile, quality, format };
+  let displayName: string | undefined;
+  let validName = true;
+  if (record.name !== undefined) {
+    const label = typeof record.name === "string" ? record.name.trim() : "";
+    if (!label) {
+      errors.push(`${where}.name must be a non-empty string.`);
+      validName = false;
+    } else displayName = label;
+  }
+
+  if (!desktop || !mobile || !validQuality || !validFormat || !validName) return undefined;
+  return { ...(displayName ? { name: displayName } : {}), desktop, mobile, quality, format };
 }
 
 export interface ParsedRenderProfiles {
@@ -200,6 +210,14 @@ export function parseRenderProfiles(raw: unknown, label = "profiles"): ParsedRen
     }
     const profile = parseProfile(item, name, errors, label);
     if (profile) profiles[name] = profile;
+  }
+  const seenLabels = new Map<string, string>();
+  for (const [key, profile] of Object.entries(profiles)) {
+    const label = profile.name?.toLowerCase();
+    if (!label) continue;
+    const previous = seenLabels.get(label);
+    if (previous) errors.push(`Display name "${profile.name}" is used by both "${previous}" and "${key}".`);
+    else seenLabels.set(label, key);
   }
   return { profiles, errors };
 }
@@ -484,7 +502,7 @@ export function profileSelectOptions(
     const sizes = desktopMobileMode
       ? `${profile.desktop} desktop · ${profile.mobile} mobile`
       : profile.desktop;
-    options.push({ value: name, label: `${name} (${sizes})` });
+    options.push({ value: name, label: `${profile.name || name} (${sizes})` });
   }
   if (crop.profile && !isCustomProfile(crop.profile) && !crop.allowedProfiles.includes(crop.profile)) {
     options.push({ value: crop.profile, label: `${crop.profile} (no longer available)` });

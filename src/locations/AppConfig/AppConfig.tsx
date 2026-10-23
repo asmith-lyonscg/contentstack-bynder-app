@@ -12,12 +12,14 @@ interface InstallationData {
 
 const EXAMPLE_PROFILES = {
   hero: {
+    name: "Hero",
     desktop: "16:9",
     mobile: "4:3",
     quality: 80,
     format: "webp",
   },
   largeHero: {
+    name: "Hero Large",
     desktop: "21:9",
     mobile: "4:5",
     quality: 75,
@@ -204,9 +206,10 @@ export default function AppConfig() {
 
       <h3>Render profiles</h3>
       <p className="help">
-        Each profile needs a unique name and <code>desktop</code> and <code>mobile</code> aspect ratios,
-        such as <code>"16:9"</code>. Optional: DAT <code>quality</code> (default 80) and <code>format</code>{" "}
-        (default webp). Entries save the profile name and a snapshot of these values. The site passes the
+        Each profile needs a unique key and <code>desktop</code> and <code>mobile</code> aspect ratios,
+        such as <code>"16:9"</code>. Optional <code>name</code> is the label authors see, such as{" "}
+        <code>&quot;Hero Large&quot;</code>. Optional DAT <code>quality</code> (default 80) and <code>format</code>{" "}
+        (default webp). Entries save the profile key and a snapshot of the aspect, quality, and format. The site passes the
         widths it needs, and delivery keeps each one inside <code>maxDimension</code>.
       </p>
       <textarea
@@ -237,26 +240,17 @@ export default function AppConfig() {
         </a>
       </p>
 
-      <details className="optional-read">
-        <summary>
-          <span className="optional-kicker">Optional</span>
-          <span>
-            How fields use these profiles
-            <span className="optional-hint">Examples and notes. Saving does not depend on this.</span>
-          </span>
-        </summary>
-        <div className="optional-body">
-          <details className="profiles-example">
-            <summary>Example with two profiles</summary>
-            <pre>{JSON.stringify(EXAMPLE_PROFILES, null, 2)}</pre>
-          </details>
+      <details className="how-to">
+        <summary>How To</summary>
+        <div className="how-to-body">
+          <pre>{JSON.stringify(EXAMPLE_PROFILES, null, 2)}</pre>
           <p className="help">
             Narrow the list per field with the Config Parameter, e.g.{" "}
             <code className="example">{`{ "profile": "hero" }`}</code> locks the field to one profile, with no dropdown.
             Or offer a list, e.g.{" "}
             <code className="example">{`{ "profiles": ["hero", "largeHero"], "defaultProfile": "hero" }`}</code>
             A field can also define its own profile and offer it beside these, e.g.{" "}
-            <code className="example">{`{ "fieldProfiles": { "banner": { "desktop": "21:9", "mobile": "4:3" } }, "profiles": ["banner", "hero"] }`}</code>
+            <code className="example">{`{ "fieldProfiles": { "banner": { "name": "Banner", "desktop": "21:9", "mobile": "4:3", "quality": 80, "format": "webp" } }, "profiles": ["banner", "hero"] }`}</code>
             Without <code>profile</code> or <code>defaultProfile</code>, new assets keep their original aspect ratio until the author picks a
             profile. <code>allowCustomAspect</code> on the field adds a dragged ratio. Changing a profile updates entries that use it; authors see an “Unsaved changes” note until
             they save.

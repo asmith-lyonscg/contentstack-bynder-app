@@ -13,7 +13,7 @@ const README_URL =
 const SIMPLE_FIELD = `{
   "type": ["image"],
   "maxNumberOfAssets": 4,
-  "profile": "Tile Image"
+  "profile": "tileImage"
 }`;
 
 const COMPLEX_FIELD = `{
@@ -21,15 +21,16 @@ const COMPLEX_FIELD = `{
   "desktopMobileMode": true,
   "maxNumberOfAssets": 4,
   "fieldProfiles": {
-    "Banner": {
+    "banner": {
+      "name": "Banner",
       "desktop": "21:9",
       "mobile": "4:5",
       "quality": 75,
       "format": "webp"
     }
   },
-  "profiles": ["Banner", "Hero Large"],
-  "defaultProfile": "Banner",
+  "profiles": ["banner", "heroLarge"],
+  "defaultProfile": "banner",
   "allowCustomAspect": true,
   "video": {
     "autoplay": false,

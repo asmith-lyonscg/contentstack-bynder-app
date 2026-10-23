@@ -75,6 +75,13 @@ describe("Customize profile", () => {
     expect(labels[0]).toBe("Original aspect ratio");
     expect(labels).not.toContain("Customize");
     expect(labels.some((label) => label.startsWith("hero"))).toBe(true);
+    const named = resolveCropConfig(
+      { profiles: ["largeHero"] },
+      { profiles: { largeHero: { name: "Hero Large", desktop: "21:9", mobile: "4:5", quality: 80, format: "webp" } } }
+    );
+    expect(profileSelectOptions(named, true).find((option) => option.value === "largeHero")?.label).toBe(
+      "Hero Large (21:9 desktop · 4:5 mobile)"
+    );
 
     const allowed = resolveCropConfig({ profiles: ["hero"], allowCustomAspect: true }, APP);
     expect(profileSelectOptions(allowed, true).map((option) => option.value)).toContain(CUSTOM_PROFILE_ID);

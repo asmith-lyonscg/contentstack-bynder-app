@@ -145,14 +145,14 @@
   font-style: italic;
 }
 
-.optional-read {
+.how-to {
   margin-top: 28px;
   border: 1px dashed #c5c5d6;
   border-radius: 8px;
   background: #f7f7fb;
 }
 
-.optional-read > summary {
+.how-to > summary {
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -164,11 +164,11 @@
   color: #3d4550;
 }
 
-.optional-read > summary::-webkit-details-marker {
+.how-to > summary::-webkit-details-marker {
   display: none;
 }
 
-.optional-read > summary::before {
+.how-to > summary::before {
   content: "\25B8";
   flex: none;
   margin-top: 1px;
@@ -176,54 +176,23 @@
   font-size: 12px;
 }
 
-.optional-read[open] > summary::before {
+.how-to[open] > summary::before {
   content: "\25BE";
 }
 
-.optional-kicker {
-  flex: none;
-  margin-top: 1px;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: #e7e7f2;
-  color: #5c6578;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.optional-hint {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  font-weight: 400;
-  color: #6b7280;
-}
-
-.optional-body {
+.how-to-body {
   padding: 4px 14px 14px;
   border-top: 1px solid #e6e6ef;
 }
 
-.optional-body .help {
+.how-to-body .help {
   margin: 12px 0 0;
 }
 
-.profiles-example {
-  margin: 12px 0 0;
-  font-size: 12px;
-}
-
-.profiles-example summary {
-  cursor: pointer;
-  color: #475161;
-}
-
-.profiles-example pre {
-  margin: 6px 0 0;
+.how-to-body pre {
+  margin: 8px 0 0;
   padding: 8px 10px;
-  background: #f7f7fb;
+  background: #fff;
   border: 1px solid #e3e3ef;
   border-radius: 4px;
   font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

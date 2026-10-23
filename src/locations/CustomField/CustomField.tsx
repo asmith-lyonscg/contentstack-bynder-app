@@ -391,7 +391,9 @@ export default function CustomField() {
   const viewportsIdentical = sameMobileAsset && profileCropsCanMatch(cropConfig.active);
   const profileName = isCustomProfile(cropConfig.profile)
     ? "Customize"
-    : cropConfig.profile || "Original aspect ratio";
+    : (cropConfig.profile && cropConfig.profiles[cropConfig.profile]?.name) ||
+      cropConfig.profile ||
+      "Original aspect ratio";
   const desktopAspect = viewportImageSize(
     cropConfig.active.desktop,
     viewportAssetSize(focusedSaved, "desktop")
@@ -1577,7 +1579,7 @@ export default function CustomField() {
               <div className="crop-fields-card">
                 <div className="crop-fields-card-header">
                   <p className="crop-fields-card-profile">
-                    <span className="crop-fields-card-kicker">Profile:</span>
+                    <span className="crop-fields-card-kicker">Image Profile:</span>
                     <strong>{profileName}</strong>
                   </p>
                   <p className="crop-fields-card-profile">

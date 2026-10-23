@@ -131,12 +131,14 @@ Open **App Configuration** after the app is installed on the stack. Contentstack
 ```json
 {
   "hero": {
+    "name": "Hero",
     "desktop": "16:9",
     "mobile": "4:3",
     "quality": 80,
     "format": "webp"
   },
   "largeHero": {
+    "name": "Hero Large",
     "desktop": "21:9",
     "mobile": "4:5"
   }
@@ -144,11 +146,12 @@ Open **App Configuration** after the app is installed on the stack. Contentstack
 ```
 
 - Every profile needs `desktop` and `mobile` aspect ratios (`"W:H"`).
+- `name` is optional. It is the label in the dropdown and the crop header, such as `"Hero Large"`. The object key is the id stored on the entry (`profile.id`) and the value used by `profile`, `profiles`, and `defaultProfile`. Without `name`, authors see the key.
 - `quality` (1–100) defaults to `80`. `format` (`webp`, `avif`, `jpg`, `png`) defaults to `webp`.
-- Names must be unique, start with a letter, and use letters, numbers, `_`, or `-`. The name `custom` is reserved.
-- The editor validates as you type and will not save invalid JSON, a duplicate name, or an invalid profile.
+- Keys must be unique, start with a letter, and use letters, numbers, `_`, or `-`. The key `custom` is reserved. Display names must be unique.
+- The editor validates as you type and will not save invalid JSON, a duplicate key, a duplicate display name, or an invalid profile.
 
-Authors do not type a width, height, aspect, format, or quality. The profile locks aspect, format, and quality. Authors set the focal point. The entry stores `profile.id` plus `profile.settings`, because the website cannot read App Configuration. Editing a profile here updates that snapshot the next time an entry that uses it is opened. The field then shows **Unsaved changes** until the entry is saved. If a profile is removed entirely, an entry that already saved it keeps the old snapshot and shows a warning until the author picks another profile.
+Authors do not type a width, height, aspect, format, or quality. The profile locks aspect, format, and quality. Authors set the focal point. The entry stores `profile.id` (the key) plus `profile.settings`, because the website cannot read App Configuration. `name` is not saved. Editing a profile here updates that snapshot the next time an entry that uses it is opened. The field then shows **Unsaved changes** until the entry is saved. If a profile is removed entirely, an entry that already saved it keeps the old snapshot and shows a warning until the author picks another profile.
 
 # CUSTOM FIELD CONFIGS
 
@@ -164,14 +167,14 @@ Add one JSON custom field. A Group around it is optional.
 { "profile": "hero" }
 ```
 
-**A common image field.** Up to four images. The dropdown starts on `Tile Image`.
+**A common image field.** Up to four images. The dropdown starts on the profile whose key is `tileImage`. If that profile sets `"name": "Tile Image"`, that is the label authors see.
 
 ```json
 {
   "type": ["image"],
   "maxNumberOfAssets": 4,
-  "profiles": ["Tile Image", "Hero Large"],
-  "defaultProfile": "Tile Image"
+  "profiles": ["tileImage", "heroLarge"],
+  "defaultProfile": "tileImage"
 }
 ```
 
@@ -207,7 +210,7 @@ Add one JSON custom field. A Group around it is optional.
 ```json
 {
   "fieldProfiles": {
-    "banner": { "desktop": "21:9", "mobile": "4:3" }
+    "banner": { "name": "Banner", "desktop": "21:9", "mobile": "4:3" }
   },
   "profiles": ["banner", "hero"],
   "allowCustomAspect": true
@@ -288,9 +291,9 @@ Field **Config Parameter** unless the row says App Config. A field key replaces 
 |---|---|---|---|------|
 | `bynderPortalUrl` | `string` | required | | Portal host. Field config overrides App Configuration. Example: `"acme.getbynder.com"` |
 | `maxDimension` (App Config) | `number` | `2000` | | Bynder’s limit on either side of a transformed image. The site chooses the widths, and delivery shrinks any step that would pass this. Example: `4000` |
-| `profiles` (App Config) | `object` | none | | Named render profiles. See [APP SETTINGS](#app-settings). |
+| `profiles` (App Config) | `object` | none | | Render profiles keyed by id. Optional `name` is the authoring label (`"Hero Large"`). The key is saved as `profile.id`. See [APP SETTINGS](#app-settings). |
 | `profile` (field) | `string` | none | | Lock this field to one profile. No dropdown. Example: `"hero"` |
-| `fieldProfiles` (field) | `object` | none | | Profiles defined on this field, same shape as App Config `profiles`. Offered with the App Config profiles unless `profiles` lists a smaller set. A matching name replaces the App Config profile on this field. Example: `{ "banner": { "desktop": "21:9", "mobile": "4:3" } }` |
+| `fieldProfiles` (field) | `object` | none | | Profiles defined on this field, same shape as App Config `profiles`, including optional `name`. Offered with the App Config profiles unless `profiles` lists a smaller set. A matching key replaces the App Config profile on this field. Example: `{ "banner": { "name": "Banner", "desktop": "21:9", "mobile": "4:3" } }` |
 | `profiles` (field) | `string[]` or comma-separated `string` | every App Config profile and every `fieldProfiles` name | | Profiles this field allows, in dropdown order. Names may be App Config profiles or `fieldProfiles` keys. Ignored when `profile` names a real profile. Example: `["banner","hero"]` |
 | `defaultProfile` | `string` | none (original aspect ratio) | | Profile for new entries, and for entries whose saved profile this field no longer allows. Setting it makes a profile required. Ignored when `profile` is set. Example: `"hero"` |
 | `allowCustomAspect` (field) | `boolean` | `false` | | Offer **Customize**, the dragged aspect ratio. Off unless this field sets it. Example: `true` |
@@ -313,7 +316,7 @@ The list shows desktop and mobile thumbs unless `desktopMobileMode` is false. Ea
 
 The **Render profile** dropdown is hidden when `"profile"` is set. Otherwise it stays visible after a selection. **Original aspect ratio** is a choice when the field sets no `defaultProfile`. **Customize** is a choice only when `allowCustomAspect` is true. It starts each viewport at that file’s own ratio. Dragging the right edge of the preview sets a new ratio. The choice applies to every asset in the field.
 
-The crop header shows **Profile:** and the assigned name, or **Original aspect ratio**, then **Aspect Ratio:** for the viewport being edited. The link between the desktop and mobile thumbnails means those viewports are the same asset with the same crop. A profile with different desktop and mobile aspects shows no link. **Match desktop** and **Match mobile** copy the focal point across and hide once the two already match. **Reset center** hides at 50%, 50%. A different mobile asset hides the link and both match actions. Picking the desktop file again for mobile, with the same crop and alt text, removes `mobile` from the saved JSON.
+The crop header shows **Image Profile:** and the assigned name, or **Original aspect ratio**, then **Aspect Ratio:** for the viewport being edited. The link between the desktop and mobile thumbnails means those viewports are the same asset with the same crop. A profile with different desktop and mobile aspects shows no link. **Match desktop** and **Match mobile** copy the focal point across and hide once the two already match. **Reset center** hides at 50%, 50%. A different mobile asset hides the link and both match actions. Picking the desktop file again for mobile, with the same crop and alt text, removes `mobile` from the saved JSON.
 
 Hovering a thumbnail shows the aspect ratio and file type, for example `16:9 · WebP`, or `16:9 · JPG · 2.1 MB` when the file has no transform URL. **Edit** opens the crop editor. Copy URL composes the active tab’s largest default srcset step with the same code the site uses. Click or drag the red dot to set the focal point.
 

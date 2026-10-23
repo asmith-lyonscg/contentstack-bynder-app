@@ -261,6 +261,26 @@ describe("parseRenderProfiles", () => {
     });
   });
 
+  it("keeps an optional display name and rejects a blank or repeated one", () => {
+    const named = parseRenderProfiles({
+      largeHero: { name: "  Hero Large  ", desktop: "21:9", mobile: "4:5" },
+    });
+    expect(named.errors).toEqual([]);
+    expect(named.profiles.largeHero.name).toBe("Hero Large");
+
+    const blank = parseRenderProfiles({
+      hero: { name: "  ", desktop: "16:9", mobile: "4:3" },
+    });
+    expect(blank.profiles.hero).toBeUndefined();
+    expect(blank.errors.join(" ")).toContain("profiles.hero.name");
+
+    const repeated = parseRenderProfiles({
+      hero: { name: "Hero", desktop: "16:9", mobile: "4:3" },
+      heroWide: { name: "hero", desktop: "21:9", mobile: "9:16" },
+    });
+    expect(repeated.errors.join(" ")).toContain('Display name "hero" is used by both "hero" and "heroWide".');
+  });
+
   it("requires desktop and mobile aspect ratios", () => {
     const { profiles, errors } = parseRenderProfiles({
       ok: { desktop: "16:9", mobile: "4:3" },

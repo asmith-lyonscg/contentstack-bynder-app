@@ -19,8 +19,10 @@ export interface TransformSettings {
   quality?: number | null;
 }
 
-/** App Config `profiles.<name>`. `desktop` and `mobile` are aspect ratios, e.g. `"16:9"`. */
+/** App Config `profiles.<key>`. `desktop` and `mobile` are aspect ratios, e.g. `"16:9"`. */
 export interface RenderProfile {
+  /** Label in the authoring UI. The object key is what the entry saves as `profile.id`. */
+  name?: string;
   desktop: string;
   mobile: string;
   quality: number;
