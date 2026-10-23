@@ -3,8 +3,8 @@ import { buildSettingsPayload, emptySettings, parseSavedSettings, persistedPaylo
 import { DEFAULT_TRANSFORM, type ProfileSettings } from "./types";
 
 const HERO: ProfileSettings = {
-  desktop: { aspectRatio: "16:9", targetWidth: 2000 },
-  mobile: { aspectRatio: "4:3", targetWidth: 960 },
+  desktop: "16:9",
+  mobile: "4:3",
   quality: 80,
   format: "webp",
 };
@@ -18,15 +18,14 @@ describe("buildSettingsPayload", () => {
         name: "Earth",
         transformBaseUrl: "https://portal.bynder.com/transform/earth.jpg",
         webImage: { url: "https://cdn.example/earth.jpg" },
-        originalAssetWidth: 4000,
-        originalAssetHeight: 2667,
+        origWidth: 4000,
+        origHeight: 2667,
         focalPoint: { x: 0.35, y: 0.42 },
         transform: { ...DEFAULT_TRANSFORM, width: 1200, height: 675, aspect: "16:9" },
       },
     ];
     const next = buildSettingsPayload(current, {
       assets: current.assets,
-      enableDat: true,
       profile: "hero",
       profileSettings: HERO,
     });
@@ -38,28 +37,28 @@ describe("buildSettingsPayload", () => {
           id: "earth",
           name: "Earth",
           transformBaseUrl: "https://portal.bynder.com/transform/earth.jpg",
-          originalAssetWidth: 4000,
-          originalAssetHeight: 2667,
+          origWidth: 4000,
+          origHeight: 2667,
           focalPoint: { x: 0.35, y: 0.42 },
           operation: "fill",
         },
       ],
     });
-    expect(next.assets?.[0].transform).toMatchObject({ width: 2000, height: 1125, aspect: "16:9" });
-    expect(next.transform).toMatchObject({ width: 2000, aspect: "16:9" });
+    expect(next.assets?.[0].transform).toMatchObject({ width: null, height: null, aspect: "16:9" });
+    expect(next.transform).toMatchObject({ width: null, aspect: "16:9" });
   });
 
-  it("drops a legacy Scale zoom and saves letterbox only for Fit", () => {
+  it("saves Fill and omits a centered focal point", () => {
     const current = emptySettings();
     current.assets = [
       {
         id: "a",
         transformBaseUrl: "https://x/t/a",
         focalPoint: { x: 0.5, y: 0.5 },
-        transform: { ...DEFAULT_TRANSFORM, operation: "scale", extendBackground: "black" },
+        transform: { ...DEFAULT_TRANSFORM },
         mobile: {
           focalPoint: { x: 0.5, y: 0.5 },
-          transform: { ...DEFAULT_TRANSFORM, operation: "fit", extendBackground: "custom", extendBackgroundColor: "#112233" },
+          transform: { ...DEFAULT_TRANSFORM },
         },
       },
     ];
@@ -67,49 +66,11 @@ describe("buildSettingsPayload", () => {
       assets: Record<string, unknown>[];
     };
     expect(saved.assets[0]).toMatchObject({ operation: "fill" });
-    expect(saved.assets[0]).not.toHaveProperty("zoom");
+    expect(saved.assets[0]).not.toHaveProperty("focalPoint");
     expect(saved.assets[0]).not.toHaveProperty("extendBackground");
-    expect(saved.assets[0].mobile).toEqual({
-      focalPoint: { x: 0.5, y: 0.5 },
-      operation: "fit",
-      extendBackground: "custom",
-      extendBackgroundColor: "#112233",
-    });
+    expect(saved.assets[0].mobile).toBeUndefined();
     expect(saved.assets[0]).not.toHaveProperty("transform");
     expect(saved.assets[0]).not.toHaveProperty("dat");
-  });
-
-  it("reads a legacy profile string and saves profile.id plus profile.settings", () => {
-    const legacy = {
-      v: 2,
-      profile: "hero",
-      profileSettings: HERO,
-      assets: [
-        {
-          id: "a",
-          name: "A",
-          type: "IMAGE",
-          transformBaseUrl: "https://x/t/a",
-          alt: "Alt",
-          originalAssetWidth: 3000,
-          originalAssetHeight: 2000,
-          aspectRatio: "3:2",
-          focalPoint: { x: 0.3, y: 0.7 },
-          operation: "fill",
-          mobile: { focalPoint: { x: 0.6, y: 0.4 }, operation: "fill" },
-        },
-      ],
-    };
-    const parsed = parseSavedSettings(legacy);
-    expect(parsed.profile).toBe("hero");
-    expect(parsed.profileSettings).toEqual(HERO);
-    const { aspectRatio, ...asset } = legacy.assets[0];
-    expect(aspectRatio).toBe("3:2");
-    expect(persistedPayload(buildSettingsPayload(parsed, { assets: parsed.assets }))).toEqual({
-      v: 2,
-      profile: { id: "hero", settings: HERO },
-      assets: [asset],
-    });
   });
 
   it("round-trips profile: { id, settings } and keeps settings when there is no id", () => {
@@ -123,9 +84,8 @@ describe("buildSettingsPayload", () => {
           type: "IMAGE",
           transformBaseUrl: "https://x/t/a",
           alt: "Alt",
-          originalAssetWidth: 3000,
-          originalAssetHeight: 2000,
-          aspectRatio: "3:2",
+          origWidth: 3000,
+          origHeight: 2000,
           focalPoint: { x: 0.3, y: 0.7 },
           operation: "fill",
           mobile: { focalPoint: { x: 0.6, y: 0.4 }, operation: "fill" },
@@ -133,25 +93,19 @@ describe("buildSettingsPayload", () => {
       ],
     };
     const parsed = parseSavedSettings(raw);
-    const { aspectRatio, ...asset } = raw.assets[0];
-    expect(aspectRatio).toBe("3:2");
-    expect(persistedPayload(buildSettingsPayload(parsed, { assets: parsed.assets }))).toEqual({
-      ...raw,
-      assets: [asset],
-    });
+    expect(persistedPayload(buildSettingsPayload(parsed, { assets: parsed.assets }))).toEqual(raw);
 
     const original = parseSavedSettings({
       v: 2,
-      profile: {
-        settings: { desktop: { targetWidth: 2000 }, mobile: { targetWidth: 960 }, quality: 80, format: "webp" },
-      },
+      profile: { settings: { quality: 80, format: "webp" } },
       assets: raw.assets,
     });
     expect(original.profile).toBeUndefined();
-    expect(original.profileSettings?.desktop).toEqual({ targetWidth: 2000 });
+    expect(original.profileSettings?.desktop).toBeUndefined();
+    expect(original.profileSettings?.mobile).toBeUndefined();
   });
 
-  it("keeps webImage and omits url when DAT is disabled or missing", () => {
+  it("keeps webImage only when the file has no transform URL", () => {
     const current = emptySettings();
     const assets = [
       {
@@ -162,7 +116,7 @@ describe("buildSettingsPayload", () => {
         transform: { ...DEFAULT_TRANSFORM },
       },
     ];
-    const next = buildSettingsPayload(current, { assets, enableDat: true });
+    const next = buildSettingsPayload(current, { assets });
     expect(next.assets?.[0].webImage).toEqual({ url: "https://cdn.example/a.jpg" });
 
     const withDat = [
@@ -174,9 +128,9 @@ describe("buildSettingsPayload", () => {
         transform: { ...DEFAULT_TRANSFORM },
       },
     ];
-    const cssOnly = buildSettingsPayload(current, { assets: withDat, enableDat: false });
-    expect(cssOnly.assets?.[0].webImage).toEqual({ url: "https://cdn.example/b.jpg" });
-    expect(cssOnly.assets?.[0].transformBaseUrl).toBe("https://portal.bynder.com/transform/b.jpg");
+    const dat = buildSettingsPayload(current, { assets: withDat });
+    expect(dat.assets?.[0].webImage).toBeUndefined();
+    expect(dat.assets?.[0].transformBaseUrl).toBe("https://portal.bynder.com/transform/b.jpg");
   });
 
   it("strips bulky Bynder files maps so the field stays under Contentstack's 10KB JSON cap", () => {
@@ -190,7 +144,7 @@ describe("buildSettingsPayload", () => {
       },
       metaproperties: { brand: { options: ["delta"] } },
     };
-    const next = buildSettingsPayload(emptySettings(), { assets: [fat, fat, fat, fat], enableDat: true });
+    const next = buildSettingsPayload(emptySettings(), { assets: [fat, fat, fat, fat] });
     expect(JSON.stringify(persistedPayload(next)).length).toBeLessThan(10_000);
     expect(next.assets?.[0]).not.toHaveProperty("metaproperties");
     expect(next.assets?.[0]).not.toHaveProperty("files");
@@ -218,8 +172,8 @@ describe("buildSettingsPayload", () => {
     ];
     const next = buildSettingsPayload(current, { assets: current.assets, profileSettings: HERO });
     expect(next.assets?.[0].mobile).toBeUndefined();
-    expect(next.assets?.[1].transform).toMatchObject({ width: 2000, height: 1125, aspect: "16:9" });
-    expect(next.assets?.[1].mobile?.transform).toMatchObject({ width: 960, height: 720, aspect: "4:3" });
+    expect(next.assets?.[1].transform).toMatchObject({ width: null, height: null, aspect: "16:9" });
+    expect(next.assets?.[1].mobile?.transform).toMatchObject({ width: null, height: null, aspect: "4:3" });
   });
 
   it("drops webImage from a different mobile file that has a transform base", () => {
@@ -240,7 +194,7 @@ describe("buildSettingsPayload", () => {
         },
       },
     ];
-    const next = buildSettingsPayload(current, { assets: current.assets, enableDat: true });
+    const next = buildSettingsPayload(current, { assets: current.assets });
     expect(next.assets?.[0].mobile?.transformBaseUrl).toContain("mob.jpg");
     expect(next.assets?.[0].mobile?.webImage).toBeUndefined();
     expect(next.assets?.[0].mobile).not.toHaveProperty("asset");
@@ -259,7 +213,6 @@ describe("buildSettingsPayload", () => {
     ];
     const next = buildSettingsPayload(current, {
       assets: current.assets,
-      enableDat: true,
       authorFields: [{ property: "uniqueId", type: "boolean" }],
     });
     expect(next.assets?.[0]).toMatchObject({ additional: { uniqueId: true } });
@@ -420,7 +373,7 @@ describe("stashActiveCrop", () => {
         url: "https://cdn.example/m/hash/original/spec.pdf",
       },
     ];
-    const next = buildSettingsPayload(current, { assets: current.assets, enableDat: true });
+    const next = buildSettingsPayload(current, { assets: current.assets });
     expect(next.assets?.[0]).toEqual({
       id: "pdf-guid",
       name: "Spec sheet",

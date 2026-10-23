@@ -8,8 +8,8 @@ import {
 const base = "https://portal.bynder.com/transform/abc/hero.jpg";
 
 const profileSettings = {
-  desktop: { aspectRatio: "16:9", targetWidth: 2000 },
-  mobile: { aspectRatio: "4:3", targetWidth: 960 },
+  desktop: "16:9",
+  mobile: "4:3",
   quality: 80,
   format: "webp",
 };
@@ -21,8 +21,8 @@ const entry = {
     {
       id: "hero",
       transformBaseUrl: base,
-      originalAssetWidth: 4000,
-      originalAssetHeight: 2667,
+      origWidth: 4000,
+      origHeight: 2667,
       focalPoint: { x: 0.25, y: 0.75 },
       operation: "fill",
     },
@@ -30,11 +30,11 @@ const entry = {
 };
 
 describe("composeBynderImageUrl", () => {
-  it("defaults to the viewport targetWidth at the profile aspect", () => {
+  it("defaults to the largest srcset step at the profile aspect", () => {
     expect(composeBynderImageUrl(entry)).toBe(
       `${base}?io=transform:fill,width:2000,height:1125&focuspoint=0.25,0.75&format=webp&quality=80`
     );
-    expect(composeBynderImageUrl(entry, { viewport: "mobile" })).toContain("width:960,height:720&focuspoint=0.25,0.75");
+    expect(composeBynderImageUrl(entry, { viewport: "mobile" })).toContain("width:2000,height:1500&focuspoint=0.25,0.75");
   });
 
   it("limits a request so neither side passes the Bynder max dimension", () => {
@@ -44,7 +44,7 @@ describe("composeBynderImageUrl", () => {
         id: "poster",
         settings: {
           ...profileSettings,
-          desktop: { aspectRatio: "9:16", targetWidth: 2000 },
+          desktop: "9:16",
           maxDimension: 2000,
         },
       },
@@ -65,17 +65,22 @@ describe("composeBynderImageUrl", () => {
       assets: [
         {
           ...entry.assets[0],
-          mobile: { focalPoint: { x: 0.8, y: 0.8 }, operation: "fit", id: "phone", transformBaseUrl: "https://x/t/phone" },
+          mobile: { focalPoint: { x: 0.8, y: 0.8 }, operation: "fill", id: "phone", transformBaseUrl: "https://x/t/phone" },
         },
       ],
     };
     const mobile = composeBynderImageUrl(split, { viewport: "mobile" });
-    expect(mobile).toContain("https://x/t/phone?io=transform:extend,width:960,height:720,background:auto");
+    expect(mobile).toContain("https://x/t/phone?io=transform:fill,width:2000,height:1500");
     expect(composeBynderImageUrl(split)).toContain(`${base}?io=transform:fill,width:2000`);
   });
 
-  it("returns webImage when DAT was off at save time", () => {
-    const css = { ...entry, assets: [{ ...entry.assets[0], webImage: { url: "https://cdn.example/web.jpg" } }] };
+  it("uses DAT when a transform URL is saved, and webImage only when it is not", () => {
+    const both = { ...entry, assets: [{ ...entry.assets[0], webImage: { url: "https://cdn.example/web.jpg" } }] };
+    expect(composeBynderImageUrl(both, { width: 400 })).toContain("io=transform:fill,width:400,height:225");
+    const css = {
+      ...entry,
+      assets: [{ ...entry.assets[0], transformBaseUrl: undefined, webImage: { url: "https://cdn.example/web.jpg" } }],
+    };
     expect(composeBynderImageUrl(css, { width: 400 })).toBe("https://cdn.example/web.jpg");
   });
 
@@ -85,7 +90,7 @@ describe("composeBynderImageUrl", () => {
 });
 
 describe("buildBynderSources", () => {
-  it("builds srcset from 640w up to and including targetWidth", () => {
+  it("builds a srcset from the default ladder, capped at maxDimension", () => {
     const sources = buildBynderSources(entry);
     expect(sources?.width).toBe(2000);
     expect(sources?.height).toBe(1125);
@@ -95,43 +100,43 @@ describe("buildBynderSources", () => {
     expect(sources?.objectPosition).toBe("25% 75%");
   });
 
-  it("stops at the mobile targetWidth and accepts custom widths", () => {
+  it("caps a caller width list and uses the mobile aspect", () => {
     const mobile = buildBynderSources(entry, { viewport: "mobile" });
-    expect(mobile?.srcset?.split(", ").map((part) => part.split(" ")[1])).toEqual(["640w", "960w"]);
-    expect(mobile?.height).toBe(720);
+    expect(mobile?.width).toBe(2000);
+    expect(mobile?.height).toBe(1500);
     const custom = buildBynderSources(entry, { widths: [320, 3000] });
     expect(custom?.srcset?.split(", ").map((part) => part.split(" ")[1])).toEqual(["320w", "2000w"]);
   });
 
-  it("ignores a legacy zoom and returns a single webImage without DAT", () => {
-    const scaled = { ...entry, assets: [{ ...entry.assets[0], operation: "scale", zoom: 1.4 }] };
-    const sources = buildBynderSources(scaled);
-    expect(sources).not.toHaveProperty("zoom");
-    expect(sources?.src).toContain("io=transform:fill");
-    const css = { ...entry, assets: [{ ...entry.assets[0], webImage: { url: "https://cdn.example/web.jpg" } }] };
+  it("returns a single webImage when the file has no transform URL", () => {
+    const css = {
+      ...entry,
+      assets: [{ ...entry.assets[0], transformBaseUrl: undefined, webImage: { url: "https://cdn.example/web.jpg" } }],
+    };
     expect(buildBynderSources(css)).toEqual({ src: "https://cdn.example/web.jpg", objectPosition: "25% 75%" });
   });
 
-  it("still reads a legacy profile string and profileSettings sibling", () => {
-    const legacy = { ...entry, profile: "hero", profileSettings };
-    expect(composeBynderImageUrl(legacy)).toBe(composeBynderImageUrl(entry));
-  });
-
-  it("uses the original aspect ratio without a profile, never wider than the original", () => {
+  it("uses the original aspect ratio without a profile, capped only by maxDimension", () => {
     const original = {
       v: 2,
       profile: {
-        settings: { desktop: { targetWidth: 2000 }, mobile: { targetWidth: 960 }, quality: 80, format: "webp" },
+        settings: { quality: 80, format: "webp" },
       },
-      assets: [{ ...entry.assets[0], originalAssetWidth: 1500, originalAssetHeight: 1000 }],
+      assets: [{ ...entry.assets[0], origWidth: 1500, origHeight: 1000 }],
     };
     const desktop = buildBynderSources(original);
-    expect(desktop).toMatchObject({ width: 1500, height: 1000 });
-    expect(desktop?.src).toContain("io=transform:fill,width:1500,height:1000");
-    expect(desktop?.srcset?.split(", ").map((part) => part.split(" ")[1])).toEqual(["640w", "960w", "1280w", "1500w"]);
-    expect(buildBynderSources(original, { viewport: "mobile" })).toMatchObject({ width: 960, height: 640 });
+    expect(desktop).toMatchObject({ width: 2000, height: 1333 });
+    expect(desktop?.src).toContain("io=transform:fill,width:2000,height:1333");
+    expect(desktop?.srcset?.split(", ").map((part) => part.split(" ")[1])).toEqual([
+      "640w",
+      "960w",
+      "1280w",
+      "1600w",
+      "1920w",
+      "2000w",
+    ]);
 
-    const unknownSize = { ...original, assets: [{ ...entry.assets[0], originalAssetWidth: undefined, originalAssetHeight: undefined }] };
+    const unknownSize = { ...original, assets: [{ ...entry.assets[0], origWidth: undefined, origHeight: undefined }] };
     const scaled = buildBynderSources(unknownSize);
     expect(scaled?.width).toBe(2000);
     expect(scaled).not.toHaveProperty("height");

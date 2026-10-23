@@ -234,19 +234,19 @@
 .video-dat-note {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   max-width: 32rem;
 }
 
 .video-dat-note p {
   margin: 0;
-  font: 13px/1.5 Inter, system-ui, sans-serif;
-  color: #475161;
+  font: 11px/1.4 Inter, system-ui, sans-serif;
+  color: #8b93a7;
 }
 
 .video-dat-note a {
   color: #6c5ce7;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .video-settings {
@@ -264,8 +264,7 @@
   border: 0;
 }
 
-.video-options legend,
-.video-crop h4 {
+.video-options legend {
   margin: 0 0 4px;
   font: 600 12px/1.3 Inter, system-ui, sans-serif;
   color: #243044;
@@ -288,10 +287,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.video-crop h4 {
-  margin-bottom: 8px;
 }
 
 .viewport-toolbar {

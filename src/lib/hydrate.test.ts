@@ -7,8 +7,8 @@ import { DEFAULT_TRANSFORM, type CropFieldConfig, type SavedBynderAsset } from "
 
 const APP = {
   profiles: {
-    hero: { desktop: { aspectRatio: "16:9", maxWidth: 2000 }, mobile: { aspectRatio: "4:3", maxWidth: 960 } },
-    card: { desktop: { aspectRatio: "1:1", maxWidth: 800 }, mobile: { aspectRatio: "1:1", maxWidth: 600 }, quality: 70 },
+    hero: { desktop: "16:9", mobile: "4:3" },
+    card: { desktop: "1:1", mobile: "1:1", quality: 70 },
   },
 };
 
@@ -26,7 +26,6 @@ function savedBy(
       persistedPayload(
         buildSettingsPayload(current, {
           assets: sized,
-          enableDat: true,
           profile: crop.profile,
           profileSettings: crop.active,
           ...options,
@@ -41,25 +40,25 @@ const image: SavedBynderAsset = {
   name: "Earth",
   type: "IMAGE",
   transformBaseUrl: "https://portal.bynder.com/transform/earth.jpg",
-  originalAssetWidth: 4000,
-  originalAssetHeight: 2667,
+  origWidth: 4000,
+  origHeight: 2667,
   focalPoint: { x: 0.35, y: 0.42 },
   transform: { ...DEFAULT_TRANSFORM },
 };
 
 describe("hydrateFieldValue", () => {
-  const options = { cropConfig: resolveCropConfig({ defaultProfile: "hero" }, APP), enableDat: true };
+  const options = { cropConfig: resolveCropConfig({ defaultProfile: "hero" }, APP) };
 
   it("is a no-op for a payload the app saved itself", () => {
     const stored = savedBy([image]);
     expect(stored).toMatchObject({
       v: 2,
-      profile: { id: "hero", settings: { desktop: { targetWidth: 2000 } } },
+      profile: { id: "hero", settings: { desktop: "16:9" } },
     });
     expect(stored).not.toHaveProperty("profileSettings");
     const { changed, settings } = hydrateFieldValue(stored, options);
     expect(changed).toBe(false);
-    expect(settings.assets?.[0].transform).toMatchObject({ width: 2000, aspect: "16:9" });
+    expect(settings.assets?.[0].transform).toMatchObject({ width: null, aspect: "16:9" });
   });
 
   it("ignores key order", () => {
@@ -87,7 +86,7 @@ describe("hydrateFieldValue", () => {
           ...image,
           alt: "Planet",
           additional: { featured: true },
-          mobile: { focalPoint: { x: 0.2, y: 0.8 }, transform: { ...DEFAULT_TRANSFORM, operation: "scale" } },
+          mobile: { focalPoint: { x: 0.2, y: 0.8 }, transform: { ...DEFAULT_TRANSFORM } },
         },
         {
           id: "clip",
@@ -104,7 +103,7 @@ describe("hydrateFieldValue", () => {
     expect(hydrateFieldValue(stored, { ...options, authorFields }).changed).toBe(false);
   });
 
-  it("drops a saved zoom and a legacy scale operation", () => {
+  it("saves Fill and drops fields the payload does not use", () => {
     const stored = savedBy([image]);
     stored.assets[0].zoom = 1.4;
     stored.assets[0].operation = "scale";
@@ -133,7 +132,7 @@ describe("hydrateFieldValue", () => {
     const noDefault = hydrateFieldValue(card, { ...options, cropConfig: resolveCropConfig({ profiles: ["hero"] }, APP) });
     expect(noDefault.changed).toBe(true);
     expect(noDefault.settings.profile).toBeUndefined();
-    expect(noDefault.settings.profileSettings?.desktop).toEqual({ targetWidth: 2000 });
+    expect(noDefault.settings.profileSettings?.desktop).toBeUndefined();
   });
 
   it("saves no profile and the original aspect ratio when nothing assigns one", () => {
@@ -141,38 +140,35 @@ describe("hydrateFieldValue", () => {
     const stored = savedBy([image], {}, original);
     expect(stored.profile).toEqual({
       settings: {
-        desktop: { targetWidth: 2000 },
-        mobile: { targetWidth: 960 },
         quality: 80,
         format: "webp",
       },
     });
     const result = hydrateFieldValue(stored, { ...options, cropConfig: original });
     expect(result.changed).toBe(false);
-    expect(result.settings.assets?.[0].transform).toMatchObject({ width: 2000, aspect: "4000:2667", height: 1334 });
+    expect(result.settings.assets?.[0].transform).toMatchObject({ width: null, height: null, aspect: "4000:2667" });
 
     const withDefault = hydrateFieldValue(stored, options);
     expect(withDefault.changed).toBe(true);
     expect(withDefault.settings.profile).toBe("hero");
   });
 
-  it("reports a change when the profile's values or the max widths change in App Config", () => {
+  it("reports a change when the profile's aspect ratio changes in App Config", () => {
     const stored = savedBy([image]);
     const wider = {
-      maxDesktopWidth: 2560,
-      profiles: { ...APP.profiles, hero: { ...APP.profiles.hero, desktop: { aspectRatio: "16:9", maxWidth: 2560 } } },
+      profiles: { ...APP.profiles, hero: { ...APP.profiles.hero, desktop: "2:1" } },
     };
     const result = hydrateFieldValue(stored, { ...options, cropConfig: resolveCropConfig({ defaultProfile: "hero" }, wider) });
     expect(result.changed).toBe(true);
-    expect(result.settings.profileSettings?.desktop.targetWidth).toBe(2560);
+    expect(result.settings.profileSettings?.desktop).toBe("2:1");
 
     const original = savedBy([image], {}, resolveCropConfig({}, APP));
-    const capped = hydrateFieldValue(original, {
+    const leftoverWidth = hydrateFieldValue(original, {
       ...options,
       cropConfig: resolveCropConfig({}, { ...APP, maxDesktopWidth: 1600 }),
     });
-    expect(capped.changed).toBe(true);
-    expect(capped.settings.profileSettings?.desktop).toEqual({ targetWidth: 1600 });
+    expect(leftoverWidth.changed).toBe(false);
+    expect(leftoverWidth.settings.profileSettings?.desktop).toBeUndefined();
   });
 
   it("keeps the saved snapshot when App Config no longer defines the profile", () => {
@@ -192,8 +188,8 @@ describe("hydrateFieldValue", () => {
     expect(result.missingProfile).toBeUndefined();
     expect(result.changed).toBe(false);
     expect(result.settings.profile).toBe(CUSTOM_PROFILE_ID);
-    expect(result.settings.profileSettings?.desktop.aspectRatio).toBe(
-      aspectRatioFromPixels(image.originalAssetWidth, image.originalAssetHeight)
+    expect(result.settings.profileSettings?.desktop).toBe(
+      aspectRatioFromPixels(image.origWidth, image.origHeight)
     );
     expect(stored.profile.id).toBe("custom");
   });

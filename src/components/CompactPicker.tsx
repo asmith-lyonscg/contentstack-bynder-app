@@ -1,7 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import { bynderMediaUrl, moveAsset, type AssetListThumbs, type ListThumb } from "../lib/bynder/assetUi";
-import { frameLayout, offsetForOperation } from "../lib/bynder/coverLayout";
-import { compactAssetIds, isDocumentAsset, isVideoAsset } from "../lib/bynder/parseAsset";
+import {
+  compactAssetIds,
+  documentThumbnailUrl,
+  isDocumentAsset,
+  isImageAsset,
+  isVideoAsset,
+} from "../lib/bynder/parseAsset";
 import { selectedAssetsForPicker } from "../lib/bynder/preselect";
 import { ImageSpinner } from "./ImageSpinner";
 import {
@@ -13,7 +18,7 @@ import {
   type PickerResultMessage,
 } from "../lib/picker/protocol";
 import { appHref } from "../lib/appBase";
-import type { CompactViewConfig, DatOperation, FocalPoint, ParsedBynderAsset, ViewportKind } from "../lib/types";
+import type { CompactViewConfig, ParsedBynderAsset, ViewportKind } from "../lib/types";
 import "./CompactPicker.css";
 
 function thumbScaleStyle(desktop?: ListThumb, mobile?: ListThumb): CSSProperties | undefined {
@@ -59,36 +64,19 @@ interface CompactPickerProps {
   mobileFiles?: Record<string, { id: string; name?: string; type?: string; sourceUrl?: string }>;
 }
 
-function focalFromPosition(value: string): FocalPoint {
-  const match = /^([\d.]+)%\s+([\d.]+)%$/.exec(value.trim());
-  if (!match) return { x: 0.5, y: 0.5 };
-  return { x: Number(match[1]) / 100, y: Number(match[2]) / 100 };
-}
-
 function ThumbImage({
   src,
   fallback,
   objectPosition,
-  operation = "fill",
-  cropW,
-  cropH,
-  framed = false,
 }: {
   src: string;
   fallback: string;
   objectPosition: string;
-  operation?: DatOperation;
-  cropW?: number;
-  cropH?: number;
-  /** The src is already the Fit transform. Fill the thumb instead of letterboxing again. */
-  framed?: boolean;
 }) {
   const [shown, setShown] = useState(src);
   const shownRef = useRef(shown);
   shownRef.current = shown;
   const imgRef = useRef<HTMLImageElement>(null);
-  const [natural, setNatural] = useState({ w: 0, h: 0 });
-  const [frame, setFrame] = useState({ w: 0, h: 0 });
   const [loadedSrc, setLoadedSrc] = useState("");
   const [failed, setFailed] = useState(false);
 
@@ -99,7 +87,6 @@ function ThumbImage({
   }, [src]);
 
   useEffect(() => {
-    setNatural({ w: 0, h: 0 });
     setFailed(false);
   }, [shown]);
 
@@ -107,27 +94,7 @@ function ThumbImage({
     const img = imgRef.current;
     if (!img || !shown || !img.complete || img.naturalWidth <= 0) return;
     setLoadedSrc(shown);
-    setNatural({ w: img.naturalWidth, h: img.naturalHeight });
   }, [shown]);
-
-  useLayoutEffect(() => {
-    const parent = imgRef.current?.parentElement;
-    if (!parent || operation !== "crop") return undefined;
-    const sync = () => setFrame({ w: parent.clientWidth, h: parent.clientHeight });
-    sync();
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(sync);
-    observer.observe(parent);
-    return () => observer.disconnect();
-  }, [operation, shown]);
-
-  const cropLayout =
-    operation === "crop" && natural.w > 0 && natural.h > 0 && frame.w > 0 && frame.h > 0 && cropW && cropH
-      ? frameLayout("crop", natural.w, natural.h, frame.w, frame.h, cropW, cropH)
-      : null;
-  const cropOffset = cropLayout
-    ? offsetForOperation("crop", focalFromPosition(objectPosition), cropLayout, frame.w, frame.h)
-    : null;
 
   const loading = Boolean(shown) && loadedSrc !== shown && !failed;
 
@@ -139,27 +106,11 @@ function ThumbImage({
         src={shown}
         alt=""
         draggable={false}
-        className={[
-          operation === "fit" && !framed ? "is-fit" : "",
-          framed ? "is-framed" : "",
-          cropLayout ? "is-crop" : "",
-          loading ? "is-loading" : "",
-        ]
-          .filter(Boolean)
-          .join(" ") || undefined}
-        style={
-          cropLayout && cropOffset
-            ? {
-                width: cropLayout.dispW,
-                height: cropLayout.dispH,
-                transform: `translate(${cropOffset.x}px, ${cropOffset.y}px)`,
-              }
-            : { objectFit: framed ? "fill" : undefined, objectPosition: operation === "fit" || framed ? "50% 50%" : objectPosition }
-        }
-        onLoad={(event) => {
+        className={loading ? "is-loading" : undefined}
+        style={{ objectPosition }}
+        onLoad={() => {
           setLoadedSrc(shown);
           setFailed(false);
-          setNatural({ w: event.currentTarget.naturalWidth, h: event.currentTarget.naturalHeight });
         }}
         onError={(event) => {
           if (fallback && event.currentTarget.src !== fallback) {
@@ -436,7 +387,15 @@ export function CompactPicker({
     const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
 
     const pickingOne = Boolean(mobileForId || replaceDesktopId);
-    const compactPayload = pickingOne ? { ...compact, mode: "SingleSelect" as const, maxLimit: 1 } : compact;
+    const desktopForMobile = mobileForId ? assets.find((asset) => asset.id === mobileForId) : undefined;
+    if (mobileForId && !isImageAsset(desktopForMobile)) return;
+    const compactPayload = pickingOne ? { ...compact, mode: "SingleSelect" as const, maxLimit: 1 } : { ...compact };
+    if (mobileForId) {
+      compactPayload.assetTypes = ["IMAGE"];
+      if (compactPayload.assetFilter) {
+        compactPayload.assetFilter = { ...compactPayload.assetFilter, predefinedAssetType: ["IMAGE"] };
+      }
+    }
     const mobileFile = mobileForId ? mobileFiles?.[mobileForId] : undefined;
     const source = replaceDesktopId
       ? assets.filter((asset) => asset.id === replaceDesktopId)
@@ -558,7 +517,7 @@ export function CompactPicker({
   const assetWord = canPickMultiple ? "Asset(s)" : "Asset";
   const reselectLabel = `Change ${assetWord}`;
   const canReorder = ordered.length > 1;
-  const hasImage = ordered.some((asset) => !isVideoAsset(asset) && !isDocumentAsset(asset));
+  const hasImage = ordered.some((asset) => isImageAsset(asset));
   const acceptsImages = compact.assetTypes.includes("IMAGE");
   const showMobileColumn = desktopMobileMode && (hasImage || (ordered.length === 0 && acceptsImages));
   const hasSplitAssets = ordered.some((asset) => {
@@ -619,10 +578,11 @@ export function CompactPicker({
               const mobileThumb = pair?.mobile;
               const video = isVideoAsset(asset);
               const document = isDocumentAsset(asset);
+              const image = isImageAsset(asset);
               const selectable = !document;
               const rowFocused = focused && selectable;
-              const showMobile = showMobileColumn && !document && !video;
-              const mobileAssetUnsupported = showMobileColumn && (video || document);
+              const showMobile = showMobileColumn && image;
+              const mobileAssetUnsupported = showMobileColumn && !image;
               const separateMobile = Boolean(separateMobileIds?.includes(asset.id));
               const linked = Boolean(showMobile && !separateMobile && linkedIds?.includes(asset.id));
               const emptyMobile = Boolean(emptyMobileIds?.includes(asset.id));
@@ -695,15 +655,15 @@ export function CompactPicker({
                         }
                       }}
                     >
-                      <ThumbImage
-                        src={desktopThumb?.url ?? asset.sourceUrl}
-                        fallback={asset.sourceUrl}
-                        objectPosition={desktopThumb?.objectPosition ?? "50% 50%"}
-                        operation={desktopThumb?.operation}
-                        cropW={desktopThumb?.aspectW}
-                        cropH={desktopThumb?.aspectH}
-                        framed={desktopThumb?.framed}
-                      />
+                      {document ? (
+                        <DocumentThumb src={documentThumbnailUrl({ sourceUrl: asset.sourceUrl, name: asset.name })} />
+                      ) : (
+                        <ThumbImage
+                          src={desktopThumb?.url ?? asset.sourceUrl}
+                          fallback={asset.sourceUrl}
+                          objectPosition={desktopThumb?.objectPosition ?? "50% 50%"}
+                        />
+                      )}
                       {thumbMark}
                     </span>
                     {linked ? (
@@ -777,15 +737,17 @@ export function CompactPicker({
                         }
                       }}
                     >
-                      <ThumbImage
-                        src={mobileThumb?.url ?? asset.sourceUrl}
-                        fallback={asset.sourceUrl}
-                        objectPosition={mobileThumb?.objectPosition ?? "50% 50%"}
-                        operation={mobileThumb?.operation}
-                        cropW={mobileThumb?.aspectW}
-                        cropH={mobileThumb?.aspectH}
-                        framed={mobileThumb?.framed}
-                      />
+                      {isDocumentAsset(mobileFile) ? (
+                        <DocumentThumb
+                          src={documentThumbnailUrl({ sourceUrl: mobileFile?.sourceUrl, name: mobileFile?.name })}
+                        />
+                      ) : (
+                        <ThumbImage
+                          src={mobileThumb?.url ?? asset.sourceUrl}
+                          fallback={asset.sourceUrl}
+                          objectPosition={mobileThumb?.objectPosition ?? "50% 50%"}
+                        />
+                      )}
                       {thumbMark}
                     </span>
                     <ThumbCaption caption={mobileThumb?.caption}>
@@ -1092,6 +1054,34 @@ function SwapIcon() {
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
       <path fill="none" stroke="currentColor" strokeWidth="1.4" d="M5 3.5 2.5 6 5 8.5M2.5 6h8" />
       <path fill="none" stroke="currentColor" strokeWidth="1.4" d="M11 7.5 13.5 10 11 12.5M13.5 10h-8" />
+    </svg>
+  );
+}
+
+function DocumentThumb({ src }: { src?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <span className="asset-doc-icon" title="Document">
+        <DocumentIcon />
+      </span>
+    );
+  }
+  return <img className="is-page" src={src} alt="" draggable={false} onError={() => setFailed(true)} />;
+}
+
+function DocumentIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="32" height="32" aria-hidden>
+      <path
+        d="M4.2 1.8h5.1L12.8 5v9.2H4.2Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path d="M9.2 1.8V5H12.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path stroke="currentColor" strokeWidth="1.2" d="M6 8.2h4.2M6 10.4h4.2" />
     </svg>
   );
 }

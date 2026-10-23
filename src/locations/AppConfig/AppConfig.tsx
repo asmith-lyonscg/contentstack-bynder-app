@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppSdk } from "../../common/hooks/useAppSdk";
 import { normalizeBynderPortalUrl } from "../../lib/fieldConfig";
 import { parseRenderProfiles } from "../../lib/profiles";
-import { DEFAULT_MAX_DIMENSION, DEFAULT_MAX_WIDTHS, type AppInstallationConfig, type MaxWidths } from "../../lib/types";
+import { DEFAULT_MAX_DIMENSION, type AppInstallationConfig } from "../../lib/types";
 import "./AppConfig.css";
 
 interface InstallationData {
@@ -10,79 +10,20 @@ interface InstallationData {
   serverConfiguration?: Record<string, unknown>;
 }
 
-type ShowKey = "showFieldOperation" | "showFieldAutoplay" | "showFieldMuted" | "showFieldControls" | "showFieldLoop";
-
-interface EditorRow {
-  showKey: ShowKey;
-  label: string;
-  /** Must match the runtime default in `resolveCropConfig` / `resolveVideoFieldVisibility`. */
-  defaultShow: boolean;
-}
-
-const VIDEO_ROWS: EditorRow[] = [
-  { showKey: "showFieldAutoplay", label: "Autoplay", defaultShow: true },
-  { showKey: "showFieldMuted", label: "Mute", defaultShow: true },
-  { showKey: "showFieldControls", label: "Show controls", defaultShow: true },
-  { showKey: "showFieldLoop", label: "Loop", defaultShow: true },
-];
-
-const ALL_ROWS = VIDEO_ROWS;
-
-/** Size, lock, and format keys that render profiles replaced. Removed on save. */
-const RETIRED_KEYS = [
-  "aspect",
-  "width",
-  "height",
-  "format",
-  "lockAspect",
-  "lockWidth",
-  "lockHeight",
-  "lockFormat",
-  "hideFormat",
-  "aspectPresets",
-  "showFieldAspectRatio",
-  "showFieldWidth",
-  "showFieldHeight",
-  "showFieldFileType",
-  "showFieldQuality",
-  "showFieldAdvancedQuery",
-  "showFieldDatPreset",
-  "desktopMaxWidth",
-  "mobileMaxWidth",
-  "compactMode",
-  "loginBypass",
-  "oauthClientId",
-  "enableAssetTracker",
-  "persistAssetKeys",
-] as const;
-
 const EXAMPLE_PROFILES = {
   hero: {
-    desktop: { aspectRatio: "16:9", maxWidth: 2000 },
-    mobile: { aspectRatio: "4:3", maxWidth: 960 },
+    desktop: "16:9",
+    mobile: "4:3",
     quality: 80,
     format: "webp",
   },
   largeHero: {
-    desktop: { aspectRatio: "21:9", maxWidth: 2000 },
-    mobile: { aspectRatio: "4:5", maxWidth: 960 },
+    desktop: "21:9",
+    mobile: "4:5",
     quality: 75,
     format: "webp",
   },
 };
-
-type FlagState = Record<ShowKey, boolean>;
-
-function readBool(config: Record<string, unknown>, key: string): boolean | undefined {
-  const value = config[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function initialFlags(config: Record<string, unknown>): FlagState {
-  const flags = {} as FlagState;
-  for (const row of ALL_ROWS) flags[row.showKey] = readBool(config, row.showKey) ?? row.defaultShow;
-  return flags;
-}
 
 function profilesText(value: unknown): string {
   if (value == null || value === "") return "";
@@ -91,21 +32,17 @@ function profilesText(value: unknown): string {
 }
 
 /** Parsed `profiles`, or why it cannot be saved. Empty text or `{}` means no profiles. */
-function readProfilesText(
-  text: string,
-  maxWidths: MaxWidths,
-  maxDimension: number
-): { value?: unknown; errors: string[] } {
+function readProfilesText(text: string): { value?: unknown; errors: string[] } {
   if (!text.trim()) return { errors: [] };
-  let value: unknown;
   try {
-    value = JSON.parse(text);
+    JSON.parse(text);
   } catch (error) {
     return { errors: [`Not valid JSON: ${error instanceof Error ? error.message : String(error)}`] };
   }
-  const parsed = parseRenderProfiles(text, maxWidths, maxDimension);
-  if (!parsed.errors.length && !Object.keys(parsed.profiles).length) return { errors: [] };
-  return { value, errors: parsed.errors };
+  const parsed = parseRenderProfiles(text);
+  if (parsed.errors.length) return { errors: parsed.errors };
+  if (!Object.keys(parsed.profiles).length) return { errors: [] };
+  return { value: parsed.profiles, errors: [] };
 }
 
 function widthText(value: unknown, fallback: number): string {
@@ -124,39 +61,17 @@ export default function AppConfig() {
   const location = sdk?.location.AppConfigWidget;
   const [portalUrl, setPortalUrl] = useState("");
   const [compactLanguage, setCompactLanguage] = useState("en_US");
-  const [enableDat, setEnableDat] = useState(true);
-  const [allowFit, setAllowFit] = useState(false);
   const [profilesDraft, setProfilesDraft] = useState("");
   const [maxDimensionDraft, setMaxDimensionDraft] = useState(String(DEFAULT_MAX_DIMENSION));
-  const [maxDesktopDraft, setMaxDesktopDraft] = useState(String(DEFAULT_MAX_WIDTHS.desktop));
-  const [maxMobileDraft, setMaxMobileDraft] = useState(String(DEFAULT_MAX_WIDTHS.mobile));
-  const [flags, setFlags] = useState<FlagState>(() => initialFlags({}));
   const [loading, setLoading] = useState(true);
   const loadedConfiguration = useRef<Record<string, unknown>>({});
   const serverConfiguration = useRef<Record<string, unknown>>({});
   const stagedOnce = useRef(false);
   const stageQueue = useRef(Promise.resolve());
   const maxDimensionRead = readWidth(maxDimensionDraft, "maxDimension");
-  const maxDesktop = readWidth(maxDesktopDraft, "maxDesktopWidth");
-  const maxMobile = readWidth(maxMobileDraft, "maxMobileWidth");
   const maxDimension = maxDimensionRead.value ?? DEFAULT_MAX_DIMENSION;
-  const aboveDimension = (width: number | undefined, key: string) =>
-    width && maxDimensionRead.value && width > maxDimension
-      ? `${key} (${width}) is above the Bynder max dimension (${maxDimension}).`
-      : undefined;
-  const widthErrors = [
-    maxDimensionRead.error,
-    maxDesktop.error,
-    maxMobile.error,
-    aboveDimension(maxDesktop.value, "maxDesktopWidth"),
-    aboveDimension(maxMobile.value, "maxMobileWidth"),
-  ].filter((error): error is string => Boolean(error));
-  const maxDesktopWidth = maxDesktop.value ?? DEFAULT_MAX_WIDTHS.desktop;
-  const maxMobileWidth = maxMobile.value ?? DEFAULT_MAX_WIDTHS.mobile;
-  const profiles = useMemo(
-    () => readProfilesText(profilesDraft, { desktop: maxDesktopWidth, mobile: maxMobileWidth }, maxDimension),
-    [profilesDraft, maxDesktopWidth, maxMobileWidth, maxDimension]
-  );
+  const widthError = maxDimensionRead.error;
+  const profiles = useMemo(() => readProfilesText(profilesDraft), [profilesDraft]);
 
   useEffect(() => {
     if (!location?.installation) {
@@ -171,33 +86,13 @@ export default function AppConfig() {
         serverConfiguration.current = data?.serverConfiguration ?? {};
         setPortalUrl(config.bynderPortalUrl ?? "");
         setCompactLanguage(config.compactLanguage ?? "en_US");
-        setEnableDat(config.enableDat !== false);
-        setAllowFit(config.allowFit === true);
         setProfilesDraft(profilesText(config.profiles));
         setMaxDimensionDraft(widthText(config.maxDimension, DEFAULT_MAX_DIMENSION));
-        setMaxDesktopDraft(widthText(config.maxDesktopWidth, DEFAULT_MAX_WIDTHS.desktop));
-        setMaxMobileDraft(widthText(config.maxMobileWidth, DEFAULT_MAX_WIDTHS.mobile));
-        setFlags(initialFlags(config as Record<string, unknown>));
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [location]);
 
-  const renderRow = (row: EditorRow) => (
-    <li key={row.showKey}>
-      <label className="checkbox">
-        <input
-          type="checkbox"
-          checked={flags[row.showKey]}
-          onChange={(event) => setFlags((current) => ({ ...current, [row.showKey]: event.target.checked }))}
-        />
-        Show {row.label}
-        <code>{row.showKey}</code>
-      </label>
-    </li>
-  );
-
-  const widthError = widthErrors[0];
   const profileError = profiles.errors[0];
 
   useEffect(() => {
@@ -219,16 +114,10 @@ export default function AppConfig() {
       ...loadedConfiguration.current,
       bynderPortalUrl: nextPortal,
       compactLanguage: compactLanguage.trim() || "en_US",
-      enableDat,
-      allowFit,
       maxDimension,
-      maxDesktopWidth,
-      maxMobileWidth,
     };
     if (profiles.value) configuration.profiles = profiles.value as AppInstallationConfig["profiles"];
     else delete configuration.profiles;
-    for (const row of ALL_ROWS) configuration[row.showKey] = flags[row.showKey];
-    for (const key of RETIRED_KEYS) delete configuration[key];
     stageQueue.current = stageQueue.current
       .then(() =>
         installation.setInstallationData({
@@ -245,21 +134,7 @@ export default function AppConfig() {
         installation.setValidity(false, { message: "Could not update the configuration. Try again." });
       });
     return undefined;
-  }, [
-    allowFit,
-    compactLanguage,
-    enableDat,
-    flags,
-    loading,
-    location,
-    maxDimension,
-    maxDesktopWidth,
-    maxMobileWidth,
-    portalUrl,
-    profileError,
-    profiles.value,
-    widthError,
-  ]);
+  }, [compactLanguage, loading, location, maxDimension, portalUrl, profileError, profiles.value, widthError]);
 
   if (!location) {
     return <p className="notice">This view only works as an App Configuration location.</p>;
@@ -302,10 +177,6 @@ export default function AppConfig() {
         View always picks the <strong>asset</strong>, not a derivative file — DAT uses{" "}
         <code>files.transformBaseUrl</code>.
       </p>
-      <label className="checkbox">
-        <input type="checkbox" checked={enableDat} onChange={(event) => setEnableDat(event.target.checked)} />
-        Enable Bynder DAT transforms
-      </label>
 
       <h3>Bynder max dimension</h3>
       <label>
@@ -321,56 +192,22 @@ export default function AppConfig() {
       </label>
       <p className="help">
         Bynder’s DAT limit, in pixels. The default account limit is 2000. If a transform is taller or wider
-        than this, Bynder ignores it and returns the original file. Requests are kept inside this limit.
-        Raise it here only if Bynder has raised it for this portal.
+        than this, Bynder ignores it and returns the original file. The site chooses the request widths, and
+        delivery shrinks any step that would pass this limit. Raise it here only if Bynder has raised it for
+        this portal.
       </p>
-
-      <h3>Maximum image widths</h3>
-      <p className="help">
-        The widest image the site may request. No profile may go above these, and neither width may go above{" "}
-        <code>maxDimension</code>. Assets without a profile keep their original aspect ratio and use these
-        widths (never wider than the original file, and never past the max dimension on either side).
-      </p>
-      <div className="max-widths">
-        <label>
-          Desktop <code>maxDesktopWidth</code>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={maxDesktopDraft}
-            aria-invalid={Boolean(maxDesktop.error || aboveDimension(maxDesktop.value, "maxDesktopWidth"))}
-            onChange={(event) => setMaxDesktopDraft(event.target.value)}
-          />
-        </label>
-        <label>
-          Mobile <code>maxMobileWidth</code>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={maxMobileDraft}
-            aria-invalid={Boolean(maxMobile.error || aboveDimension(maxMobile.value, "maxMobileWidth"))}
-            onChange={(event) => setMaxMobileDraft(event.target.value)}
-          />
-        </label>
-      </div>
-      {widthErrors.length ? (
+      {widthError ? (
         <ul className="profiles-errors" role="alert">
-          {widthErrors.map((error) => (
-            <li key={error}>{error}</li>
-          ))}
+          <li>{widthError}</li>
         </ul>
       ) : null}
 
       <h3>Render profiles</h3>
       <p className="help">
-        Each profile needs a unique name and <code>desktop</code> and <code>mobile</code>, each with{" "}
-        <code>aspectRatio</code> and <code>maxWidth</code> (at most <code>maxDesktopWidth</code> /{" "}
-        <code>maxMobileWidth</code>, and neither side above <code>maxDimension</code>). Optional: DAT{" "}
-        <code>quality</code> (default 80) and <code>format</code>{" "}
-        (default webp). Entries save the profile name and a snapshot of these values; the site builds{" "}
-        <code>srcset</code> from 640w up to <code>maxWidth</code>.
+        Each profile needs a unique name and <code>desktop</code> and <code>mobile</code> aspect ratios,
+        such as <code>"16:9"</code>. Optional: DAT <code>quality</code> (default 80) and <code>format</code>{" "}
+        (default webp). Entries save the profile name and a snapshot of these values. The site passes the
+        widths it needs, and delivery keeps each one inside <code>maxDimension</code>.
       </p>
       <textarea
         className={profiles.errors.length ? "profiles-editor is-invalid" : "profiles-editor"}
@@ -388,50 +225,41 @@ export default function AppConfig() {
           ))}
         </ul>
       ) : null}
-      <details className="profiles-example">
-        <summary>Example with two profiles</summary>
-        <pre>{JSON.stringify(EXAMPLE_PROFILES, null, 2)}</pre>
-      </details>
-      <p className="help">
-        Narrow the list per field with the Config Parameter, e.g.{" "}
-        <code className="example">{`{ "profile": "hero" }`}</code> locks the field to one profile, with no dropdown.
-        Or offer a list, e.g.{" "}
-        <code className="example">{`{ "profiles": ["hero", "largeHero"], "defaultProfile": "hero" }`}</code>
-        A field can also define its own profile and offer it beside these, e.g.{" "}
-        <code className="example">{`{ "fieldProfiles": { "banner": { "desktop": { "aspectRatio": "21:9", "maxWidth": 1600 }, "mobile": { "aspectRatio": "4:3", "maxWidth": 640 } } }, "profiles": ["banner", "hero"] }`}</code>
-        Without <code>profile</code> or <code>defaultProfile</code>, new assets keep their original aspect ratio until the author picks a
-        profile. <code>allowCustomAspect</code> on the field adds a dragged ratio. Changing a profile updates entries that use it; authors see an “Unsaved changes” note until
-        they save.
-      </p>
-
-      <h3>Editor field defaults</h3>
-      <p className="help">Stack-wide defaults. A field Config Parameter can override these.</p>
-      <h4 className="flag-group-title">Images</h4>
-      <ul className="key-list">
-        <li>
-          <label className="checkbox">
-            <input type="checkbox" checked={allowFit} onChange={(event) => setAllowFit(event.target.checked)} />
-            Fit (letterbox)
-            <code>allowFit</code>
-          </label>
-        </li>
-      </ul>
-      <p className="help">
-        Off by default. Authors only get Fill, and <strong>Transform type</strong> is hidden. Turn this on to
-        also offer Fit, which shows the whole image and letterboxes the rest. A field can override it with{" "}
-        <code>{`{ "allowFit": true }`}</code>.
-      </p>
-      <h4 className="flag-group-title">Video playback</h4>
-      <ul className="key-list">{VIDEO_ROWS.map(renderRow)}</ul>
-
-      <p className="help">
-        Each asset stores a slim identity (<code>id</code>, <code>name</code>, <code>type</code>,{" "}
-        <code>transformBaseUrl</code>, <code>originalAssetWidth</code> / <code>originalAssetHeight</code>) plus
-        focal point and transform type. DAM metadata (tags, description) is not duplicated — delivery can re-fetch
-        Bynder by id. Contentstack JSON fields cap at <strong>10KB</strong>.
-      </p>
 
       <p className="help">Use <strong>Save</strong> in Contentstack to keep this configuration.</p>
+
+      <details className="optional-read">
+        <summary>
+          <span className="optional-kicker">Optional</span>
+          <span>
+            How fields use these profiles
+            <span className="optional-hint">Examples and notes. Saving does not depend on this.</span>
+          </span>
+        </summary>
+        <div className="optional-body">
+          <details className="profiles-example">
+            <summary>Example with two profiles</summary>
+            <pre>{JSON.stringify(EXAMPLE_PROFILES, null, 2)}</pre>
+          </details>
+          <p className="help">
+            Narrow the list per field with the Config Parameter, e.g.{" "}
+            <code className="example">{`{ "profile": "hero" }`}</code> locks the field to one profile, with no dropdown.
+            Or offer a list, e.g.{" "}
+            <code className="example">{`{ "profiles": ["hero", "largeHero"], "defaultProfile": "hero" }`}</code>
+            A field can also define its own profile and offer it beside these, e.g.{" "}
+            <code className="example">{`{ "fieldProfiles": { "banner": { "desktop": "21:9", "mobile": "4:3" } }, "profiles": ["banner", "hero"] }`}</code>
+            Without <code>profile</code> or <code>defaultProfile</code>, new assets keep their original aspect ratio until the author picks a
+            profile. <code>allowCustomAspect</code> on the field adds a dragged ratio. Changing a profile updates entries that use it; authors see an “Unsaved changes” note until
+            they save.
+          </p>
+          <p className="help">
+            Each asset stores a slim identity (<code>id</code>, <code>name</code>, <code>type</code>,{" "}
+            <code>transformBaseUrl</code>, <code>origWidth</code> / <code>origHeight</code>) plus
+            focal point when it is not centered, and Fill. DAM metadata (tags, description) is not duplicated — delivery can re-fetch
+            Bynder by id. Contentstack JSON fields cap at <strong>10KB</strong>.
+          </p>
+        </div>
+      </details>
     </div>
   );
 }

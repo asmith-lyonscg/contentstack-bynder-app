@@ -18,7 +18,7 @@ function resolveViteBase(): string {
 
 /** Static hosts (GitHub Pages) have no SPA fallback; emit real HTML for each app route. */
 function emitSpaShells(dist: string, index: string) {
-  const routes = ["picker", "custom-field", "app-configuration"];
+  const routes = ["picker", "custom-field", "app-configuration", "content-type-sidebar"];
   for (const route of routes) {
     const dir = path.join(dist, route);
     mkdirSync(dir, { recursive: true });

@@ -284,6 +284,11 @@
   font: 400 13px/1.4 Inter, system-ui, sans-serif;
 }
 
+.compact-assets li.is-document {
+  --desk-crop-w: 17;
+  --desk-crop-h: 22;
+}
+
 .compact-assets li {
   --desk-fit: min(
     calc(var(--thumb-desktop-w) / var(--desk-crop-w, 3)),
@@ -342,6 +347,15 @@
   box-shadow: 0 0 0 2px #6c5ce7;
 }
 
+.asset-doc-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #6e6e8a;
+}
+
 .asset-thumb img {
   display: block;
   width: 100%;
@@ -349,25 +363,14 @@
   object-fit: cover;
 }
 
+.asset-thumb img.is-page {
+  object-fit: contain;
+  object-position: left top;
+  background: #fff;
+}
+
 .asset-thumb img.is-loading {
   opacity: 0;
-}
-
-.asset-thumb img.is-fit {
-  object-fit: contain;
-}
-
-.asset-thumb img.is-framed {
-  object-fit: fill;
-  object-position: center;
-}
-
-.asset-thumb img.is-crop {
-  position: absolute;
-  left: 0;
-  top: 0;
-  max-width: none;
-  object-fit: fill;
 }
 
 .asset-dat-warn {

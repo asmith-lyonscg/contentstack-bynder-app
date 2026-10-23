@@ -1,7 +1,8 @@
-import type { DatOperation, ExtendBackgroundMode, FocalPoint, ProfileSettings, ViewportKind } from "../lib/types";
+import type { FocalPoint, ProfileSettings, ViewportKind } from "../lib/types";
 import { datQueryForWidth, joinDatUrl, normalizeFocalPoint } from "../lib/bynder/composeDatUrl";
 import {
   asProfileSettings,
+  heightForWidth,
   originalProfileSettings,
   srcsetWidths,
   viewportImageSize,
@@ -25,7 +26,7 @@ export interface BynderImageOptions {
 }
 
 export interface BynderSourcesOptions extends BynderImageOptions {
-  /** srcset steps. Cut at, and always ending with, the viewport `targetWidth`. */
+  /** srcset steps. Each is capped so neither side passes `maxDimension`. Default is the standard ladder. */
   widths?: readonly number[];
 }
 
@@ -34,8 +35,8 @@ export interface BynderSources {
   /** `url 640w, url 960w, …`. Omitted when DAT is off (one `webImage` URL). */
   srcset?: string;
   /**
-   * Widest image and its height. Set `width`/`height` attributes from these. Without a profile this is
-   * the original aspect ratio, never wider than the original file.
+   * Largest requested file after the max-dimension cap, and its height at the aspect ratio.
+   * Set the `img` `width` and `height` from these. They are not the CSS display size.
    */
   width?: number;
   height?: number;
@@ -47,9 +48,6 @@ interface ResolvedSlice {
   base?: string;
   webImage?: string;
   focalPoint: FocalPoint;
-  operation: DatOperation;
-  extendBackground?: ExtendBackgroundMode;
-  extendBackgroundColor?: string;
   profile: ProfileSettings;
   image: ViewportImageSize;
 }
@@ -71,43 +69,29 @@ function resolveSlice(value: unknown, options?: BynderImageOptions): ResolvedSli
   const crop = mobile && (mobile.operation || mobile.focalPoint) ? mobile : asset;
   const file = mobile?.id ? mobile : asset;
   const point = asRecord(crop.focalPoint);
-  const operation = crop.operation === "fit" ? "fit" : "fill";
   const nested = asRecord(root?.profile);
-  const profile =
-    asProfileSettings(nested?.settings) ?? asProfileSettings(root?.profileSettings) ?? originalProfileSettings();
-  const maxDimension = profile.maxDimension ?? DEFAULT_MAX_DIMENSION;
-  const image = viewportImageSize(
-    profile[viewport],
-    {
-      originalAssetWidth: positive(file.originalAssetWidth),
-      originalAssetHeight: positive(file.originalAssetHeight),
-      aspectRatio: asString(file.aspectRatio),
-    },
-    maxDimension
-  );
+  const profile = asProfileSettings(nested?.settings) ?? originalProfileSettings();
+  const image = viewportImageSize(profile[viewport], {
+    origWidth: positive(file.origWidth),
+    origHeight: positive(file.origHeight),
+  });
   return {
     base: asString(file.transformBaseUrl),
     webImage: asString(asRecord(file.webImage)?.url),
     focalPoint: normalizeFocalPoint({ x: Number(point?.x ?? 0.5), y: Number(point?.y ?? 0.5) }),
-    operation,
-    extendBackground: asString(crop.extendBackground) as ExtendBackgroundMode | undefined,
-    extendBackgroundColor: asString(crop.extendBackgroundColor),
     profile,
     image,
   };
 }
 
-/** DAT is used when the file has a `transformBaseUrl` and no `webImage` (the entry saves `webImage` only without DAT). */
+/** DAT is used when the file has a `transformBaseUrl`. `webImage` is only a fallback when it does not. */
 function urlForWidth(slice: ResolvedSlice, width: number): string | undefined {
-  if (!slice.base || slice.webImage) return undefined;
+  if (!slice.base) return undefined;
   return joinDatUrl(
     slice.base,
     datQueryForWidth(
       {
         focalPoint: slice.focalPoint,
-        operation: slice.operation,
-        extendBackground: slice.extendBackground,
-        extendBackgroundColor: slice.extendBackgroundColor,
       },
       { aspectRatio: slice.image.aspectRatio, format: slice.profile.format, quality: slice.profile.quality },
       width
@@ -116,42 +100,43 @@ function urlForWidth(slice: ResolvedSlice, width: number): string | undefined {
 }
 
 /**
- * One image URL `width` pixels wide (default: the widest image for the viewport), from saved field JSON.
- * Without DAT this returns the `webImage` URL.
+ * One image URL `width` pixels wide, from saved field JSON. The width is capped so neither side
+ * passes `maxDimension`. Without a transform URL this returns `webImage`.
  */
 export function composeBynderImageUrl(value: unknown, options?: BynderImageOptions & { width?: number }): string {
   const slice = resolveSlice(value, options);
   if (!slice) return "";
   const maxDimension = slice.profile.maxDimension ?? DEFAULT_MAX_DIMENSION;
-  const width = widthWithinMaxDimension(
-    options?.width ?? slice.image.width,
-    slice.image.aspectRatio,
-    maxDimension
-  );
+  const widths = srcsetWidths(slice.image.aspectRatio, maxDimension);
+  const requested = options?.width ?? widths[widths.length - 1];
+  if (!requested) return slice.webImage ?? "";
+  const width = widthWithinMaxDimension(requested, slice.image.aspectRatio, maxDimension);
   return urlForWidth(slice, width) ?? slice.webImage ?? "";
 }
 
 /**
- * `src`, `srcset`, and intrinsic size for one viewport. Default widths are 640, 960, 1280, 1600, 1920, …
- * up to and including the widest image: the profile `targetWidth`, or without a profile the smaller of
- * `targetWidth` and the original width. `src` is that widest image.
+ * `src`, `srcset`, and intrinsic size for one viewport. Widths default to 640, 960, 1280, 1600, 1920, …
+ * and each is capped so neither side passes `maxDimension`. `src` is the largest of those.
  */
 export function buildBynderSources(value: unknown, options?: BynderSourcesOptions): BynderSources | undefined {
   const slice = resolveSlice(value, options);
   if (!slice) return undefined;
   const objectPosition = focalPointToObjectPosition(slice.focalPoint);
-  const src = urlForWidth(slice, slice.image.width);
-  if (!src) {
+  const maxDimension = slice.profile.maxDimension ?? DEFAULT_MAX_DIMENSION;
+  const widths = srcsetWidths(slice.image.aspectRatio, maxDimension, options?.widths);
+  const widest = widths[widths.length - 1];
+  const src = widest ? urlForWidth(slice, widest) : undefined;
+  if (!src || !widest) {
     return slice.webImage ? { src: slice.webImage, objectPosition } : undefined;
   }
-  const srcset = srcsetWidths(slice.image.width, options?.widths)
-    .map((width) => `${urlForWidth(slice, width)} ${width}w`)
-    .join(", ");
+  const srcset = widths.map((width) => `${urlForWidth(slice, width)} ${width}w`).join(", ");
   return {
     src,
     srcset,
-    width: slice.image.width,
-    ...(slice.image.height ? { height: slice.image.height } : {}),
+    width: widest,
+    ...(slice.image.aspectRatio
+      ? { height: heightForWidth(slice.image.aspectRatio, widest) }
+      : {}),
     objectPosition,
   };
 }

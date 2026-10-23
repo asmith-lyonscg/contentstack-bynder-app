@@ -2,40 +2,41 @@ import { buildBynderSources } from "../src/delivery";
 import field from "./bynder-field-large-hero.json";
 
 /**
- * Art-directed `<picture>` for one saved Bynder image.
+ * React `<picture>` for one image in a saved Bynder field.
  *
- * Copy `src/delivery/` (and the `src/lib/` files it imports) into the website,
- * then import `buildBynderSources` from there. This sample imports the app copy
- * and renders `samples/bynder-field-large-hero.json`. The filled-in markup is
- * `samples/bynder-picture-large-hero.html` (`sizes="100vw"`).
- * `samples/bynder-field-split-left-right.json` is the same Bynder files with a
- * splitLeftRight snapshot, rendered in `samples/bynder-picture-split-left-right.html`
- * at `sizes="40vw"`. `samples/bynder-field-custom.json` is those files again with
- * `profile.id` `"custom"` (desktop 2:1, mobile 3:2), rendered in
- * `samples/bynder-picture-custom.html` at `sizes="100vw"`. `width` and `height`
- * are the desktop request size. `sizes` is the displayed width the browser uses
- * to pick a candidate.
+ * `value` is the custom field JSON (`samples/bynder-field-*.json`).
+ * Copy this component with the delivery modules, and keep
+ * their layout so the imports resolve:
+ * `src/delivery/`, `src/lib/types.ts`, `src/lib/profiles.ts`, and
+ * `src/lib/bynder/composeDatUrl.ts`. Import `buildBynderSources` from that
+ * copy. Every URL comes from `buildBynderSources`.
  *
- * The profile stores `targetWidth` and `aspectRatio`. It does not store a
- * target height. The request height is that width at the aspect ratio. Bynder
- * rejects a transform when either side is over `maxDimension` (2000 when the
- * snapshot omits it) and returns the original file instead, so the helper
- * shrinks the request until both sides fit. A 9:16 image with targetWidth 2000
- * is requested at 1125×2000.
+ * `sizes` is the CSS width of the slot. `widths` is the file widths to request
+ * for that slot. Widths come from the slot. Leave `maxDimension`
+ * unset (2000 when the snapshot omits it). largeHero and custom use
+ * `STANDARD_WIDTHS` at `sizes="100vw"`. splitLeftRight passes
+ * `[480, 640, 800, 960, 1280]` at `sizes="40vw"`.
  *
- * For this sample, largeHero asks for:
- * - desktop 16:9 at targetWidth 2000 → 2000×1125
- * - mobile 5:3 at targetWidth 960 → 960×576, from the separate mobile file
+ * The HTML files beside this one are the markup this component returns.
+ * `width` and `height` on the `img` are the largest desktop request.
+ * largeHero is 16:9, so that file is 2000×1125, and its mobile file (5:3) is
+ * 2000×1200. custom (`profile.id` `"custom"`) is desktop 2:1 → 2000×1000 and
+ * mobile 3:2 → 2000×1333. splitLeftRight is desktop 7:4 → 1280×731 and mobile
+ * 16:9 → 1280×720. A 9:16 image on the standard ladder is 1125×2000.
+ * Bynder returns the original file when either side passes `maxDimension`, so
+ * the helper shrinks the step first.
  *
  * Each URL is `{transformBaseUrl}?io=transform:fill,width:{w},height:{h}&focuspoint={x},{y}&format=webp&quality=80`.
- * `srcset` uses 640, 960, 1280, 1600, 1920, … and always ends on that capped width.
- * `src` is the capped image. `width` and `height` are that same size.
+ * A missing focal point is `0.5,0.5`. `src` is the largest remaining step.
  */
+export const STANDARD_WIDTHS = [640, 960, 1280, 1600, 1920, 2560, 3200, 3840] as const;
+
 export function BynderPicture({
   value = field,
   assetId,
   alt,
   sizes = "100vw",
+  widths = STANDARD_WIDTHS,
   mobileMaxWidth = 767,
 }: {
   value?: unknown;
@@ -43,10 +44,12 @@ export function BynderPicture({
   /** Saved `alt` when omitted. An empty string stays empty. */
   alt?: string;
   sizes?: string;
+  /** Request widths. Each is capped so neither side passes `maxDimension`. */
+  widths?: readonly number[];
   mobileMaxWidth?: number;
 }) {
-  const desktop = buildBynderSources(value, { assetId });
-  const mobile = buildBynderSources(value, { assetId, viewport: "mobile" });
+  const desktop = buildBynderSources(value, { assetId, widths });
+  const mobile = buildBynderSources(value, { assetId, viewport: "mobile", widths });
   if (!desktop) return null;
 
   const altText = alt ?? savedAlt(value, assetId);

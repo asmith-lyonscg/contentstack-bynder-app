@@ -9,7 +9,6 @@ import type {
   ProfileSettings,
   SavedBynderAsset,
   TransformSettings,
-  VideoFieldVisibility,
   VideoPlayback,
   ViewportKind,
 } from "./types";
@@ -131,26 +130,6 @@ function pickString(value: unknown, key: string): string | undefined {
   return undefined;
 }
 
-function pickShowFlag(
-  fieldConfig: unknown,
-  appConfig: unknown,
-  showKeys: string[],
-  hideKeys: string[],
-  defaultShow: boolean
-): boolean {
-  for (const source of [fieldConfig, appConfig]) {
-    for (const key of showKeys) {
-      const value = pickBool(source, key);
-      if (value !== undefined) return value;
-    }
-    for (const key of hideKeys) {
-      const value = pickBool(source, key);
-      if (value !== undefined) return !value;
-    }
-  }
-  return defaultShow;
-}
-
 export function resolveBynderFieldUid(fieldConfig: unknown, appConfig: unknown): string | undefined {
   return pickUid(fieldConfig) ?? pickUid(appConfig);
 }
@@ -177,20 +156,13 @@ export function resolveCompactViewConfig(fieldConfig: unknown, appConfig: unknow
   };
 }
 
-/** Field Config Parameter wins over App Configuration. Default: DAT on. */
-export function resolveEnableDat(fieldConfig: unknown, appConfig: unknown): boolean {
-  return pickBool(fieldConfig, "enableDat") ?? pickBool(appConfig, "enableDat") ?? true;
-}
-
 export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): CropFieldConfig {
   const desktopMobileMode =
-    pickBool(fieldConfig, "desktopMobileMode") ??
-    pickBool(fieldConfig, "desktopMobile") ??
-    pickBool(appConfig, "desktopMobileMode") ??
-    pickBool(appConfig, "desktopMobile") ??
-    true;
-  const { profiles, allowed, defaultProfile, allowOriginal, profileLocked, maxWidths, fieldProfileErrors } =
-    resolveProfiles(fieldConfig, appConfig);
+    pickBool(fieldConfig, "desktopMobileMode") ?? pickBool(appConfig, "desktopMobileMode") ?? true;
+  const { profiles, allowed, defaultProfile, allowOriginal, profileLocked, fieldProfileErrors } = resolveProfiles(
+    fieldConfig,
+    appConfig
+  );
   const maxDimension = resolveMaxDimension(appConfig);
   return {
     profiles,
@@ -198,20 +170,11 @@ export function resolveCropConfig(fieldConfig: unknown, appConfig: unknown): Cro
     defaultProfile,
     allowOriginal,
     profileLocked,
-    maxWidths,
     maxDimension,
     profile: defaultProfile,
     active: defaultProfile
       ? profileSettingsFrom(profiles[defaultProfile], maxDimension)
-      : originalProfileSettings(maxWidths, maxDimension),
-    showOperation: pickShowFlag(
-      fieldConfig,
-      appConfig,
-      ["showFieldOperation", "showOperation"],
-      ["hideOperation"],
-      true
-    ),
-    allowFit: pickBool(fieldConfig, "allowFit") ?? pickBool(appConfig, "allowFit") ?? false,
+      : originalProfileSettings(maxDimension),
     allowCustomAspect: pickBool(fieldConfig, "allowCustomAspect") ?? false,
     fieldProfileErrors,
     desktopMobileMode,
@@ -229,7 +192,7 @@ export function withActiveProfile(
   snapshot?: ProfileSettings
 ): CropFieldConfig {
   const maxDimension = crop.maxDimension ?? DEFAULT_MAX_DIMENSION;
-  if (!name) return { ...crop, profile: undefined, active: originalProfileSettings(crop.maxWidths, maxDimension) };
+  if (!name) return { ...crop, profile: undefined, active: originalProfileSettings(maxDimension) };
   const defined = crop.profiles[name];
   if (defined) return { ...crop, profile: name, active: profileSettingsFrom(defined, maxDimension) };
   if (snapshot) {
@@ -242,8 +205,8 @@ export function withActiveProfile(
 }
 
 /**
- * The profile sets size, aspect, format, and quality. The author keeps operation and letterbox.
- * `size` is the original file size, used when there is no profile aspect ratio.
+ * The profile sets aspect, format, and quality. `size` is the original file, used when the profile
+ * has no aspect ratio.
  */
 export function applyCropConfig(
   transform: TransformSettings,
@@ -251,14 +214,7 @@ export function applyCropConfig(
   viewport: ViewportKind = "desktop",
   size?: OriginalAssetSize
 ): TransformSettings {
-  return applyProfileTransform(
-    transform,
-    crop.active,
-    viewport,
-    crop.desktopMobileMode !== false,
-    size,
-    crop.allowFit
-  );
+  return applyProfileTransform(transform, crop.active, viewport, crop.desktopMobileMode !== false, size);
 }
 
 /** New asset: centered focal point, Fill. Mobile follows desktop until edited. */
@@ -409,12 +365,8 @@ const RESERVED_ADDITIONAL_PROPERTIES = new Set([
   "transform",
   "focalPoint",
   "operation",
-  "zoom",
-  "extendBackground",
-  "extendBackgroundColor",
-  "originalAssetWidth",
-  "originalAssetHeight",
-  "aspectRatio",
+  "origWidth",
+  "origHeight",
   "mobile",
   "dat",
   "webImage",
@@ -458,16 +410,6 @@ export function resolveVideoDefaults(fieldConfig: unknown, appConfig: unknown): 
     muted: pickVideoFlag(fieldConfig, appConfig, "muted", "videoMuted", false),
     controls: pickVideoFlag(fieldConfig, appConfig, "controls", "videoControls", true),
     loop: pickVideoFlag(fieldConfig, appConfig, "loop", "videoLoop", false),
-  };
-}
-
-/** Which playback checkboxes to show. Hidden flags still keep their configured default on new videos. */
-export function resolveVideoFieldVisibility(fieldConfig: unknown, appConfig: unknown): VideoFieldVisibility {
-  return {
-    autoplay: pickShowFlag(fieldConfig, appConfig, ["showFieldAutoplay"], [], true),
-    muted: pickShowFlag(fieldConfig, appConfig, ["showFieldMuted", "showFieldMute"], [], true),
-    controls: pickShowFlag(fieldConfig, appConfig, ["showFieldControls"], [], true),
-    loop: pickShowFlag(fieldConfig, appConfig, ["showFieldLoop"], [], true),
   };
 }
 

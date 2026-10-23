@@ -1,7 +1,5 @@
-export type DatOperation = "fill" | "fit" | "crop" | "scale";
+export type DatOperation = "fill";
 export type DatFormat = "webp" | "avif" | "jpg" | "png";
-/** Letterbox fill for Fit (`transform:extend`). Always emitted as DAT `background:` (Bynder defaults to white without it). */
-export type ExtendBackgroundMode = "auto" | "transparent" | "black" | "white" | "custom";
 
 export interface FocalPoint {
   x: number;
@@ -9,7 +7,7 @@ export interface FocalPoint {
 }
 
 /**
- * Editor-side transform for one viewport. `operation` and `extend*` are the author's choice.
+ * Editor-side transform for one viewport. Fill is the only operation.
  * `width`, `height`, `aspect`, `format`, and `quality` come from the render profile and are not saved per asset.
  */
 export interface TransformSettings {
@@ -17,47 +15,25 @@ export interface TransformSettings {
   width?: number | null;
   height?: number | null;
   aspect?: string | null;
-  /** Fit/extend letterbox color mode. */
-  extendBackground?: ExtendBackgroundMode | null;
-  /** Hex for `extendBackground: "custom"` (with or without `#`). */
-  extendBackgroundColor?: string | null;
   format?: DatFormat | null;
   quality?: number | null;
 }
 
-/** One viewport of an App Config render profile. */
-export interface RenderProfileViewport {
-  aspectRatio: string;
-  maxWidth: number;
-}
-
-/** App Config `profiles.<name>`. */
+/** App Config `profiles.<name>`. `desktop` and `mobile` are aspect ratios, e.g. `"16:9"`. */
 export interface RenderProfile {
-  desktop: RenderProfileViewport;
-  mobile: RenderProfileViewport;
+  desktop: string;
+  mobile: string;
   quality: number;
   format: DatFormat;
 }
 
 /**
- * Saved per viewport. `targetWidth` is the widest image the site should request.
- * No `aspectRatio` means no profile: use the asset's own aspect ratio, never wider than the original.
+ * Snapshot of the resolved profile, saved on the entry so the site needs no App Config.
+ * `desktop` and `mobile` are the aspect ratios. Omitted when that viewport uses the file's own pixels.
  */
-export interface ProfileViewportSettings {
-  aspectRatio?: string;
-  targetWidth: number;
-}
-
-/** App Config caps on `maxWidth`, and the target width when no profile applies. */
-export interface MaxWidths {
-  desktop: number;
-  mobile: number;
-}
-
-/** Snapshot of the resolved profile, saved on the entry so the site needs no App Config. */
 export interface ProfileSettings {
-  desktop: ProfileViewportSettings;
-  mobile: ProfileViewportSettings;
+  desktop?: string;
+  mobile?: string;
   quality: number;
   format: DatFormat;
   /**
@@ -123,19 +99,14 @@ export type ViewportKind = "desktop" | "mobile";
 export interface ViewportCropSettings {
   /** Omitted on document assets (no crop editor). */
   focalPoint?: FocalPoint;
-  /** In memory only. The entry saves `operation` and `extend*` flat on the asset instead. */
+  /** In memory only. The entry saves `operation` flat on the asset instead. */
   transform?: TransformSettings;
 }
 
-/**
- * Original file size from Bynder, saved so the site can lay out without an API call.
- * The ratio is `originalAssetWidth` / `originalAssetHeight`. `aspectRatio` is a legacy
- * string from older entries and is still read; new saves do not write it.
- */
+/** Original file size from Bynder, saved so the site can lay out without an API call. */
 export interface OriginalAssetSize {
-  originalAssetWidth?: number;
-  originalAssetHeight?: number;
-  aspectRatio?: string;
+  origWidth?: number;
+  origHeight?: number;
 }
 
 /**
@@ -172,7 +143,7 @@ export interface SavedBynderAsset extends AssetCropSettings, OriginalAssetSize {
   /** Compact View media type, e.g. IMAGE, VIDEO, or DOCUMENT. Always saved. */
   type?: string;
   transformBaseUrl?: string;
-  /** Original/web image. Only persisted when DAT is off or the asset has no transformBaseUrl. */
+  /** Original/web image. Persisted only when the asset has no transform URL. */
   webImage?: { url: string };
   /** Document / PDF: public file URL for viewing (no `download` param). */
   url?: string;
@@ -236,16 +207,12 @@ export interface CropFieldConfig {
   allowOriginal: boolean;
   /** Field Config Parameter `"profile"` names one profile. The dropdown stays hidden. */
   profileLocked: boolean;
-  maxWidths: MaxWidths;
   /** Bynder limit on either side of a transformed image. Default 2000. */
   maxDimension: number;
   /** Profile the editor is applying right now. Undefined: original aspect ratio. */
   profile?: string;
-  /** Resolved sizes for `profile`. A profile missing from App Config keeps the entry's saved snapshot. */
+  /** Resolved profile for the editor. A name App Config no longer defines keeps the entry's saved snapshot. */
   active: ProfileSettings;
-  showOperation: boolean;
-  /** Authors may choose Fit (letterbox). Default false, so Transform type stays hidden. */
-  allowFit: boolean;
   /** Authors may drag a custom aspect ratio. Default false. Field Config Parameter only. */
   allowCustomAspect: boolean;
   /** Problems in this field's `fieldProfiles`. Valid profiles are still offered. */
@@ -258,21 +225,9 @@ export interface AppInstallationConfig {
   /** Bynder portal host, e.g. acme.getbynder.com */
   bynderPortalUrl?: string;
   compactLanguage?: string;
-  /** @deprecated Ignored. Compact View mode follows `maxNumberOfAssets`. Stripped on App Config save. */
-  compactMode?: CompactSelectionMode;
   bynderFieldUid?: string;
-  /** @deprecated Static/Pages build. Stripped on App Config save. */
-  loginBypass?: boolean;
-  /** @deprecated Static/Pages build. Stripped on App Config save. */
-  oauthClientId?: string;
-  /** When false, DAT is unavailable and authors only get CSS crop. Default true. */
-  enableDat?: boolean;
-  /** @deprecated Static/Pages build. Stripped on App Config save. */
-  enableAssetTracker?: boolean;
   /** Dual desktop/mobile crops. Default true. */
   desktopMobileMode?: boolean;
-  /** @deprecated Use `desktopMobileMode`. Still read from field/app JSON. */
-  desktopMobile?: boolean;
   /** Cap on assets in this field. Default 1. Values above 1 use Compact View MultiSelect. */
   maxNumberOfAssets?: number;
   /**
@@ -280,32 +235,11 @@ export interface AppInstallationConfig {
    * A request above this comes back as the original file.
    */
   maxDimension?: number;
-  /** Widest desktop image any profile may request. Default 2000. */
-  maxDesktopWidth?: number;
-  /** Widest mobile image any profile may request. Default 960. */
-  maxMobileWidth?: number;
   /** Named render profiles. Without one, assets keep their original aspect ratio. */
   profiles?: Record<string, RenderProfile>;
-  /** Show Transform type. Default true. Field Config Parameter can override. Hidden anyway when Fit is off. */
-  showFieldOperation?: boolean;
-  /** Offer Fit (letterbox) as well as Fill. Default false. */
-  allowFit?: boolean;
-  /** Video playback checkboxes. Default true. */
-  showFieldAutoplay?: boolean;
-  showFieldMuted?: boolean;
-  showFieldControls?: boolean;
-  showFieldLoop?: boolean;
 }
 
 export interface VideoPlayback {
-  autoplay: boolean;
-  muted: boolean;
-  controls: boolean;
-  loop: boolean;
-}
-
-/** Which video playback checkboxes the editor shows. Defaults are all on. */
-export interface VideoFieldVisibility {
   autoplay: boolean;
   muted: boolean;
   controls: boolean;
@@ -324,7 +258,6 @@ export const DEFAULT_COMPACT_ASSET_TYPES: CompactAssetType[] = ["IMAGE", "VIDEO"
 
 export const DEFAULT_FOCAL_POINT: FocalPoint = { x: 0.5, y: 0.5 };
 
-export const DEFAULT_MAX_WIDTHS: MaxWidths = { desktop: 2000, mobile: 960 };
 /** Bynder returns the original file when a transform is larger than this on either side. */
 export const DEFAULT_MAX_DIMENSION = 2000;
 export const DEFAULT_QUALITY = 80;
@@ -332,7 +265,6 @@ export const DEFAULT_FORMAT: DatFormat = "webp";
 
 export const DEFAULT_TRANSFORM: TransformSettings = {
   operation: "fill",
-  width: DEFAULT_MAX_WIDTHS.desktop,
   format: DEFAULT_FORMAT,
   quality: DEFAULT_QUALITY,
 };

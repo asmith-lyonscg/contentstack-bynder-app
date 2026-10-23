@@ -62,15 +62,23 @@ function asAssetType(value: unknown): CompactAssetType | undefined {
   return ASSET_TYPES.includes(raw as CompactAssetType) ? (raw as CompactAssetType) : undefined;
 }
 
-function acceptAssetTypes(record: Record<string, unknown> | null): CompactAssetType[] | undefined {
-  const raw = pickString(record, "accept") ?? pickString(record, "media");
-  if (!raw) return undefined;
-  const key = raw.toLowerCase().replace(/\s+/g, "");
-  if (key === "image") return ["IMAGE"];
-  if (key === "video") return ["VIDEO"];
-  if (key === "pdf" || key === "document") return ["DOCUMENT"];
-  if (key === "image/video" || key === "image,video" || key === "video/image") return ["IMAGE", "VIDEO"];
-  return undefined;
+const MEDIA_TYPE: Record<string, CompactAssetType> = {
+  image: "IMAGE",
+  video: "VIDEO",
+  pdf: "DOCUMENT",
+};
+
+/** Field or App Config `type`: `["image", "video"]`, `["pdf"]`, and so on. */
+function configuredMediaTypes(record: Record<string, unknown> | null): CompactAssetType[] | undefined {
+  const raw = record?.type;
+  if (!Array.isArray(raw)) return undefined;
+  const types: CompactAssetType[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const mapped = MEDIA_TYPE[item.trim().toLowerCase()];
+    if (mapped && !types.includes(mapped)) types.push(mapped);
+  }
+  return types.length ? types : undefined;
 }
 
 function pickAssetTypes(record: Record<string, unknown> | null): CompactAssetType[] | undefined {
@@ -184,14 +192,14 @@ export function resolveCompactViewConfig(fieldConfig: unknown, appConfig: unknow
   const pickedFilter = pickAssetFilter(options);
   const datPresets = pickDatPresets(fieldConfig) ?? pickDatPresets(appConfig);
   const assetTypes =
-    acceptAssetTypes(field) ??
-    acceptAssetTypes(app) ??
+    configuredMediaTypes(field) ??
+    configuredMediaTypes(app) ??
     pickAssetTypes(options) ??
     pickedFilter?.predefinedAssetType ??
     [...DEFAULT_COMPACT_ASSET_TYPES];
   // Predefined assetFilter hides UCV search/filters unless showToolbar is true
-  // (Bynder default). Restrict types with assetTypes; only pass assetFilter when
-  // the field config actually set one.
+  // (Bynder default). Restrict files with config `type`. compactViewConfig.assetTypes
+  // applies when `type` is omitted. Only pass assetFilter when the field config set one.
   const assetFilter = pickedFilter
     ? { ...pickedFilter, showToolbar: pickedFilter.showToolbar ?? true }
     : undefined;

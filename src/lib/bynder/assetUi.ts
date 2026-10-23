@@ -1,7 +1,6 @@
 import {
   DEFAULT_FOCAL_POINT,
   type AssetCropSettings,
-  type DatOperation,
   type FocalPoint,
   type ParsedBynderAsset,
   type TransformSettings,
@@ -11,6 +10,8 @@ import { normalizeFocalPoint, parseAspect } from "./composeDatUrl";
 export const LIST_THUMB_MOBILE = { width: 200, height: 200 };
 export const LIST_THUMB_DESKTOP = { width: 300, height: 200 };
 export const LIST_THUMB_SLOT = LIST_THUMB_MOBILE;
+/** US Letter, 8.5×11, reduced. Document rows use this instead of the image profile. */
+export const DOCUMENT_THUMB_ASPECT = { w: 17, h: 22 };
 
 export interface ListThumb {
   url: string;
@@ -21,9 +22,6 @@ export interface ListThumb {
   /** Crop pixel size used to fit the thumb inside its max box. */
   aspectW?: number;
   aspectH?: number;
-  operation?: DatOperation;
-  /** This URL is already the Fit transform, letterbox included. Draw it filling the thumb. */
-  framed?: boolean;
 }
 
 export interface AssetListThumbs {
@@ -43,7 +41,6 @@ export function listThumbForAsset(input: {
   live?: {
     focalPoint?: FocalPoint;
     transform?: TransformSettings;
-    datEnabled?: boolean;
     url?: string;
   };
   datAllowed: boolean;
@@ -54,10 +51,10 @@ export function listThumbForAsset(input: {
   const focal = input.live?.focalPoint ?? input.crop?.focalPoint ?? DEFAULT_FOCAL_POINT;
   const datOn = Boolean(input.datAllowed && input.asset.transformBaseUrl);
   const size = input.slot ?? LIST_THUMB_SLOT;
-  const cropWidth = transform?.width;
-  const cropHeight = transform?.height;
+  const document = input.asset.type?.trim().toUpperCase() === "DOCUMENT";
+  const aspect = document ? DOCUMENT_THUMB_ASPECT : parseAspect(transform?.aspect);
   const caption = thumbCaption({
-    aspect: cropAspectLabel(transform),
+    aspect: document ? undefined : cropAspectLabel(transform),
     format: datOn ? transform?.format : input.asset.fileType,
     fileType: input.asset.fileType,
     fileSize: datOn ? undefined : input.asset.fileSize,
@@ -66,11 +63,10 @@ export function listThumbForAsset(input: {
   return {
     ...size,
     url: input.asset.sourceUrl,
-    objectPosition: objectPosition(focal),
+    objectPosition: document ? "0% 0%" : objectPosition(focal),
     caption,
-    aspectW: cropWidth ? Math.round(cropWidth) : undefined,
-    aspectH: cropHeight ? Math.round(cropHeight) : undefined,
-    operation: transform?.operation ?? "fill",
+    aspectW: aspect?.w,
+    aspectH: aspect?.h,
   };
 }
 

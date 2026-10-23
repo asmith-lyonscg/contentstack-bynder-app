@@ -1,6 +1,5 @@
 import { assetPixelSize, isDocumentAsset, isVideoAsset } from "./parseAsset";
 import { compactViewGraphqlId } from "./preselect";
-import { aspectRatioFromPixels } from "../profiles";
 import type { SavedBynderAsset } from "../types";
 
 /** Compact View's public OAuth client. Same id the picker uses to refresh a session. */
@@ -142,9 +141,9 @@ export function originalPixelSizeFromNode(node: unknown): OriginalPixelSize | un
 /** Image ids (and a different mobile file) that do not yet have both original dimensions. */
 export function missingOriginalSizeIds(assets: SavedBynderAsset[] | undefined): string[] {
   const ids: string[] = [];
-  const push = (asset?: { id?: string; type?: string; name?: string; url?: string; originalAssetWidth?: number; originalAssetHeight?: number }) => {
+  const push = (asset?: { id?: string; type?: string; name?: string; url?: string; origWidth?: number; origHeight?: number }) => {
     if (!asset?.id || isDocumentAsset(asset) || isVideoAsset(asset)) return;
-    if (asset.originalAssetWidth && asset.originalAssetHeight) return;
+    if (asset.origWidth && asset.origHeight) return;
     ids.push(asset.id);
   };
   for (const asset of assets ?? []) {
@@ -169,25 +168,23 @@ export function mergeOriginalSizes(
   const next = assets.map((asset) => {
     let current = asset;
     const size = lookup(sizes, asset.id);
-    if (size && (!asset.originalAssetWidth || !asset.originalAssetHeight)) {
+    if (size && (!asset.origWidth || !asset.origHeight)) {
       changed = true;
       current = {
         ...current,
-        originalAssetWidth: size.width,
-        originalAssetHeight: size.height,
-        aspectRatio: aspectRatioFromPixels(size.width, size.height) ?? current.aspectRatio,
+        origWidth: size.width,
+        origHeight: size.height,
       };
     }
     const mobileSize = lookup(sizes, current.mobile?.id);
-    if (current.mobile?.id && mobileSize && (!current.mobile.originalAssetWidth || !current.mobile.originalAssetHeight)) {
+    if (current.mobile?.id && mobileSize && (!current.mobile.origWidth || !current.mobile.origHeight)) {
       changed = true;
       current = {
         ...current,
         mobile: {
           ...current.mobile,
-          originalAssetWidth: mobileSize.width,
-          originalAssetHeight: mobileSize.height,
-          aspectRatio: aspectRatioFromPixels(mobileSize.width, mobileSize.height) ?? current.mobile.aspectRatio,
+          origWidth: mobileSize.width,
+          origHeight: mobileSize.height,
         },
       };
     }

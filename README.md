@@ -4,7 +4,7 @@ Contentstack Marketplace **Custom Field** for Bynder Universal Compact View: pic
 
 Written by **Anthony Smith**. Owned by **Capgemini**.
 
-Bynder DAT is on by default when the asset has a DAT URL (`transformBaseUrl`). Set `"enableDat": false` to force CSS crop for everyone.
+Bynder DAT is used whenever the asset has a DAT URL (`transformBaseUrl`).
 
 You do **not** need the official Bynder Marketplace app. This field does not read a sibling Bynder field.
 
@@ -29,12 +29,17 @@ __________________________
    |---|---|---|---|
    | Custom Field | Bynder Asset Settings | `/custom-field` | **JSON** |
    | App Configuration | (default) | `/app-configuration` | — |
+   | Content Type Sidebar | Bynder field setup | `/content-type-sidebar` | — |
 
 5. Install the app on your stack.
 6. Open **App Configuration**, enter your Bynder portal host (example: `acme.getbynder.com`, no `https://`), then use Contentstack’s **Save**. The form sends the configuration as you edit, so there is no second save button inside the form.
 7. On a content type, add this app’s JSON Custom Field. Optional: paste a [Config Parameter](#field-config-parameter-samples) on the field. Field config wins over App Configuration.
 
+The Content Type Sidebar location shows two Config Parameter examples and a key table (key, type, default). Open a content type and choose **Apps** in the right panel. See [Content Type Sidebar Location](https://www.contentstack.com/docs/developer-hub/content-type-sidebar-location).
+
 That’s it. Authors sign into Bynder inside Compact View.
+
+The field stores one JSON object (`v`, `profile`, `assets`). The Delivery API returns that object on the field’s UID. The website renders that object. Each entry already holds a copy of the profile it used, so rendering needs nothing else from this app. See [On the website](#on-the-website).
 
 __________________________
 
@@ -68,7 +73,7 @@ Use this when you are changing the app code. Do **not** point a production Conte
 
    `http://localhost:3000`
 
-6. Keep the UI location paths as `/custom-field` and `/app-configuration`.
+6. Keep the UI location paths as `/custom-field`, `/app-configuration`, and `/content-type-sidebar`.
 7. Reload the entry editor in Contentstack. Your local build is what runs inside the iframe.
 
 ### Useful commands
@@ -79,7 +84,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm run build` writes a production `dist/` folder (including `404.html`, `.nojekyll`, and HTML shells for `/custom-field`, `/app-configuration`, and `/picker`).
+`npm run build` writes a production `dist/` folder (including `404.html`, `.nojekyll`, and HTML shells for `/custom-field`, `/app-configuration`, `/content-type-sidebar`, and `/picker`).
 
 __________________________
 
@@ -108,7 +113,7 @@ No trailing slash in Developer Hub.
 ### Point Contentstack at it
 
 1. Developer Hub → **Hosting → Custom Hosting → App URL:** your Pages URL (no trailing slash).
-2. UI locations stay `/custom-field` and `/app-configuration`.
+2. UI locations stay `/custom-field`, `/app-configuration`, and `/content-type-sidebar`.
 3. Contentstack loads e.g. `https://asmith-lyonscg.github.io/contentstack-bynder-app/custom-field`.
 
 ### Check the Pages build on your machine (optional)
@@ -137,15 +142,7 @@ Add **one** JSON Custom Field (this app). A Group is optional.
 
 Bynder returns the original file when a DAT transform is larger than the account limit on **either** side. That limit defaults to 2000px and can be raised in Bynder. App Configuration → **Bynder max dimension** sets `maxDimension` (default `2000`) to the same number.
 
-- A request is scaled down, keeping its aspect ratio, so neither side passes `maxDimension`.
-- App Configuration will not save a profile, `maxDesktopWidth`, or `maxMobileWidth` that would exceed it. The field shows an error if a saved size is still over the limit, and the URL it builds stays inside the limit.
-
-### Maximum image widths (App Configuration)
-
-App Configuration → **Maximum image widths** sets `maxDesktopWidth` (default `2000`) and `maxMobileWidth` (default `960`). They are the widest images the site may request:
-
-- No profile's `maxWidth` may be above them, and neither width may be above `maxDimension`. App Configuration will not save a profile that is.
-- An asset without a profile uses them as its `targetWidth`, at the asset's original aspect ratio, never wider than the original file, and never past `maxDimension` on either side.
+- The site chooses the request widths. Delivery shrinks any step, keeping its aspect ratio, so neither side passes `maxDimension`.
 
 ### Render profiles (App Configuration)
 
@@ -154,27 +151,26 @@ Image sizes come from named **render profiles**, defined once in App Configurati
 ```json
 {
   "hero": {
-    "desktop": { "aspectRatio": "16:9", "maxWidth": 2000 },
-    "mobile": { "aspectRatio": "4:3", "maxWidth": 960 },
+    "desktop": "16:9",
+    "mobile": "4:3",
     "quality": 80,
     "format": "webp"
   },
   "largeHero": {
-    "desktop": { "aspectRatio": "21:9", "maxWidth": 2000 },
-    "mobile": { "aspectRatio": "4:5", "maxWidth": 960 }
+    "desktop": "21:9",
+    "mobile": "4:5"
   }
 }
 ```
 
-- Every profile needs `desktop` and `mobile`, each with `aspectRatio` (`"W:H"`) and `maxWidth` (pixels).
-- `desktop.maxWidth` may not be above `maxDesktopWidth`, and `mobile.maxWidth` may not be above `maxMobileWidth`.
+- Every profile needs `desktop` and `mobile` aspect ratios (`"W:H"`).
 - `quality` (1–100) defaults to `80`; `format` (`webp`, `avif`, `jpg`, `png`) defaults to `webp`.
-- `maxWidth` is the widest image the site will request. The entry saves it as `targetWidth`, and the site builds `srcset` from 640w up to and including it.
+- The site passes the widths it needs. Delivery caps each one so neither side passes `maxDimension`.
 - Profile names must be unique, start with a letter, and use letters, numbers, `_`, or `-`.
 - The editor validates as you type and will not save invalid JSON, a duplicate name, or an invalid profile.
-- There is no built-in profile. With no profiles, or when neither the field nor the author picks one, each asset keeps the aspect ratio of its original pixel size. That ratio is reduced (`4000×3000` → `4:3`) and saved on the asset as `aspectRatio`, next to `originalAssetWidth` and `originalAssetHeight`, so the editor and the site recall the same value.
+- There is no built-in profile. With no profiles, or when neither the field nor the author picks one, each asset keeps the aspect ratio of its original pixel size. That ratio is reduced (`4000×3000` → `4:3`) from `origWidth` and `origHeight`.
 
-Authors never type a width, height, aspect, format, or quality. The profile locks them. Authors set the focal point. **Fill** is the only transform type unless Fit is turned on.
+Authors never type a width, height, aspect, format, or quality. The profile locks the aspect, format, and quality. Authors set the focal point. **Fill** is the only transform type.
 
 ### Field Config Parameter
 
@@ -183,11 +179,9 @@ Example field **Config Parameter** (field config wins over App Configuration):
 ```json
 {
   "bynderPortalUrl": "acme.getbynder.com",
-  "accept": "image/video",
+  "type": ["image", "video"],
   "desktopMobileMode": true,
   "maxNumberOfAssets": 3,
-  "enableDat": true,
-  "allowFit": false,
   "profiles": ["hero", "largeHero"],
   "defaultProfile": "hero"
 }
@@ -203,8 +197,8 @@ Example field **Config Parameter** (field config wins over App Configuration):
 {
   "fieldProfiles": {
     "banner": {
-      "desktop": { "aspectRatio": "21:9", "maxWidth": 1600 },
-      "mobile": { "aspectRatio": "4:3", "maxWidth": 640 }
+      "desktop": "21:9",
+      "mobile": "4:3"
     }
   },
   "profiles": ["banner", "hero"],
@@ -212,18 +206,17 @@ Example field **Config Parameter** (field config wins over App Configuration):
 }
 ```
 
-`accept` is the simple media filter: `"image"`, `"video"`, `"pdf"`, or `"image/video"` (default). `"desktopMobileMode": false` turns off the desktop/mobile split; the editor then uses the profile's desktop values. `"suppressMetadata": true` stores only `id`, `type`, and `transformBaseUrl` (plus crop fields, alt, video playback, and `additional` author values) so a large Bynder payload can stay under Contentstack’s 10KB field limit.
+`type` lists the files Compact View can select: `"image"`, `"video"`, and `"pdf"`. Example: `["image", "video"]`. Omit `type` and the field allows images and videos. `"desktopMobileMode": false` turns off the desktop/mobile split; the editor then uses the profile's desktop values. `"suppressMetadata": true` stores only `id`, the asset `type`, and `transformBaseUrl` (plus crop fields, alt, video playback, and `additional` author values) so a large Bynder payload can stay under Contentstack’s 10KB field limit.
 
 Until an image is chosen, the field shows **+ Choose Asset(s)**. If an image is already selected, the row action is **Change Asset(s)**. When the field allows more than one asset, **Add Asset(s)** stays under the list until that limit is reached. It opens Compact View with the current assets selected. A newly added asset uses the same file for desktop and mobile until the author picks a different mobile file. Closing Compact View without confirming leaves the current assets in place.
 
 Marketplace-style Compact View / DAT options can live on the same Config Parameter. Prefer the camelCase `compactViewConfig` namespace (the marketplace `custom_settings.compact_view_options` key is still accepted).
 
-By default Compact View is limited to **images and videos** via `assetTypes`. Documents such as PDFs cannot be selected unless you add `DOCUMENT`. We do **not** set `assetFilter.predefinedAssetType` by default: Bynder hides search and filters whenever `assetFilter` is present unless `showToolbar` is true.
+By default Compact View allows **images and videos**. A document field sets `"type": ["pdf"]`. `compactViewConfig.assetTypes` applies only when `type` is omitted. We do **not** set `assetFilter.predefinedAssetType` by default: Bynder hides search and filters whenever `assetFilter` is present unless `showToolbar` is true.
 
 ```json
 {
   "maxNumberOfAssets": 5,
-  "enableDat": true,
   "compactViewConfig": {
     "language": "en_US",
     "defaultSearchTerm": "hero",
@@ -255,34 +248,23 @@ Field **Config Parameter** unless marked App Config. Types, defaults, and aliase
 | Key | Type | Default | Alias | Description |
 |---|---|---|---|------|
 | `bynderPortalUrl` | `string` | required | | Portal host. Field config overrides App Configuration. Example: `"acme.getbynder.com"` |
-| `maxDimension` (App Config) | `number` | `2000` | | Bynder’s limit on either side of a transformed image. Requests are scaled to fit. A profile or max width above it cannot be saved. Example: `4000` |
-| `maxDesktopWidth` (App Config) | `number` | `2000` | | Widest desktop image. Caps every profile, and is the width for assets without a profile. Cannot exceed `maxDimension`. |
-| `maxMobileWidth` (App Config) | `number` | `960` | | Widest mobile image. Caps every profile, and is the width for assets without a profile. |
+| `maxDimension` (App Config) | `number` | `2000` | | Bynder’s limit on either side of a transformed image. The site chooses the widths, and delivery shrinks any step that would pass this. Example: `4000` |
 | `profiles` (App Config) | `object` | none | | Named render profiles, see above. |
 | `profile` (field) | `string` | none | | Lock this field to one App Config profile. No dropdown. Example: `"hero"` |
-| `fieldProfiles` (field) | `object` | none | | Profiles defined on this field, same shape as App Config `profiles`. Offered with the App Config profiles unless `profiles` lists a smaller set. A matching name replaces the App Config profile on this field. Example: `{ "banner": { "desktop": { "aspectRatio": "21:9", "maxWidth": 1600 }, "mobile": { "aspectRatio": "4:3", "maxWidth": 640 } } }` |
+| `fieldProfiles` (field) | `object` | none | | Profiles defined on this field, same shape as App Config `profiles`. Offered with the App Config profiles unless `profiles` lists a smaller set. A matching name replaces the App Config profile on this field. Example: `{ "banner": { "desktop": "21:9", "mobile": "4:3" } }` |
 | `profiles` (field) | `string[]` or comma-separated `string` | every App Config profile and every `fieldProfiles` name | | Profiles this field allows, in dropdown order. Names may be App Config profiles or `fieldProfiles` keys. Ignored when `profile` names a real profile. Example: `["banner","hero"]` |
 | `defaultProfile` | `string` | none (original aspect ratio) | | Profile for new entries, and for entries whose saved profile this field no longer allows. Setting it makes a profile required. Ignored when `profile` is set. Example: `"hero"` |
 | `allowCustomAspect` (field) | `boolean` | `false` | | Offer **Customize**, the dragged aspect ratio. Off unless this field sets it. Example: `true` |
-| `accept` | `"image"` \| `"video"` \| `"pdf"` \| `"image/video"` | `image/video` | `media` | Which Bynder types Compact View can select. Field config wins over `compactViewConfig.assetTypes`. Example: `"image"` |
-| `desktopMobileMode` | `boolean` | `true` | `desktopMobile` | Dual desktop/mobile crops. `false` = one crop per asset; the UI never says desktop or mobile. Example: `false` |
+| `type` | `("image" \| "video" \| "pdf")[]` | images and videos | | Files Compact View can select. Field config wins over App Configuration and over `compactViewConfig.assetTypes`. Example: `["image", "video"]` |
+| `desktopMobileMode` | `boolean` | `true` | | Dual desktop/mobile crops. `false` = one crop per asset; the UI never says desktop or mobile. Example: `false` |
 | `suppressMetadata` | `boolean` | `false` | | Drop `name` and `webImage` from the saved JSON. Keeps `id`, `type`, `transformBaseUrl`, crop fields, and alt text. Use this when an entry will not save because the JSON field is over 10KB. Example: `true` |
 | `maxNumberOfAssets` | `number` | `1` | `advanced.max_limit` | Cap on selected assets. `1` is Single Select. Values above 1 use Multi Select. Example: `3` |
 | `compactLanguage` | `string` | `en_US` | | Compact View locale. Example: `"en_US"` |
-| `enableDat` | `boolean` | `true` | | `false` forces CSS crop only (no DAT). Example: `false` |
-| `allowFit` | `boolean` | `false` | | Offer **Fit** (letterbox) as well as Fill. Off by default, so **Transform type** is hidden. Example: `true` |
-| `showFieldOperation` | `boolean` | `true` | `showOperation` | Hide **Transform type** even when `allowFit` is on. The menu only appears when DAT is active and there are two choices. Example: `false` |
-| `video` | `object` | controls on; autoplay, mute, and loop off | `videoAutoplay`, `videoMuted`, `videoControls`, `videoLoop` | Default playback for a newly picked video. Saved on the asset as `video`. Example: `{ "autoplay": false, "muted": true, "controls": true, "loop": false }` |
-| `showFieldAutoplay` | `boolean` | `true` | | Show the Autoplay checkbox. Example: `false` |
-| `showFieldMuted` | `boolean` | `true` | `showFieldMute` | Show the Mute checkbox. Example: `false` |
-| `showFieldControls` | `boolean` | `true` | | Show the Show controls checkbox. Example: `false` |
-| `showFieldLoop` | `boolean` | `true` | | Show the Loop checkbox. Example: `false` |
+| `video` | `object` | controls on; autoplay, mute, and loop off | `videoAutoplay`, `videoMuted`, `videoControls`, `videoLoop` | Default checked state for Autoplay, Mute, Controls, and Loop. Those four checkboxes always show. Saved on the asset as `video`. Example: `{ "autoplay": false, "muted": true, "controls": true, "loop": false }` |
 | `additionalFields` | `additionalField[]` | none | | Extra author inputs. Each item is `{ "property", "type", "label" }` with `type` `"string"`, `"number"`, or `"boolean"`. Values save under `additional`. An invalid list replaces the custom field with a red error. |
 | `compactViewConfig` | `object` | images and videos | `custom_settings.compact_view_options` | [Universal Compact View](https://developers.bynder.com/universal-compact-view) props we pass through. Portal URL, callbacks, and `mode` are not taken from here. |
 | `custom_settings.dat_settings` | `object` | omitted | | Marketplace DAT presets. `default` becomes Compact View `defaultImageDerivativeName`. |
 | `advanced.max_limit` | `number` | `1` | | Same as `maxNumberOfAssets`. Example: `4` |
-
-The old size keys (`aspect`, `width`, `height`, the `lock*` flags, `format`, `aspectPresets`, `showFieldWidth` / `Height` / `AspectRatio` / `FileType` / `Quality` / `AdvancedQuery` / `DatPreset`, and the old `desktopMaxWidth` / `mobileMaxWidth` spellings) are no longer read. Saving App Configuration removes them.
 
 ### Field Config Parameter samples
 
@@ -302,17 +284,16 @@ Paste one of these into the custom field’s **Config Parameter**. App Config st
 **Images only**
 
 ```json
-{ "accept": "image", "desktopMobileMode": true }
+{ "type": ["image"], "desktopMobileMode": true }
 ```
 
 **Video only** — one thumbnail, playback options, no mobile crop
 
 ```json
 {
-  "accept": "video",
+  "type": ["video"],
   "desktopMobileMode": false,
-  "video": { "autoplay": false, "muted": true, "controls": true, "loop": false },
-  "showFieldAutoplay": false
+  "video": { "autoplay": false, "muted": true, "controls": true, "loop": false }
 }
 ```
 
@@ -320,7 +301,7 @@ Paste one of these into the custom field’s **Config Parameter**. App Config st
 
 ```json
 {
-  "accept": "image/video",
+  "type": ["image", "video"],
   "desktopMobileMode": true,
   "additionalFields": [
     { "property": "uniqueId", "type": "boolean", "label": "Unique ID" },
@@ -335,7 +316,7 @@ Author values save on each asset under `additional`.
 **PDF / documents**
 
 ```json
-{ "accept": "pdf", "desktopMobileMode": false, "maxNumberOfAssets": 1 }
+{ "type": ["pdf"], "desktopMobileMode": false, "maxNumberOfAssets": 1 }
 ```
 
 Documents save as identity plus two public file links — no crop, DAT, alt, or desktop/mobile:
@@ -350,13 +331,13 @@ Documents save as identity plus two public file links — no crop, DAT, alt, or 
 }
 ```
 
-`url` opens/views the file; `downloadUrl` is the same with Bynder’s `download=true` so the browser downloads it.
+`url` opens/views the file; `downloadUrl` is the same with Bynder’s `download=true` so the browser downloads it. The authoring list does not store a thumbnail. For an `/asset/{id}/{file}.pdf` URL it requests `/asset/{id}/thumbnail/thul-{file}` while the field is open, and shows a document icon if that image fails.
 
 **Images and videos (default), metadata stripped so the entry can save**
 
 ```json
 {
-  "accept": "image/video",
+  "type": ["image", "video"],
   "desktopMobileMode": true,
   "suppressMetadata": true,
   "maxNumberOfAssets": 5
@@ -373,15 +354,14 @@ Documents save as identity plus two public file links — no crop, DAT, alt, or 
 }
 ```
 
-**Images only, DAT off (CSS crop)**
+**Images only, Compact View limited to images**
 
 ```json
 {
+  "type": ["image"],
   "desktopMobileMode": false,
   "maxNumberOfAssets": 1,
-  "enableDat": false,
   "compactViewConfig": {
-    "assetTypes": ["IMAGE"],
     "hideLimitedUse": true
   }
 }
@@ -389,51 +369,39 @@ Documents save as identity plus two public file links — no crop, DAT, alt, or 
 
 ### DAT
 
-DAT is **on by default** when the selected asset has `transformBaseUrl`. Compact View always selects the **asset** (never a derivative file). There is no author toggle: DAT vs CSS is detected from `transformBaseUrl` (and from `"enableDat": false`, which forces CSS for everyone).
+DAT is used when the selected asset has `transformBaseUrl`. Compact View always selects the **asset** (never a derivative file). Videos never get DAT.
 
-**Transform type** appears only when Fit is enabled (`allowFit`) and DAT applies to the image. With Fit off, Fill is the only type, so the menu is hidden.
+If the asset has no `transformBaseUrl`, the entry keeps `webImage` and the site uses CSS `object-fit` / `object-position` from `focalPoint`. Fix that in Bynder (enable Dynamic Asset Transformation for the asset) or pick a different image.
 
-Fit also requires:
-
-1. `enableDat` is on (App Config or field), and
-2. The selected image has a Bynder DAT URL (`transformBaseUrl` in the saved JSON).
-
-If DAT is allowed but the asset has no `transformBaseUrl`, the field shows a warning (“not DAT capable”), stores `webImage` plus crop fields, and hides Transform type. Fix that in Bynder (enable Dynamic Asset Transformation for the asset) or pick a different image. Videos never get DAT.
-
-- The entry stores no DAT URLs. It stores the profile snapshot and each asset's focal point and mode; the site composes every URL it needs (see [Delivery](#delivery)).
-- **Fill** composes `io=transform:fill,width:W,height:H&focuspoint=x,y`. **Fit** composes `io=transform:extend,…,background:…` (Bynder defaults to white without `background`, so it is always sent, including `background:auto`). A saved `operation: "scale"` from an older entry is Fill.
-- DAT off / unavailable: the entry keeps `webImage`, and the site uses CSS `object-fit` / `object-position` from `focalPoint`.
+- The entry stores no DAT URLs. It stores the profile snapshot and each asset's focal point and Fill; the site composes every URL it needs (see [On the website](#on-the-website)).
+- **Fill** composes `io=transform:fill,width:W,height:H&focuspoint=x,y`. A missing focal point is the center, `0.5,0.5`.
 
 ## Author UI
 
 - Compact View strip with desktop/mobile thumbs (unless `desktopMobileMode: false`). Each thumb has the profile aspect ratio for its viewport.
 - Crop and focal controls appear only while an image thumbnail is selected. Videos open **Video settings**. Documents stay in the list but are not selectable.
-- **Render profile** dropdown whenever the field Config Parameter does not set `"profile"`. It stays visible after a profile is selected. **Original aspect ratio** is one of the choices when the field sets no `defaultProfile`. The other choices are every App Config profile plus any `fieldProfiles` on this field, unless `profiles` lists a smaller set. **Customize** is not one of them unless the field sets `allowCustomAspect`. A field config `"profile": "hero"` assigns that profile and shows no dropdown. Changing a profile resizes every asset's crop frame and updates the saved snapshot.
-- **Transform type** is hidden while Fill is the only choice. `allowFit` adds Fit and shows the menu. Fit offers a letterbox fill (auto / transparent / black / white / custom hex). A new pick starts with a centered focal point and Fill. A saved Fit on a field that does not allow it becomes Fill, and the field shows **Unsaved changes** until you save.
-- Fit does not use a focal point: Bynder `extend` always shows the whole image. The focal-point circle and X/Y fields are hidden, and the preview loads the real transform URL so the letterbox color (including Auto) is Bynder’s. Fill keeps the full image in the editor so moving the focal point does not reload it.
+- **Render profile** dropdown whenever the field Config Parameter does not set `"profile"`. It stays visible after a profile is selected. **Original aspect ratio** is one of the choices when the field sets no `defaultProfile`. The other choices are every App Config profile plus any `fieldProfiles` on this field, unless `profiles` lists a smaller set. **Customize** is not one of them unless the field sets `allowCustomAspect`. A field config `"profile": "hero"` assigns that profile and shows no dropdown. Changing a profile updates the crop frame's aspect ratio and the saved snapshot.
 - The crop editor header shows **Profile:** and the assigned name, or **Original aspect ratio** when none is assigned, then **Aspect Ratio:** for the viewport you are editing. Desktop shows the desktop ratio and mobile shows the mobile ratio. A profile uses its own ratio. Original uses that file’s ratio once the original pixel size is known.
-- The Mobile tab link icon, and the link between the desktop and mobile thumbnails, mean those viewports are the same asset with the same crop: the same aspect ratio (or both Original), focal point, and transform type. A profile with different desktop and mobile aspects shows neither icon, even after **Match desktop**. When those crops can be the same, a broken link on the Mobile tab means the focal point or transform type differs. **Match desktop** appears next to **Reset center** on the Mobile tab and copies the desktop focal point and transform type onto mobile. **Match mobile** appears on the Desktop tab and copies the other way. Both hide once those choices already match. **Reset center** hides when the focal point is already 50%, 50%. A different mobile asset hides the icons and both match actions.
+- The Mobile tab link icon, and the link between the desktop and mobile thumbnails, mean those viewports are the same asset with the same crop: the same aspect ratio (or both Original) and focal point. A profile with different desktop and mobile aspects shows neither icon, even after **Match desktop**. When those crops can be the same, a broken link on the Mobile tab means the focal point differs. **Match desktop** appears next to **Reset center** on the Mobile tab and copies the desktop focal point onto mobile. **Match mobile** appears on the Desktop tab and copies the other way. Both hide once those choices already match. **Reset center** hides when the focal point is already 50%, 50%. A different mobile asset hides the icons and both match actions.
 - If the author uses a different asset for mobile but picks the desktop file again with the same crop and alt text, the pair goes back to linked (no `mobile` in the saved JSON).
-- Hovering a thumbnail shows its caption bar: the aspect ratio and file type (e.g. `16:9 · WebP` with DAT, or `16:9 · JPG · 2.1 MB` for a CSS crop) and the actions. **Edit** opens the crop editor for that thumbnail, the same as clicking it. A Fit thumbnail loads the transform URL, so its letterbox matches Bynder.
-- The Transforms / Crop frame group is left out when it has nothing to show.
-- The editor’s preview and copy-URL buttons compose the active tab's URL at the profile `targetWidth` with the same code the site uses, so the copied link matches what the site requests for its largest image.
+- Hovering a thumbnail shows its caption bar: the aspect ratio and file type (e.g. `16:9 · WebP` with DAT, or `16:9 · JPG · 2.1 MB` when the file has no transform URL) and the actions. **Edit** opens the crop editor for that thumbnail, the same as clicking it.
+- The Render profile group is left out when the field is locked to one profile.
+- The editor’s preview shows the source image in the profile aspect ratio. Copy URL composes the active tab's largest default srcset step with the same code the site uses.
 - Click or drag the red dot (or anywhere on the image) to set the focal point.
-- App Configuration → **Editor field defaults** has Show checkboxes for Transform type and the four video playback toggles.
+- Autoplay, Mute, Controls, and Loop always show on a video. Their default checked state comes from the `video` config.
 
 ### Loading an entry and "Unsaved changes"
 
-On load the field runs the stored value through the same normalization as a save and compares the result (ignoring key order). If nothing differs, the field does not write, so opening an entry no longer marks it dirty in Contentstack. If something differs, the field writes the updated value and shows **Unsaved changes** until the entry is saved.
+On load the field runs the stored value through the same normalization as a save and compares the result (ignoring key order). When nothing differs, the field does not write, so opening an entry leaves it clean in Contentstack. When something differs, the field writes the updated value and shows **Unsaved changes** until the entry is saved.
 
 These config changes can change the saved value of an existing entry on its next load:
 
 - Editing the entry's profile in App Config (new `profile.settings` snapshot).
-- Changing `maxDesktopWidth` / `maxMobileWidth` on an entry without a profile.
 - Removing the entry's profile from the field's `profiles` list (the entry switches to `defaultProfile`, or the original aspect ratio).
-- `enableDat` off (keeps `webImage` when the asset has one).
 - `desktopMobileMode: false` (drops `mobile`).
 - `suppressMetadata` (drops `name` / `webImage`).
 - A new boolean in `additionalFields` (its `false` default is added).
-- A legacy or raw Bynder JSON value from an older build, including a saved `zoom` or `operation: "scale"` (both become Fill, and `zoom` is dropped), or a saved `aspectRatio` (dropped; the ratio comes from `originalAssetWidth` / `originalAssetHeight`).
+- Original pixel size filled in after the field opens, when the saved asset did not include `origWidth` and `origHeight`.
 
 If App Config no longer defines the entry's profile at all, the entry keeps its saved `profile.settings` and the field shows a warning until the author picks another profile.
 
@@ -441,13 +409,11 @@ If App Config no longer defines the entry's profile at all, the entry keeps its 
 
 Stored on the entry and returned by CDA / GraphQL:
 
-- `profile` is `{ id, settings }`. `id` is the profile name. `settings` is the snapshot of that profile's resolved values. App Configuration is not available to the website, so the snapshot is what the site reads. **Customize** saves `id: "custom"` and writes the dragged ratio on `settings.desktop.aspectRatio` and `settings.mobile.aspectRatio`. Target width, quality, and format stay on that same snapshot.
-- Without a profile, `id` is omitted and `settings` has only `targetWidth` per viewport (the max widths), e.g. `{ "desktop": { "targetWidth": 2000 }, "mobile": { "targetWidth": 960 }, "quality": 80, "format": "webp" }`. The site uses each asset’s `originalAssetWidth` / `originalAssetHeight`.
-- One `assets` array. Each asset has its identity (`id`, `name`, `type`, `transformBaseUrl`, `alt`), the original file size (`originalAssetWidth` / `originalAssetHeight`), the `focalPoint`, and `operation`. Those pixels are the Bynder original file (`files.original`, or the asset `width` / `height`), not a DAT derivative. An older entry that is missing them is filled in when the field opens, using the Compact View sign-in already stored in this browser, and the field shows **Unsaved changes** until you save.
-- `extendBackground` / `extendBackgroundColor` are saved only for Fit. `zoom` is not saved.
-- Each asset stores `originalAssetWidth` and `originalAssetHeight`. A profile’s aspect ratio wins while one is selected. **Original aspect ratio** is those pixels. Older entries may still have `aspectRatio`; it is not written on the next save.
+- `profile` is `{ id, settings }`. `id` is the profile name. `settings.desktop` and `settings.mobile` are the aspect ratios (`"16:9"`). `settings` also stores `quality` and `format`. App Configuration is not available to the website, so the snapshot is what the site reads. **Customize** saves `id: "custom"` and writes the dragged ratios as those two strings.
+- Without a profile, `id` is omitted and so are `desktop` and `mobile`, e.g. `{ "quality": 80, "format": "webp" }`. The site uses each asset’s `origWidth` / `origHeight`. `maxDimension` is included only when it is not 2000.
+- One `assets` array. Each asset has its identity (`id`, `name`, `type`, `transformBaseUrl`, `alt`), the original file size (`origWidth` / `origHeight`), and `operation` (`"fill"`). `focalPoint` is saved only when it is not the center (`0.5`, `0.5`). Those pixels are the Bynder original file (`files.original`, or the asset `width` / `height`), not a DAT derivative. If they are missing when the field opens, the field fills them in from the Compact View sign-in already stored in this browser and shows **Unsaved changes** until you save.
 - A video also stores `video`. Configured `additionalFields` values are stored on `additional`.
-- Mobile that still matches desktop is omitted. A mobile with its own focal point or mode, or a different file, is `assets[n].mobile`. A different file also carries its own `id`, `transformBaseUrl`, `originalAssetWidth` / `Height`, and `alt`.
+- Mobile that still matches desktop is omitted. A mobile with its own focal point, or a different file, is `assets[n].mobile`. A different file also carries its own `id`, `transformBaseUrl`, `origWidth`, `origHeight`, and `alt`.
 
 ```json
 {
@@ -455,8 +421,8 @@ Stored on the entry and returned by CDA / GraphQL:
   "profile": {
     "id": "hero",
     "settings": {
-      "desktop": { "aspectRatio": "16:9", "targetWidth": 2000 },
-      "mobile": { "aspectRatio": "4:3", "targetWidth": 960 },
+      "desktop": "16:9",
+      "mobile": "4:3",
       "quality": 80,
       "format": "webp"
     }
@@ -468,8 +434,8 @@ Stored on the entry and returned by CDA / GraphQL:
       "type": "IMAGE",
       "alt": "The Earth from space",
       "transformBaseUrl": "https://portal.bynder.com/transform/earth.jpg",
-      "originalAssetWidth": 4000,
-      "originalAssetHeight": 2667,
+      "origWidth": 4000,
+      "origHeight": 2667,
       "focalPoint": { "x": 0.35, "y": 0.42 },
       "operation": "fill",
       "mobile": { "focalPoint": { "x": 0.6, "y": 0.4 }, "operation": "fill" }
@@ -478,40 +444,78 @@ Stored on the entry and returned by CDA / GraphQL:
 }
 ```
 
-`webImage` is saved only without DAT. When it is present, use `webImage.url` with CSS `object-fit` and `object-position` from `focalPoint` instead of DAT.
+`webImage` is saved only when the file has no `transformBaseUrl`. When it is present, use `webImage.url` with CSS `object-fit` and `object-position` from `focalPoint`.
 
-## Delivery
+## On the website
 
-Copy [`src/delivery/composeBynderImageUrl.ts`](src/delivery/composeBynderImageUrl.ts) (and the helpers it imports from `src/lib/`) into the website:
+Read the custom field from the entry. Its UID is whatever you named it on the content type. `hero_image_settings` in the example below is only a name. The value is the object in [`samples/bynder-field-large-hero.json`](samples/bynder-field-large-hero.json): `v`, `profile`, and `assets`. Those sample files are that field value. The Delivery API returns the object. When a client gives you a string, parse it once and pass the object through.
+
+Copy these files and keep this layout, so the imports still resolve:
+
+```
+delivery/index.ts                    ← src/delivery/index.ts
+delivery/composeBynderImageUrl.ts    ← src/delivery/composeBynderImageUrl.ts
+lib/types.ts                         ← src/lib/types.ts
+lib/profiles.ts                      ← src/lib/profiles.ts
+lib/bynder/composeDatUrl.ts          ← src/lib/bynder/composeDatUrl.ts
+```
+
+`buildBynderSources` is the function that builds every image URL. [`samples/BynderPicture.tsx`](samples/BynderPicture.tsx) is the React `<picture>` that calls it. Copy that component and point its import at your `delivery` folder. The HTML files next to it are the markup that component returns for the three sample payloads. Match that markup, including `width`, `height`, and `sizes`.
+
+```tsx
+import { BynderPicture } from "./BynderPicture";
+
+const value = entry.hero_image_settings;
+
+export function Hero() {
+  const firstId = value?.assets?.[0]?.id;
+  return <BynderPicture value={value} assetId={firstId} sizes="100vw" />;
+}
+```
 
 ```ts
 import { buildBynderSources, composeBynderImageUrl } from "./delivery";
 
-const desktop = buildBynderSources(entry.hero_image_settings);
-const mobile = buildBynderSources(entry.hero_image_settings, { viewport: "mobile" });
-// desktop.src     → the 2000w image
-// desktop.srcset  → "…width:640… 640w, …960w, …1280w, …1600w, …1920w, …2000w"
-// desktop.width / desktop.height → 2000 × 1125, for the <img> width/height attributes
-// desktop.objectPosition → "35% 42%"
+const value = entry.hero_image_settings;
+const desktop = buildBynderSources(value, { widths: [640, 960, 1280, 1600, 1920, 2560, 3200, 3840] });
+const mobile = buildBynderSources(value, { viewport: "mobile", widths: [640, 960, 1280, 1600, 1920, 2560, 3200, 3840] });
+// desktop.src             → the 2000w image
+// desktop.srcset          → "…width:640… 640w, …960w, …1280w, …1600w, …1920w, …2000w"
+// desktop.width / height  → 2000 × 1125, for the <img> width and height
+// desktop.objectPosition  → "50% 50%" when the JSON omits focalPoint
 
-const thumb = composeBynderImageUrl(entry.hero_image_settings, { width: 400 });
+const thumb = composeBynderImageUrl(value, { width: 400 });
 ```
 
-[`samples/BynderPicture.tsx`](samples/BynderPicture.tsx) is that `<picture>` for [`samples/bynder-field-large-hero.json`](samples/bynder-field-large-hero.json). [`samples/bynder-picture-large-hero.html`](samples/bynder-picture-large-hero.html) is the filled-in markup at `sizes="100vw"` (the `img` is 2000×1125). [`samples/bynder-field-split-left-right.json`](samples/bynder-field-split-left-right.json) is the same Bynder files with a splitLeftRight snapshot, and [`samples/bynder-picture-split-left-right.html`](samples/bynder-picture-split-left-right.html) is that markup at `sizes="40vw"` (the `img` is 700×400). [`samples/bynder-field-custom.json`](samples/bynder-field-custom.json) is those files with `profile.id` `"custom"` (desktop 2:1, mobile 3:2), and [`samples/bynder-picture-custom.html`](samples/bynder-picture-custom.html) is that markup at `sizes="100vw"` (the `img` is 2000×1000). `width` and `height` are the desktop request size from the profile snapshot. `sizes` is how wide the image is drawn.
+Render one picture per image. Pass that asset’s `id` as `assetId` when the field holds more than one. `BynderPicture` requests both viewports. An asset with no `mobile` object uses the same file for both, and the mobile source uses `profile.settings.mobile`.
 
-- Pass `{ assetId }` to pick an asset other than the first.
-- Pass `{ widths: [...] }` to change the srcset steps. They are always cut at, and end with, the viewport `targetWidth`.
-- Without a profile, the image uses the ratio of `originalAssetWidth` / `originalAssetHeight`. The widest image is the smaller of `targetWidth` and `originalAssetWidth`. If the original size was never recorded, the helper requests a proportional resize (`io=transform:scale,width:W`) and returns no `height`. An older entry that has only `aspectRatio` is still read.
-- Without DAT, `buildBynderSources` returns only `src` (the `webImage` URL) and `objectPosition`. Fit has no focal point.
+`sizes` is the CSS width of the slot (`"100vw"` for a full-bleed hero, `"40vw"` for a split column). `widths` is the list of file widths to request for that slot. Widths come from the slot. The default list is 640, 960, 1280, 1600, 1920, 2560, 3200, 3840. A narrower slot passes a shorter list. Leave `maxDimension` unset: the helper reads `profile.settings.maxDimension`, or 2000 when the snapshot omits it, and drops any step that would make either side larger. `src` and the `img` `width` / `height` are the largest remaining desktop step. Omit `width` on `composeBynderImageUrl` to get that same step.
+
+`alt` is `assets[].alt`. An empty string stays empty. `objectPosition` is the focal point. The DAT URL already crops to that point. Set CSS `object-position` from `objectPosition` so an asset that only has `webImage` (no `transformBaseUrl`) uses the same point. With no `transformBaseUrl`, `buildBynderSources` returns `src` and `objectPosition` only.
+
+Without a profile, the image uses the ratio of `origWidth` / `origHeight`. When those pixels were never recorded, the helper requests `io=transform:scale,width:W` and returns no `height`.
+
+Use the helper for `type: "IMAGE"`. A video stores `video` (`autoplay`, `muted`, `controls`, `loop`) and no focal point. Play `webImage.url` when it is present, with those flags, and leave the URL unchanged. A document stores `url` (view) and `downloadUrl` (download).
+
+The three fixtures are the same two Bynder files under three profiles:
+
+| Sample | Profile | Slot | Desktop `img` | Mobile source |
+|---|---|---|---|---|
+| [`bynder-field-large-hero.json`](samples/bynder-field-large-hero.json) | `largeHero`, desktop `16:9`, mobile `5:3` | `sizes="100vw"`, standard widths | 2000×1125 | 2000×1200, separate file |
+| [`bynder-field-split-left-right.json`](samples/bynder-field-split-left-right.json) | `splitLeftRight`, desktop `7:4`, mobile `16:9` | `sizes="40vw"`, widths 480, 640, 800, 960, 1280 | 1280×731 | 1280×720, separate file |
+| [`bynder-field-custom.json`](samples/bynder-field-custom.json) | `id` `"custom"`, desktop `2:1`, mobile `3:2` | `sizes="100vw"`, standard widths | 2000×1000 | 2000×1333, separate file |
+
+[`bynder-picture-large-hero.html`](samples/bynder-picture-large-hero.html), [`bynder-picture-split-left-right.html`](samples/bynder-picture-split-left-right.html), and [`bynder-picture-custom.html`](samples/bynder-picture-custom.html) are the `<picture>` for those three values. The centered focal point is omitted in the JSON and comes back as `focuspoint=0.5,0.5`.
 
 
 ## Project layout
 
 ```
-samples/                       Example field JSON, picture component, and rendered markup
+samples/                       Field JSON, the React <picture>, and the markup it returns
 src/
   locations/CustomField/     Custom Field UI (picker + crop)
-  locations/AppConfig/       Portal URL, DAT, render profiles, editor field defaults
+  locations/AppConfig/       Portal URL, max dimension, render profiles
+  locations/ContentTypeSidebar/  Field Config Parameter guide
   components/                Compact picker, crop + focal-point editor, transform form
   lib/bynder/                Parse Compact View JSON + compose DAT URLs
   delivery/                  Website helper

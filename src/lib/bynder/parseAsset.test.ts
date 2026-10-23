@@ -6,7 +6,9 @@ import {
   compactAssetIds,
   inferTransformBaseUrl,
   isVideoAsset,
+  documentThumbnailUrl,
   isDocumentAsset,
+  isImageAsset,
   normalizeCompactAssets,
   parseBynderAsset,
   parseBynderAssets,
@@ -208,9 +210,8 @@ describe("normalizeCompactAssets", () => {
       type: "IMAGE",
       transformBaseUrl: "https://portal.bynder.com/transform/abc/hero.jpg",
       webImage: { url: "https://cdn.example/web.jpg" },
-      originalAssetWidth: 4000,
-      originalAssetHeight: 3000,
-      aspectRatio: "4:3",
+      origWidth: 4000,
+      origHeight: 3000,
     });
     expect(JSON.stringify(normalized).length).toBeLessThan(500);
   });
@@ -229,9 +230,8 @@ describe("normalizeCompactAssets", () => {
       },
     ]);
     expect(normalized).toMatchObject({
-      originalAssetWidth: 4000,
-      originalAssetHeight: 3000,
-      aspectRatio: "4:3",
+      origWidth: 4000,
+      origHeight: 3000,
     });
   });
 
@@ -460,6 +460,38 @@ describe("isVideoAsset", () => {
     expect(isVideoAsset({ sourceUrl: "https://cdn.example/clip.mp4" })).toBe(true);
     expect(isVideoAsset({ fileType: "webm", sourceUrl: "https://cdn.example/file" })).toBe(true);
     expect(isVideoAsset({ sourceUrl: "https://cdn.example/hero.jpg" })).toBe(false);
+  });
+});
+
+describe("documentThumbnailUrl", () => {
+  it("builds the Bynder thumbnail from an /asset file URL and keeps a real preview", () => {
+    expect(
+      documentThumbnailUrl({
+        url: "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/T342703-CZLHD_IntegratedDiverter_Infographic.pdf",
+        name: "T342703-CZLHD_IntegratedDiverter_Infographic",
+      })
+    ).toBe(
+      "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/thumbnail/thul-T342703-CZLHD_IntegratedDiverter_Infographic"
+    );
+    expect(
+      documentThumbnailUrl({
+        sourceUrl:
+          "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/thumbnail/thul-T342703-CZLHD_IntegratedDiverter_Infographic?t=1",
+      })
+    ).toBe(
+      "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/thumbnail/thul-T342703-CZLHD_IntegratedDiverter_Infographic?t=1"
+    );
+    expect(documentThumbnailUrl({ sourceUrl: "https://cdn.example/m/hash/original/spec.pdf" })).toBeUndefined();
+  });
+});
+
+describe("isImageAsset", () => {
+  it("treats an image, and only an image, as eligible for a separate mobile file", () => {
+    expect(isImageAsset({ type: "IMAGE", sourceUrl: "https://cdn.example/a.jpg" })).toBe(true);
+    expect(isImageAsset({ sourceUrl: "https://cdn.example/a.jpg" })).toBe(true);
+    expect(isImageAsset({ type: "VIDEO", sourceUrl: "https://cdn.example/a.mp4" })).toBe(false);
+    expect(isImageAsset({ type: "DOCUMENT", sourceUrl: "https://cdn.example/a.pdf" })).toBe(false);
+    expect(isImageAsset({ type: "AUDIO", sourceUrl: "https://cdn.example/a.mp3" })).toBe(false);
   });
 });
 

@@ -16,6 +16,7 @@ import {
   slimPersistedAssets,
   isVideoAsset,
   isDocumentAsset,
+  isImageAsset,
 } from "../../lib/bynder/parseAsset";
 import { listThumbForAsset, LIST_THUMB_DESKTOP, LIST_THUMB_MOBILE } from "../../lib/bynder/assetUi";
 import { fitPreviewBox, roundCoord } from "../../lib/bynder/composeDatUrl";
@@ -33,9 +34,7 @@ import {
   resolveAdditionalFields,
   resolveCompactViewConfig,
   resolveCropConfig,
-  resolveEnableDat,
   resolveVideoDefaults,
-  resolveVideoFieldVisibility,
   seedAssetCrop,
   withActiveProfile,
 } from "../../lib/fieldConfig";
@@ -43,14 +42,12 @@ import { composeBynderImageUrl } from "../../delivery/composeBynderImageUrl";
 import { hydrateFieldValue } from "../../lib/hydrate";
 import {
   viewportAssetSize,
-  aspectRatioFromPixels,
   CUSTOM_PROFILE_ID,
   customProfileSettings,
   isCustomProfile,
   profileCropsCanMatch,
   profileSelectOptions,
   viewportImageSize,
-  viewportSizeBeyondMaxDimension,
   withViewportAspect,
 } from "../../lib/profiles";
 import { resolvePersistPolicy } from "../../lib/persistKeys";
@@ -288,13 +285,11 @@ function originalSize(
   additionalInfo?: unknown
 ): OriginalAssetSize {
   const measured = assetPixelSize(raw, additionalInfo);
-  const width = saved.originalAssetWidth ?? measured.width;
-  const height = saved.originalAssetHeight ?? measured.height;
-  const aspectRatio = aspectRatioFromPixels(width, height) ?? saved.aspectRatio;
+  const width = saved.origWidth ?? measured.width;
+  const height = saved.origHeight ?? measured.height;
   return {
-    ...(width ? { originalAssetWidth: Math.round(width) } : {}),
-    ...(height ? { originalAssetHeight: Math.round(height) } : {}),
-    ...(aspectRatio ? { aspectRatio } : {}),
+    ...(width ? { origWidth: Math.round(width) } : {}),
+    ...(height ? { origHeight: Math.round(height) } : {}),
   };
 }
 
@@ -305,15 +300,12 @@ function displaySize(
   viewport: ViewportKind
 ): OriginalAssetSize | undefined {
   const own = viewportAssetSize(saved, viewport);
-  if (own?.originalAssetWidth && own.originalAssetHeight) {
-    return { ...own, aspectRatio: aspectRatioFromPixels(own.originalAssetWidth, own.originalAssetHeight) ?? own.aspectRatio };
-  }
+  if (own?.origWidth && own.origHeight) return own;
   if (viewport === "mobile" && saved?.mobile?.id) return own;
   if (parsed?.width && parsed.height) {
     return {
-      originalAssetWidth: parsed.width,
-      originalAssetHeight: parsed.height,
-      aspectRatio: aspectRatioFromPixels(parsed.width, parsed.height),
+      origWidth: parsed.width,
+      origHeight: parsed.height,
     };
   }
   return own;
@@ -336,28 +328,23 @@ export default function CustomField() {
     () => resolveCompactViewConfig(fieldConfig, appConfig),
     [fieldConfig, appConfig]
   );
-  const configAllowsDat = useMemo(
-    () => resolveEnableDat(fieldConfig, appConfig),
-    [fieldConfig, appConfig]
-  );
   const fieldCropConfig = useMemo(
     () => resolveCropConfig(fieldConfig, appConfig),
     [fieldConfig, appConfig]
   );
   const videoDefaults = useMemo(() => resolveVideoDefaults(fieldConfig, appConfig), [fieldConfig, appConfig]);
-  const videoFields = useMemo(() => resolveVideoFieldVisibility(fieldConfig, appConfig), [fieldConfig, appConfig]);
   const additionalFields = useMemo(
     () => resolveAdditionalFields(fieldConfig, appConfig),
     [fieldConfig, appConfig]
   );
-  const playbackOptions = (
+  const presentationOptions = [["controls", "Show controls"]] as const;
+  const initialPlaybackOptions = (
     [
       ["autoplay", "Autoplay"],
       ["muted", "Mute"],
-      ["controls", "Show controls"],
       ["loop", "Loop"],
     ] as const
-  ).filter(([key]) => videoFields[key]);
+  );
 
   const [settings, setSettings] = useState<BynderImageSettings>(() => parseSavedSettings(null));
   const [thumbSettings, setThumbSettings] = useState(settings);
@@ -473,16 +460,6 @@ export default function CustomField() {
         displaySize(saved, parsed, viewport)
       ),
     });
-    const savedJson = persistedPayload(thumbSettings);
-    const withFit = (
-      thumb: ReturnType<typeof listThumbForAsset>,
-      viewport: ViewportKind,
-      assetId: string
-    ) => {
-      if (thumb.operation !== "fit") return thumb;
-      const url = composeBynderImageUrl(savedJson, { viewport, assetId });
-      return url.includes("io=transform:extend") ? { ...thumb, url, framed: true } : thumb;
-    };
     for (const asset of assets) {
       const saved = thumbSettings.assets?.find((item) => item.id === asset.id);
       const desktop = sized(
@@ -494,13 +471,12 @@ export default function CustomField() {
       const thumb = listThumbForAsset({
         asset,
         live: desktop,
-        datAllowed: configAllowsDat && !isVideoAsset(asset) && !isDocumentAsset(asset),
+        datAllowed: !isVideoAsset(asset) && !isDocumentAsset(asset),
         fallbackTransform,
         slot: LIST_THUMB_DESKTOP,
       });
       if (!desktopMobileMode) {
-        const framed = withFit(thumb, "desktop", asset.id);
-        next[asset.id] = { desktop: framed, mobile: framed };
+        next[asset.id] = { desktop: thumb, mobile: thumb };
         continue;
       }
       const mobile = sized(
@@ -533,26 +509,21 @@ export default function CustomField() {
           }
         : asset;
       next[asset.id] = {
-        desktop: withFit(thumb, "desktop", asset.id),
-        mobile: withFit(
-          listThumbForAsset({
-            asset: mobileSource,
-            live: mobile,
-            datAllowed:
-              configAllowsDat &&
-              !isVideoAsset(mobileSource) &&
-              !isDocumentAsset(mobileSource) &&
-              Boolean(mobileSource.transformBaseUrl),
-            fallbackTransform: fallbackMobileTransform,
-            slot: LIST_THUMB_MOBILE,
-          }),
-          "mobile",
-          asset.id
-        ),
+        desktop: thumb,
+        mobile: listThumbForAsset({
+          asset: mobileSource,
+          live: mobile,
+          datAllowed:
+            !isVideoAsset(mobileSource) &&
+            !isDocumentAsset(mobileSource) &&
+            Boolean(mobileSource.transformBaseUrl),
+          fallbackTransform: fallbackMobileTransform,
+          slot: LIST_THUMB_MOBILE,
+        }),
       };
     }
     return next;
-  }, [assets, configAllowsDat, cropConfig, desktopMobileMode, fallbackMobileTransform, fallbackTransform, thumbSettings]);
+  }, [assets, cropConfig, desktopMobileMode, fallbackMobileTransform, fallbackTransform, thumbSettings]);
 
   const persistPolicy = useMemo(() => resolvePersistPolicy(fieldConfig, appConfig), [fieldConfig, appConfig]);
 
@@ -562,14 +533,13 @@ export default function CustomField() {
       profileSettings: next.profileSettings ?? cropConfig.active,
       omitWebImage: persistPolicy.omitWebImage,
       omitName: persistPolicy.omitName,
-      enableDat: configAllowsDat,
       authorFields: additionalFields.fields,
     });
     const prepared = desktopMobileMode ? payload : withoutDesktopMobile(payload);
     settingsRef.current = prepared;
     setSettings(prepared);
     return prepared;
-  }, [additionalFields.fields, configAllowsDat, cropConfig, desktopMobileMode, persistPolicy.omitName, persistPolicy.omitWebImage]);
+  }, [additionalFields.fields, cropConfig, desktopMobileMode, persistPolicy.omitName, persistPolicy.omitWebImage]);
 
   const onProfileChange = useCallback(
     (name: string) => {
@@ -607,7 +577,7 @@ export default function CustomField() {
       const current = source.profileSettings ?? cropConfig.active;
       const viewport = activeViewport === "mobile" ? "mobile" : "desktop";
       const slice = viewport === "mobile" ? current.mobile : current.desktop;
-      if (slice.aspectRatio === aspectRatio) return;
+      if (slice === aspectRatio) return;
       persist({
         ...source,
         profile: CUSTOM_PROFILE_ID,
@@ -658,12 +628,8 @@ export default function CustomField() {
         }
         if (existing) {
           const sized = sizes?.get(identity.id);
-          const originalAssetWidth = existing.originalAssetWidth ?? identity.originalAssetWidth ?? sized?.width;
-          const originalAssetHeight = existing.originalAssetHeight ?? identity.originalAssetHeight ?? sized?.height;
-          const aspectRatio =
-            aspectRatioFromPixels(originalAssetWidth, originalAssetHeight) ??
-            existing.aspectRatio ??
-            identity.aspectRatio;
+          const origWidth = existing.origWidth ?? identity.origWidth ?? sized?.width;
+          const origHeight = existing.origHeight ?? identity.origHeight ?? sized?.height;
           return withVideoDefaults(
             applyCropConfigToAssetCrop(
               {
@@ -672,9 +638,8 @@ export default function CustomField() {
                 type: identity.type ?? existing.type,
                 transformBaseUrl: identity.transformBaseUrl ?? existing.transformBaseUrl,
                 webImage: identity.webImage ?? existing.webImage,
-                ...(originalAssetWidth ? { originalAssetWidth } : {}),
-                ...(originalAssetHeight ? { originalAssetHeight } : {}),
-                ...(aspectRatio ? { aspectRatio } : {}),
+                ...(origWidth ? { origWidth } : {}),
+                ...(origHeight ? { origHeight } : {}),
               },
               cropConfig
             ),
@@ -682,14 +647,14 @@ export default function CustomField() {
           );
         }
         const sized = sizes?.get(identity.id);
-        const originalAssetWidth = identity.originalAssetWidth ?? sized?.width;
-        const originalAssetHeight = identity.originalAssetHeight ?? sized?.height;
+        const origWidth = identity.origWidth ?? sized?.width;
+        const origHeight = identity.origHeight ?? sized?.height;
         return withVideoDefaults(
           {
             ...identity,
-            ...seedAssetCrop(cropConfig, { originalAssetWidth, originalAssetHeight }),
-            ...(originalAssetWidth ? { originalAssetWidth } : {}),
-            ...(originalAssetHeight ? { originalAssetHeight } : {}),
+            ...seedAssetCrop(cropConfig, { origWidth, origHeight }),
+            ...(origWidth ? { origWidth } : {}),
+            ...(origHeight ? { origHeight } : {}),
             alt: identity.alt ?? parsed?.alt ?? "",
             ...(identity.mobile?.id
               ? { differentMobileAsset: true as const, mobile: identity.mobile }
@@ -730,7 +695,6 @@ export default function CustomField() {
           profileSettings: source.profileSettings ?? cropConfig.active,
           omitWebImage: persistPolicy.omitWebImage,
           omitName: persistPolicy.omitName,
-          enableDat: configAllowsDat,
           authorFields: additionalFields.fields,
         }
       );
@@ -740,7 +704,7 @@ export default function CustomField() {
       setAssetReady(true);
       setSettings(next);
     },
-    [additionalFields.fields, configAllowsDat, cropConfig, desktopMobileMode, persistPolicy.omitName, persistPolicy.omitWebImage, videoDefaults]
+    [additionalFields.fields, cropConfig, desktopMobileMode, persistPolicy.omitName, persistPolicy.omitWebImage, videoDefaults]
   );
 
   const onCompactSelect = useCallback(
@@ -902,7 +866,7 @@ export default function CustomField() {
   );
 
   const onDifferentAssetChange = (useDifferent: boolean) => {
-    if (!focused || isVideoAsset(focused) || isDocumentAsset(focused)) return;
+    if (!focused || !isImageAsset(focused)) return;
     const source = settingsRef.current;
     const stashed = stashActiveCrop(source, focused.id);
     const current = savedAssetById(stashed, focused.id);
@@ -985,9 +949,11 @@ export default function CustomField() {
             ...(saved.additional ? { additional: saved.additional } : {}),
           };
         }
-        const { originalAssetWidth: _w, originalAssetHeight: _h, ...kept } = asset;
+        const { origWidth: _w, origHeight: _h, ...kept } = asset;
+        const keepMobile = isImageAsset(parsed) && isImageAsset(asset.mobile);
+        const { mobile: _mobile, differentMobileAsset: _split, ...withoutMobile } = kept;
         return {
-          ...kept,
+          ...withoutMobile,
           id: saved.id,
           name: saved.name,
           type: saved.type,
@@ -996,8 +962,7 @@ export default function CustomField() {
           ...size,
           focalPoint,
           transform: seeded.transform,
-          mobile: asset.mobile,
-          differentMobileAsset: asset.differentMobileAsset,
+          ...(keepMobile ? { mobile: asset.mobile, differentMobileAsset: asset.differentMobileAsset } : {}),
         };
       });
       const selectable = !isDocumentAsset(parsed);
@@ -1033,9 +998,11 @@ export default function CustomField() {
           omitName: persistPolicy.omitName,
         })
       )?.[0];
-      if (!parsed || !saved) return;
+      if (!parsed || !saved || !isImageAsset(parsed)) return;
       const source = settingsRef.current;
       const stashed = stashActiveCrop(source, rowId);
+      const desktop = (stashed.assets ?? []).find((asset) => asset.id === rowId);
+      if (!desktop || !isImageAsset(desktop)) return;
       const size = originalSize(saved, rawAssets[0], additionalInfo);
       const seeded = seedAssetCrop(cropConfig, size);
       const nextAssets = (stashed.assets ?? []).map((asset) => {
@@ -1092,7 +1059,6 @@ export default function CustomField() {
     try {
       const { settings: prepared, changed, missingProfile: missing } = hydrateFieldValue(customField.field.getData(), {
         cropConfig: fieldCropConfig,
-        enableDat: configAllowsDat,
         omitWebImage: persistPolicy.omitWebImage,
         omitName: persistPolicy.omitName,
         authorFields: additionalFields.fields,
@@ -1105,8 +1071,8 @@ export default function CustomField() {
       const parsedList = parseBynderAssets(prepared.assets);
       if (parsedList.length) setAssets(parsedList);
       else {
-        const legacy = assetFromSettings(prepared);
-        setAssets(legacy ? [legacy] : []);
+        const fromSettings = assetFromSettings(prepared);
+        setAssets(fromSettings ? [fromSettings] : []);
       }
     } catch (error) {
       console.error("Bynder Image Settings hydrate failed", error);
@@ -1114,7 +1080,7 @@ export default function CustomField() {
       hydrated.current = true;
       setAssetReady(true);
     }
-  }, [additionalFields.fields, configAllowsDat, customField, fieldCropConfig, persistPolicy.omitName, persistPolicy.omitWebImage]);
+  }, [additionalFields.fields, customField, fieldCropConfig, persistPolicy.omitName, persistPolicy.omitWebImage]);
 
   useEffect(() => {
     const entry = customField?.entry as { onSave?: (callback: () => void) => void } | undefined;
@@ -1172,13 +1138,10 @@ export default function CustomField() {
   const panel = focused ?? panelAsset;
   const showCropChrome = Boolean(panel) && !isDocumentAsset(focused ?? panel);
   const hasDatUrl = Boolean(panel?.transformBaseUrl);
-  const datActive = Boolean(configAllowsDat && hasDatUrl);
+  const datActive = hasDatUrl;
   const profileOptions = profileSelectOptions(cropConfig, desktopMobileMode);
   const transformFields = {
     value: editorTransform,
-    datEnabled: datActive,
-    showOperation: cropConfig.showOperation,
-    allowFit: cropConfig.allowFit,
     profiles: profileOptions,
     showProfile: profileOptions.length > 0,
     profile: cropConfig.profile ?? "",
@@ -1194,9 +1157,7 @@ export default function CustomField() {
       ? composeBynderImageUrl(persistedPayload(settings), { viewport: activeViewport, assetId: focused.id })
       : undefined;
   const copyUrl = activeDatUrl || editorSrc || previewSrc || "";
-  const fitPreview =
-    editorTransform.operation === "fit" && activeDatUrl ? activeDatUrl : undefined;
-  const editorImage = fitPreview || editorSrc || previewSrc || "";
+  const editorImage = editorSrc || previewSrc || "";
   const editorBootKey =
     editorOpen && !focusedIsVideo && !focusedIsDocument ? `${focused?.id ?? ""}:${activeViewport}` : "";
 
@@ -1271,16 +1232,6 @@ export default function CustomField() {
   };
 
   const playback = focusedSaved?.video ?? videoDefaults;
-  const dimensionOverflows = (["desktop", "mobile"] as const)
-    .filter((viewport) => desktopMobileMode || viewport === "desktop")
-    .flatMap((viewport) => {
-      const beyond = viewportSizeBeyondMaxDimension(
-        cropConfig.active[viewport],
-        cropConfig.maxDimension,
-        viewportAssetSize(focusedSaved, viewport)
-      );
-      return beyond ? [{ viewport, ...beyond }] : [];
-    });
 
   if (!customField) {
     return (
@@ -1354,38 +1305,15 @@ export default function CustomField() {
       {changedOnLoad ? (
         <div className="notice-card warning compact unsaved-notice" role="status">
           <strong>Unsaved changes.</strong> This field’s settings changed since the entry was last saved, so its
-          saved value was updated to match (for example the render profile, the original image size, or DAT
-          on/off). Save the entry to keep it.
-        </div>
-      ) : null}
-
-      {dimensionOverflows.length ? (
-        <div className="notice-card error" role="alert">
-          <strong>
-            This image is configured above the Bynder max dimension of {cropConfig.maxDimension}px.
-          </strong>
-          <p>
-            Bynder returns the original file when either side is larger, so the request is limited to that
-            dimension. Lower the profile size, or raise <code>maxDimension</code> in App Configuration if Bynder
-            has raised the limit for this portal.
-          </p>
-          <ul>
-            {dimensionOverflows.map((item) => (
-              <li key={item.viewport}>
-                {item.viewport === "mobile" ? "Mobile" : "Desktop"} is configured at {item.configured.width}
-                {item.configured.height ? `×${item.configured.height}` : " wide"} and is requested at{" "}
-                {item.limited.width}
-                {item.limited.height ? `×${item.limited.height}` : " wide"}.
-              </li>
-            ))}
-          </ul>
+          saved value was updated to match (for example the render profile or the original image size). Save
+          the entry to keep it.
         </div>
       ) : null}
 
       {missingProfile ? (
         <div className="notice-card warning compact" role="status">
           <strong>Render profile “{missingProfile}” is no longer in App Configuration.</strong> This entry keeps
-          its saved sizes. Pick another profile to update them.
+          its saved aspect ratio, file type, and quality. Pick another profile to update them.
         </div>
       ) : null}
       {cropConfig.fieldProfileErrors.length ? (
@@ -1503,10 +1431,9 @@ export default function CustomField() {
                 <div className="crop-editor-body-inner">
           {focusedIsVideo ? (
             <div className="video-settings">
-              {playbackOptions.length ? (
               <fieldset className="video-options">
-                <legend>Playback</legend>
-                {playbackOptions.map(([key, label]) => (
+                <legend>Presentation</legend>
+                {presentationOptions.map(([key, label]) => (
                   <label key={key} className="video-option">
                     <input
                       type="checkbox"
@@ -1517,10 +1444,21 @@ export default function CustomField() {
                   </label>
                 ))}
               </fieldset>
-              ) : null}
+              <fieldset className="video-options">
+                <legend>Initial Playback Settings</legend>
+                {initialPlaybackOptions.map(([key, label]) => (
+                  <label key={key} className="video-option">
+                    <input
+                      type="checkbox"
+                      checked={playback[key]}
+                      onChange={(event) => patchVideo(key, event.target.checked)}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </fieldset>
               <AdditionalFields fields={additionalFields.fields} values={authorValues(focusedSaved)} onChange={patchAdditional} />
               <section className="video-crop">
-                <h4>Edit Crop</h4>
                 <div className="video-dat-note">
                   <p>
                     DAT transforms such as cropping or resizing via URL parameters are unavailable for video assets. They can only be applied to image assets.
@@ -1654,8 +1592,8 @@ export default function CustomField() {
                   <span className="panel-title-label">{datActive ? "Transforms" : "Crop frame"}</span>
                   <InfoTooltip>
                     {isCustomProfile(cropConfig.profile)
-                      ? "Drag the right edge of the preview to set the aspect ratio for this viewport. Past the edge of the canvas, the preview shrinks and the ratio keeps widening. Width, file type, and quality stay as they are."
-                      : "The render profile sets the aspect ratio, widest image, file type, and quality. The site builds a srcset from 640w up to the profile width. The focal point decides which part of the photo is kept when the image is cropped."}
+                      ? "Drag the right edge of the preview to set the aspect ratio for this viewport. Past the edge of the canvas, the preview shrinks and the ratio keeps widening. File type and quality stay as they are. The site chooses the pixel widths."
+                      : "The render profile sets the aspect ratio, file type, and quality. The site chooses the pixel widths, and delivery keeps each one inside the Bynder max dimension. The focal point decides which part of the photo is kept when the image is cropped."}
                   </InfoTooltip>
                 </div>
                 <TransformForm
@@ -1665,7 +1603,6 @@ export default function CustomField() {
                 />
               </div>
               ) : null}
-              {editorTransform.operation === "fit" ? null : (
               <div className="field-group">
                 <div className="panel-title">
                   <span className="panel-title-label">Edit Crop &amp; Focal Point</span>
@@ -1720,7 +1657,6 @@ export default function CustomField() {
                 </div>
                 ) : null}
               </div>
-              )}
                 </div>
               </div>
               <div className="field-group">
@@ -1767,7 +1703,6 @@ export default function CustomField() {
                 alt={panel?.name}
                 focalPoint={settings.focalPoint}
                 transform={editorTransform}
-                fitImage={Boolean(fitPreview)}
                 customAspect={isCustomProfile(cropConfig.profile)}
                 onAspectChange={onCustomAspect}
                 onChange={onFocalChange}

@@ -83,6 +83,38 @@ describe("CompactPicker actions column", () => {
     expect(render({ assets: [image] })).not.toContain("Add Asset");
   });
 
+  it("loads a Bynder thumbnail for an /asset PDF and keeps an icon when the URL cannot be built", () => {
+    const shaped = render({
+      assets: [
+        {
+          ...image,
+          id: "brief",
+          name: "T342703-CZLHD_IntegratedDiverter_Infographic",
+          type: "DOCUMENT",
+          sourceUrl:
+            "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/T342703-CZLHD_IntegratedDiverter_Infographic.pdf",
+        },
+      ],
+    });
+    expect(shaped).toContain(
+      'src="https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/thumbnail/thul-T342703-CZLHD_IntegratedDiverter_Infographic"'
+    );
+    const plain = render({
+      assets: [{ ...image, id: "brief", name: "Brief", type: "DOCUMENT", sourceUrl: "https://cdn.example/brief.pdf" }],
+    });
+    expect(plain).toContain('class="asset-doc-icon"');
+    expect(plain).not.toContain('src="https://cdn.example/brief.pdf"');
+  });
+
+  it("draws a document icon instead of the PDF preview", () => {
+    const html = render({
+      assets: [{ ...image, id: "brief", name: "Brief", type: "DOCUMENT", sourceUrl: "https://cdn.example/brief.pdf" }],
+    });
+    expect(html).toContain('class="asset-doc-icon"');
+    expect(html).toContain('width="32"');
+    expect(html).not.toContain('src="https://cdn.example/brief.pdf"');
+  });
+
   it("says a separate mobile asset is not supported for video and documents", () => {
     const video = render({
       desktopMobileMode: true,

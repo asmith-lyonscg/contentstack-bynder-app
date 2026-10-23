@@ -9,13 +9,11 @@ import {
   slimPersistedAssets,
   withBynderDownloadParam,
 } from "./bynder/parseAsset";
-import { normalizeFocalPoint, parseAspect } from "./bynder/composeDatUrl";
+import { normalizeFocalPoint } from "./bynder/composeDatUrl";
 import {
   applyProfileTransform,
-  aspectRatioFromPixels,
   asProfileSettings,
   originalProfileSettings,
-  profileOperation,
   viewportAssetSize,
 } from "./profiles";
 import {
@@ -56,30 +54,12 @@ function asFocalPoint(value: unknown): FocalPoint {
   });
 }
 
-function asExtendBackground(value: unknown): TransformSettings["extendBackground"] {
-  if (value === "auto" || value === "transparent" || value === "black" || value === "white" || value === "custom") {
-    return value;
-  }
-  return null;
-}
-
 /**
- * Author choices from an in-memory `transform` or the flat v2 keys. Size, aspect, format, and
- * quality start at the defaults; `buildSettingsPayload` replaces them with the profile's.
+ * Author choices from an in-memory `transform` or the flat v2 keys. Aspect, format, and quality
+ * start at the defaults; `buildSettingsPayload` replaces them with the profile's. The operation is Fill.
  */
-function asTransform(value: unknown): TransformSettings {
-  const raw = isRecord(value) ? value : {};
-  const operation = profileOperation(
-    typeof raw.operation === "string" ? (raw.operation as TransformSettings["operation"]) : null
-  );
-  const extendBackground = operation === "fit" ? asExtendBackground(raw.extendBackground) : null;
-  const extendBackgroundColor = typeof raw.extendBackgroundColor === "string" ? raw.extendBackgroundColor : null;
-  return {
-    ...DEFAULT_TRANSFORM,
-    operation,
-    ...(extendBackground && extendBackground !== "auto" ? { extendBackground } : {}),
-    ...(extendBackground === "custom" && extendBackgroundColor ? { extendBackgroundColor } : {}),
-  };
+function asTransform(_value: unknown): TransformSettings {
+  return { ...DEFAULT_TRANSFORM, operation: "fill" };
 }
 
 function asViewportCrop(value: unknown): ViewportCropSettings | undefined {
@@ -94,14 +74,11 @@ function asViewportCrop(value: unknown): ViewportCropSettings | undefined {
 
 function asOriginalSize(record: Record<string, unknown>, raw?: unknown): OriginalAssetSize {
   const measured = raw === undefined ? {} : assetPixelSize(raw);
-  const width = asPositiveInt(record.originalAssetWidth) ?? asPositiveInt(measured.width);
-  const height = asPositiveInt(record.originalAssetHeight) ?? asPositiveInt(measured.height);
-  const stored = typeof record.aspectRatio === "string" ? record.aspectRatio.trim() : "";
-  const aspectRatio = aspectRatioFromPixels(width, height) ?? (parseAspect(stored) ? stored : undefined);
+  const width = asPositiveInt(record.origWidth) ?? asPositiveInt(measured.width);
+  const height = asPositiveInt(record.origHeight) ?? asPositiveInt(measured.height);
   const next: OriginalAssetSize = {};
-  if (width) next.originalAssetWidth = width;
-  if (height) next.originalAssetHeight = height;
-  if (aspectRatio) next.aspectRatio = aspectRatio;
+  if (width) next.origWidth = width;
+  if (height) next.origHeight = height;
   return next;
 }
 
@@ -295,42 +272,23 @@ export function parseSavedSettings(raw: unknown): BynderImageSettings {
   return next;
 }
 
-/**
- * Current entries store `profile: { id, settings }`. Older entries stored the name as a string
- * and the snapshot as a sibling `profileSettings`.
- */
+/** Entries store `profile: { id?, settings }`. */
 function readSavedProfile(raw: Record<string, unknown>): { profile?: string; profileSettings?: ProfileSettings } {
   const nested = isRecord(raw.profile) ? raw.profile : undefined;
-  if (nested) {
-    const id = typeof nested.id === "string" ? nested.id.trim() : "";
-    const profileSettings = asProfileSettings(nested.settings);
-    return {
-      ...(id ? { profile: id } : {}),
-      ...(profileSettings ? { profileSettings } : {}),
-    };
-  }
-  const name = typeof raw.profile === "string" ? raw.profile.trim() : "";
-  const profileSettings = asProfileSettings(raw.profileSettings);
+  if (!nested) return {};
+  const id = typeof nested.id === "string" ? nested.id.trim() : "";
+  const profileSettings = asProfileSettings(nested.settings);
   return {
-    ...(name ? { profile: name } : {}),
+    ...(id ? { profile: id } : {}),
     ...(profileSettings ? { profileSettings } : {}),
   };
 }
 
-/** Saved per viewport: focal point and the author's mode. Letterbox only for Fit. */
+/** Saved per viewport: Fill, and a focal point only when it is not the center. */
 function persistedCrop(slice: ViewportCropSettings): Record<string, unknown> {
-  const transform = slice.transform ?? DEFAULT_TRANSFORM;
-  const operation = profileOperation(transform.operation);
-  const out: Record<string, unknown> = {
-    focalPoint: normalizeFocalPoint(slice.focalPoint),
-    operation,
-  };
-  if (operation === "fit" && transform.extendBackground && transform.extendBackground !== "auto") {
-    out.extendBackground = transform.extendBackground;
-    if (transform.extendBackground === "custom" && transform.extendBackgroundColor) {
-      out.extendBackgroundColor = transform.extendBackgroundColor;
-    }
-  }
+  const focalPoint = normalizeFocalPoint(slice.focalPoint);
+  const out: Record<string, unknown> = { operation: "fill" };
+  if (focalPoint.x !== 0.5 || focalPoint.y !== 0.5) out.focalPoint = focalPoint;
   return out;
 }
 
@@ -342,8 +300,8 @@ function persistedIdentity(asset: SavedBynderAsset | MobileViewportSettings): Re
   if (asset.transformBaseUrl) out.transformBaseUrl = asset.transformBaseUrl;
   if (asset.webImage?.url) out.webImage = { url: asset.webImage.url };
   if (typeof asset.alt === "string") out.alt = asset.alt;
-  if (asset.originalAssetWidth) out.originalAssetWidth = asset.originalAssetWidth;
-  if (asset.originalAssetHeight) out.originalAssetHeight = asset.originalAssetHeight;
+  if (asset.origWidth) out.origWidth = asset.origWidth;
+  if (asset.origHeight) out.origHeight = asset.origHeight;
   return out;
 }
 
@@ -367,8 +325,8 @@ function persistedAsset(asset: SavedBynderAsset): Record<string, unknown> {
 
 /**
  * Entry JSON. The profile name and its resolved snapshot are one object.
- * No `id` means the original aspect ratio (`settings` then has no `aspectRatio`).
- * `id: "custom"` is an author-dragged ratio, stored on `settings.desktop` and `settings.mobile`.
+ * No `id` means the original aspect ratio (`desktop` and `mobile` are omitted).
+ * `id: "custom"` is an author-dragged ratio, stored as `settings.desktop` and `settings.mobile`.
  */
 export function persistedPayload(settings: BynderImageSettings): Record<string, unknown> {
   if (!settings.assets?.length) return { v: 2 };
@@ -410,7 +368,6 @@ export function buildSettingsPayload(
     assets?: unknown[];
     omitWebImage?: boolean;
     omitName?: boolean;
-    enableDat?: boolean;
     authorFields?: readonly Pick<AdditionalFieldDefinition, "property" | "type">[];
   }
 ): BynderImageSettings {
@@ -419,7 +376,6 @@ export function buildSettingsPayload(
     fallback: BynderImageSettings[K]
   ) => (extras && Object.prototype.hasOwnProperty.call(extras, key) ? extras[key] : fallback);
 
-  const enableDat = extras?.enableDat !== false;
   const profile = extras && Object.prototype.hasOwnProperty.call(extras, "profile") ? extras.profile : settings.profile;
   const profileSettings = extras?.profileSettings ?? settings.profileSettings ?? originalProfileSettings();
   const additionalProperties = extras?.authorFields?.map((field) => field.property);
@@ -443,7 +399,7 @@ export function buildSettingsPayload(
     },
     activeAssetId
   );
-  const cleaned = cleanAssets(stashed.assets, enableDat)?.map((asset) => withProfileSizes(asset, profileSettings));
+  const cleaned = cleanAssets(stashed.assets)?.map((asset) => withProfileSizes(asset, profileSettings));
   const assets = extras?.authorFields?.length
     ? cleaned?.map((asset) => applyAuthorFields(asset, extras.authorFields ?? []))
     : cleaned;
@@ -483,7 +439,7 @@ export function buildSettingsPayload(
   return next;
 }
 
-/** Drop legacy optional DAM metadata that used to live behind persistAssetKeys. */
+/** Drops Bynder metadata that is not part of the saved asset. */
 function withoutDamMetadata(asset: SavedBynderAsset): SavedBynderAsset {
   const next = { ...asset } as SavedBynderAsset & Record<string, unknown>;
   delete next.description;
@@ -533,8 +489,8 @@ function mergeIdentityAndCrops(
               type: identity.type ?? existing.type,
               transformBaseUrl: identity.transformBaseUrl ?? existing.transformBaseUrl,
               webImage: identity.webImage ?? existing.webImage,
-              originalAssetWidth: existing.originalAssetWidth ?? identity.originalAssetWidth,
-              originalAssetHeight: existing.originalAssetHeight ?? identity.originalAssetHeight,
+              origWidth: existing.origWidth ?? identity.origWidth,
+              origHeight: existing.origHeight ?? identity.origHeight,
               alt: existing.alt ?? identity.alt,
               additional: existing.additional ?? identity.additional,
             }
@@ -562,12 +518,12 @@ function asDocumentAsset(asset: SavedBynderAsset): SavedBynderAsset {
   return next;
 }
 
-/** `webImage` only without DAT; document links only on documents; matching mobile relinked. */
-function cleanAssets(assets: SavedBynderAsset[] | undefined, enableDat: boolean): SavedBynderAsset[] | undefined {
+/** `webImage` is dropped when the file has a transform URL. Document links stay on documents. */
+function cleanAssets(assets: SavedBynderAsset[] | undefined): SavedBynderAsset[] | undefined {
   if (!assets?.length) return undefined;
   return assets.map((asset) => {
     if (isDocumentAsset(asset)) return asDocumentAsset(asset);
-    const datOn = Boolean(enableDat && asset.transformBaseUrl);
+    const datOn = Boolean(asset.transformBaseUrl);
     const next: SavedBynderAsset = { ...asset };
     delete next.url;
     delete next.downloadUrl;
@@ -576,8 +532,8 @@ function cleanAssets(assets: SavedBynderAsset[] | undefined, enableDat: boolean)
       const { webImage: _mobileWebImage, ...mobileRest } = next.mobile;
       next.mobile = mobileRest;
     }
-    if (!next.originalAssetWidth) delete next.originalAssetWidth;
-    if (!next.originalAssetHeight) delete next.originalAssetHeight;
+    if (!next.origWidth) delete next.origWidth;
+    if (!next.origHeight) delete next.origHeight;
     return stripMatchingMobile(next) as SavedBynderAsset;
   });
 }
@@ -601,8 +557,8 @@ export function stashActiveCrop(settings: BynderImageSettings, assetId?: string)
           type: existing.mobile.type,
           transformBaseUrl: existing.mobile.transformBaseUrl,
           webImage: existing.mobile.webImage,
-          originalAssetWidth: existing.mobile.originalAssetWidth,
-          originalAssetHeight: existing.mobile.originalAssetHeight,
+          origWidth: existing.mobile.origWidth,
+          origHeight: existing.mobile.origHeight,
         }
       : {};
     const mobileLive: MobileViewportSettings = { ...live, ...mobileIdentity };

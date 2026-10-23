@@ -6,7 +6,6 @@ import {
   resolveBynderPortalUrl,
   resolveCompactViewConfig,
   resolveCropConfig,
-  resolveEnableDat,
   resolveSiblingAsset,
   seedAssetCrop,
   withActiveProfile,
@@ -60,11 +59,21 @@ describe("resolveCompactViewConfig", () => {
     expect(resolveCompactViewConfig({}, { bynderPortalUrl: "acme.getbynder.com" }).assetFilter).toBeUndefined();
   });
 
-  it("maps accept to Compact View asset types", () => {
-    expect(resolveCompactViewConfig({ accept: "image" }, {}).assetTypes).toEqual(["IMAGE"]);
-    expect(resolveCompactViewConfig({ accept: "video" }, {}).assetTypes).toEqual(["VIDEO"]);
-    expect(resolveCompactViewConfig({ accept: "pdf" }, {}).assetTypes).toEqual(["DOCUMENT"]);
-    expect(resolveCompactViewConfig({ accept: "image/video" }, {}).assetTypes).toEqual(["IMAGE", "VIDEO"]);
+  it("maps type to Compact View asset types", () => {
+    expect(resolveCompactViewConfig({ type: ["image"] }, {}).assetTypes).toEqual(["IMAGE"]);
+    expect(resolveCompactViewConfig({ type: ["video"] }, {}).assetTypes).toEqual(["VIDEO"]);
+    expect(resolveCompactViewConfig({ type: ["pdf"] }, {}).assetTypes).toEqual(["DOCUMENT"]);
+    expect(resolveCompactViewConfig({ type: ["image", "video"] }, {}).assetTypes).toEqual(["IMAGE", "VIDEO"]);
+    expect(resolveCompactViewConfig({ type: ["Video", "image", "video"] }, {}).assetTypes).toEqual(["VIDEO", "IMAGE"]);
+    expect(resolveCompactViewConfig({ type: ["image", "nope"] }, {}).assetTypes).toEqual(["IMAGE"]);
+    expect(resolveCompactViewConfig({ type: "image" }, {}).assetTypes).toEqual(["IMAGE", "VIDEO"]);
+    expect(
+      resolveCompactViewConfig(
+        { type: ["pdf"], compactViewConfig: { assetTypes: ["IMAGE"] } },
+        { type: ["video"] }
+      ).assetTypes
+    ).toEqual(["DOCUMENT"]);
+    expect(resolveCompactViewConfig({}, { type: ["image"] }).assetTypes).toEqual(["IMAGE"]);
   });
 
   it("defaults showToolbar on when a custom assetFilter is present", () => {
@@ -232,24 +241,11 @@ describe("readFieldConfig", () => {
   });
 });
 
-describe("resolveEnableDat", () => {
-  it("defaults to on", () => {
-    expect(resolveEnableDat({}, {})).toBe(true);
-  });
-
-  it("prefers field config over app config", () => {
-    expect(resolveEnableDat({ enableDat: false }, { enableDat: true })).toBe(false);
-    expect(resolveEnableDat({ enableDat: true }, { enableDat: false })).toBe(true);
-    expect(resolveEnableDat({}, { enableDat: true })).toBe(true);
-    expect(resolveEnableDat({ custom_settings: { enableDat: "true" } }, {})).toBe(true);
-  });
-});
-
 const APP_PROFILES = {
   profiles: {
-    hero: { desktop: { aspectRatio: "16:9", maxWidth: 2000 }, mobile: { aspectRatio: "4:3", maxWidth: 960 }, quality: 80, format: "webp" },
-    largeHero: { desktop: { aspectRatio: "21:9", maxWidth: 1800 }, mobile: { aspectRatio: "4:5", maxWidth: 960 } },
-    card: { desktop: { aspectRatio: "1:1", maxWidth: 800 }, mobile: { aspectRatio: "1:1", maxWidth: 600 } },
+    hero: { desktop: "16:9", mobile: "4:3", quality: 80, format: "webp" },
+    largeHero: { desktop: "21:9", mobile: "4:5" },
+    card: { desktop: "1:1", mobile: "1:1" },
   },
 };
 
@@ -258,33 +254,31 @@ describe("parseRenderProfiles", () => {
     const { profiles, errors } = parseRenderProfiles(APP_PROFILES.profiles);
     expect(errors).toEqual([]);
     expect(profiles.largeHero).toEqual({
-      desktop: { aspectRatio: "21:9", maxWidth: 1800 },
-      mobile: { aspectRatio: "4:5", maxWidth: 960 },
+      desktop: "21:9",
+      mobile: "4:5",
       quality: 80,
       format: "webp",
     });
   });
 
-  it("requires desktop and mobile, each with aspectRatio and maxWidth", () => {
+  it("requires desktop and mobile aspect ratios", () => {
     const { profiles, errors } = parseRenderProfiles({
-      ok: { desktop: { aspectRatio: "16:9", maxWidth: 1600 }, mobile: { aspectRatio: "4:3", maxWidth: 800 } },
-      noMobile: { desktop: { aspectRatio: "16:9", maxWidth: 1600 } },
-      partial: { desktop: { maxWidth: 1600 }, mobile: { aspectRatio: "4:3" } },
+      ok: { desktop: "16:9", mobile: "4:3" },
+      noMobile: { desktop: "16:9" },
+      partial: { desktop: "wide", mobile: "4:3" },
       bad: {
-        desktop: { aspectRatio: "wide", maxWidth: 0 },
-        mobile: { aspectRatio: "1:1", maxWidth: 100 },
+        desktop: "16:9",
+        mobile: "1:1",
         quality: 200,
         format: "gif",
       },
-      "9lives": { desktop: { aspectRatio: "1:1", maxWidth: 100 }, mobile: { aspectRatio: "1:1", maxWidth: 100 } },
+      "9lives": { desktop: "1:1", mobile: "1:1" },
     });
     const text = errors.join(" ");
     expect(Object.keys(profiles)).toEqual(["ok"]);
+    expect(profiles.ok.desktop).toBe("16:9");
     expect(text).toContain("profiles.noMobile.mobile is required");
-    expect(text).toContain("profiles.partial.desktop.aspectRatio is required");
-    expect(text).toContain("profiles.partial.mobile.maxWidth is required");
-    expect(text).toContain("profiles.bad.desktop.aspectRatio");
-    expect(text).toContain("profiles.bad.desktop.maxWidth");
+    expect(text).toContain("profiles.partial.desktop must look like");
     expect(text).toContain("profiles.bad.quality");
     expect(text).toContain("profiles.bad.format");
     expect(text).toContain('"9lives"');
@@ -292,103 +286,42 @@ describe("parseRenderProfiles", () => {
     expect(parseRenderProfiles(undefined)).toEqual({ profiles: {}, errors: [] });
   });
 
-  it("reports widths above the App Config maximums and clamps them", () => {
-    const { profiles, errors } = parseRenderProfiles(
-      {
-        wide: { desktop: { aspectRatio: "16:9", maxWidth: 2560 }, mobile: { aspectRatio: "4:3", maxWidth: 1200 } },
-      },
-      { desktop: 2000, mobile: 960 }
-    );
-    expect(errors).toEqual([
-      "profiles.wide.desktop.maxWidth (2560) is above maxDimension (2000).",
-      "profiles.wide.desktop.maxWidth (2560) is above maxDesktopWidth (2000).",
-      "profiles.wide.mobile.maxWidth (1200) is above maxMobileWidth (960).",
-    ]);
-    expect(profiles.wide.desktop.maxWidth).toBe(2000);
-    expect(profiles.wide.mobile.maxWidth).toBe(960);
-  });
-
-  it("rejects a profile that is taller or wider than the Bynder max dimension", () => {
-    const { profiles, errors } = parseRenderProfiles(
-      {
-        poster: { desktop: { aspectRatio: "9:16", maxWidth: 1600 }, mobile: { aspectRatio: "9:16", maxWidth: 960 } },
-      },
-      { desktop: 2000, mobile: 960 },
-      2000
-    );
-    expect(errors).toEqual([
-      "profiles.poster.desktop would be 1600×2844, above the Bynder max dimension of 2000. Bynder returns the original file when either side is larger.",
-    ]);
-    expect(profiles.poster.desktop.maxWidth).toBe(1600);
-    expect(viewportImageSize(profileSettingsFrom(profiles.poster).desktop, undefined, 2000)).toEqual({
-      aspectRatio: "9:16",
-      width: 1125,
-      height: 2000,
+  it("keeps the aspect ratio when a profile used to be taller than the Bynder max dimension", () => {
+    const { profiles, errors } = parseRenderProfiles({
+      poster: { desktop: "9:16", mobile: "9:16" },
     });
-    expect(widthWithinMaxDimension(2000, "9:16", 2000)).toBe(1125);
-  });
-
-  it("reports a desktop or mobile maxWidth above maxDimension", () => {
-    const { errors } = parseRenderProfiles(
-      {
-        wide: { desktop: { aspectRatio: "16:9", maxWidth: 2400 }, mobile: { aspectRatio: "4:3", maxWidth: 2100 } },
-      },
-      { desktop: 3000, mobile: 2400 },
-      2000
-    );
-    expect(errors).toEqual([
-      "profiles.wide.desktop.maxWidth (2400) is above maxDimension (2000).",
-      "profiles.wide.mobile.maxWidth (2100) is above maxDimension (2000).",
-    ]);
-  });
-
-  it("allows a larger profile when the Bynder max dimension is raised", () => {
-    const { errors } = parseRenderProfiles(
-      {
-        wide: { desktop: { aspectRatio: "16:9", maxWidth: 2560 }, mobile: { aspectRatio: "4:3", maxWidth: 960 } },
-      },
-      { desktop: 3840, mobile: 960 },
-      4000
-    );
     expect(errors).toEqual([]);
+    expect(profiles.poster.desktop).toBe("9:16");
+    expect(viewportImageSize(profileSettingsFrom(profiles.poster).desktop)).toEqual({ aspectRatio: "9:16" });
+    expect(widthWithinMaxDimension(2000, "9:16", 2000)).toBe(1125);
   });
 
   it("rejects a profile name used twice in the JSON text", () => {
     const text = `{
-      "hero": { "desktop": { "aspectRatio": "16:9", "maxWidth": 2000 }, "mobile": { "aspectRatio": "4:3", "maxWidth": 960 } },
-      "hero": { "desktop": { "aspectRatio": "1:1", "maxWidth": 800, "maxWidth": 900 }, "mobile": { "aspectRatio": "1:1", "maxWidth": 600 } }
+      "hero": { "desktop": "16:9", "mobile": "4:3" },
+      "hero": { "desktop": "1:1", "desktop": "2:1", "mobile": "1:1" }
     }`;
     expect(parseRenderProfiles(text).errors).toEqual([
       'Profile name "hero" is used more than once. Each profile needs a unique name.',
-      '"hero.desktop.maxWidth" is set more than once.',
+      '"hero.desktop" is set more than once.',
     ]);
     expect(duplicateJsonKeys('{"a": {"b": 1}, "c": [{"b": 1}, {"b": 2}], "s": "\\"a\\": 1"}')).toEqual([]);
   });
 });
 
 describe("resolveCropConfig", () => {
-  it("uses the original aspect ratio and default max widths when App Config has no profiles", () => {
+  it("uses the original aspect ratio when App Config has no profiles", () => {
     const crop = resolveCropConfig({}, {});
     expect(crop.allowedProfiles).toEqual([]);
     expect(crop.profile).toBeUndefined();
     expect(crop.allowOriginal).toBe(true);
     expect(crop.profileLocked).toBe(false);
-    expect(crop.maxWidths).toEqual({ desktop: 2000, mobile: 960 });
+    expect(crop.maxDimension).toBe(2000);
     expect(crop.active).toEqual({
-      desktop: { targetWidth: 2000 },
-      mobile: { targetWidth: 960 },
       quality: 80,
       format: "webp",
     });
-    expect(crop.showOperation).toBe(true);
-    expect(crop.allowFit).toBe(false);
     expect(crop.desktopMobileMode).toBe(true);
-  });
-
-  it("reads maxDesktopWidth and maxMobileWidth from App Config", () => {
-    const crop = resolveCropConfig({}, { maxDesktopWidth: 2400, maxMobileWidth: "1080" });
-    expect(crop.maxWidths).toEqual({ desktop: 2400, mobile: 1080 });
-    expect(crop.active.desktop).toEqual({ targetWidth: 2400 });
   });
 
   it("offers every App Config profile with no default unless the field sets one", () => {
@@ -406,7 +339,7 @@ describe("resolveCropConfig", () => {
     expect(crop.defaultProfile).toBe("hero");
     expect(crop.allowOriginal).toBe(false);
     expect(crop.profileLocked).toBe(true);
-    expect(crop.active.desktop).toEqual({ aspectRatio: "16:9", targetWidth: 2000 });
+    expect(crop.active.desktop).toBe("16:9");
     expect(resolveCropConfig({ profile: " hero " }, APP_PROFILES).profile).toBe("hero");
     expect(resolveCropConfig({ profile: "missing", profiles: ["card"] }, APP_PROFILES).allowedProfiles).toEqual(["card"]);
     expect(resolveCropConfig({ profile: "missing", profiles: ["card"] }, APP_PROFILES).profileLocked).toBe(false);
@@ -418,19 +351,19 @@ describe("resolveCropConfig", () => {
     expect(crop.profile).toBe("largeHero");
     expect(crop.allowOriginal).toBe(false);
     expect(crop.profileLocked).toBe(false);
-    expect(crop.active.desktop).toEqual({ aspectRatio: "21:9", targetWidth: 1800 });
+    expect(crop.active.desktop).toBe("21:9");
     expect(resolveCropConfig({ profiles: "card, hero", defaultProfile: "largeHero" }, APP_PROFILES).defaultProfile).toBeUndefined();
     expect(resolveCropConfig({ custom_settings: { profiles: ["card"] } }, APP_PROFILES).allowedProfiles).toEqual(["card"]);
   });
 
   it("adds a field profile to the dropdown and can mix it with App Config profiles", () => {
     const banner = {
-      desktop: { aspectRatio: "7:4", maxWidth: 700 },
-      mobile: { aspectRatio: "16:9", maxWidth: 354 },
+      desktop: "7:4",
+      mobile: "16:9",
     };
     const all = resolveCropConfig({ fieldProfiles: { banner } }, APP_PROFILES);
     expect(all.allowedProfiles).toEqual(["banner", "hero", "largeHero", "card"]);
-    expect(all.profiles.banner.desktop).toEqual({ aspectRatio: "7:4", maxWidth: 700 });
+    expect(all.profiles.banner.desktop).toBe("7:4");
     expect(all.allowCustomAspect).toBe(false);
     expect(all.fieldProfileErrors).toEqual([]);
 
@@ -442,16 +375,16 @@ describe("resolveCropConfig", () => {
 
   it("lets a field profile replace an App Config profile of the same name", () => {
     const crop = resolveCropConfig(
-      { fieldProfiles: { hero: { desktop: { aspectRatio: "2:1", maxWidth: 1200 }, mobile: { aspectRatio: "1:1", maxWidth: 400 } } } },
+      { fieldProfiles: { hero: { desktop: "2:1", mobile: "1:1" } } },
       APP_PROFILES
     );
     expect(crop.allowedProfiles.filter((name) => name === "hero")).toEqual(["hero"]);
-    expect(crop.profiles.hero.desktop).toEqual({ aspectRatio: "2:1", maxWidth: 1200 });
+    expect(crop.profiles.hero.desktop).toBe("2:1");
   });
 
   it("reports a bad field profile and keeps the valid ones", () => {
     const crop = resolveCropConfig(
-      { fieldProfiles: { banner: { desktop: { aspectRatio: "nope" } }, custom: { desktop: { aspectRatio: "1:1", maxWidth: 100 }, mobile: { aspectRatio: "1:1", maxWidth: 100 } } } },
+      { fieldProfiles: { banner: { desktop: "nope" }, custom: { desktop: "1:1", mobile: "1:1" } } },
       APP_PROFILES
     );
     expect(crop.profiles.banner).toBeUndefined();
@@ -467,20 +400,6 @@ describe("resolveCropConfig", () => {
     expect(resolveCropConfig({}, { allowCustomAspect: true }).allowCustomAspect).toBe(false);
   });
 
-  it("clamps an App Config profile above the max widths", () => {
-    const crop = resolveCropConfig({ defaultProfile: "hero" }, { ...APP_PROFILES, maxDesktopWidth: 1500 });
-    expect(crop.active.desktop).toEqual({ aspectRatio: "16:9", targetWidth: 1500 });
-  });
-
-  it("keeps Fit only when allowFit is on, with the field winning", () => {
-    const transform = { ...DEFAULT_TRANSFORM, operation: "fit" as const };
-    const allowed = resolveCropConfig({ allowFit: true, defaultProfile: "hero" }, APP_PROFILES);
-    expect(allowed.allowFit).toBe(true);
-    expect(applyCropConfig(transform, allowed).operation).toBe("fit");
-    expect(resolveCropConfig({ allowFit: false }, { allowFit: true }).allowFit).toBe(false);
-    expect(resolveCropConfig({}, { allowFit: true }).allowFit).toBe(true);
-  });
-
   it("shares a crop only when desktop and mobile aspects match, or there is no profile", () => {
     expect(profileCropsCanMatch(originalProfileSettings())).toBe(true);
     const { profiles } = parseRenderProfiles(APP_PROFILES.profiles);
@@ -489,8 +408,8 @@ describe("resolveCropConfig", () => {
     expect(
       profileCropsCanMatch(
         profileSettingsFrom({
-          desktop: { aspectRatio: "16:9", maxWidth: 2000 },
-          mobile: { aspectRatio: "32:18", maxWidth: 960 },
+          desktop: "16:9",
+          mobile: "32:18",
           quality: 80,
           format: "webp",
         })
@@ -498,19 +417,15 @@ describe("resolveCropConfig", () => {
     ).toBe(true);
   });
 
-  it("reads showFieldOperation with field config winning", () => {
-    expect(resolveCropConfig({ showFieldOperation: false }, { showFieldOperation: true }).showOperation).toBe(false);
-    expect(resolveCropConfig({}, { showFieldOperation: false }).showOperation).toBe(false);
-  });
 });
 
 describe("withActiveProfile", () => {
   it("switches to a defined profile, back to the original aspect, or keeps a saved snapshot for a missing one", () => {
     const crop = resolveCropConfig({ defaultProfile: "hero" }, APP_PROFILES);
-    expect(withActiveProfile(crop, "card").active.desktop).toEqual({ aspectRatio: "1:1", targetWidth: 800 });
+    expect(withActiveProfile(crop, "card").active.desktop).toBe("1:1");
     const original = withActiveProfile(crop, undefined);
     expect(original.profile).toBeUndefined();
-    expect(original.active.desktop).toEqual({ targetWidth: 2000 });
+    expect(original.active.desktop).toBeUndefined();
     const snapshot = { ...crop.active, quality: 55 };
     expect(withActiveProfile(crop, "gone", snapshot)).toMatchObject({ profile: "gone", active: snapshot });
     expect(withActiveProfile(crop, "gone")).toBe(crop);
@@ -520,54 +435,53 @@ describe("withActiveProfile", () => {
 describe("applyCropConfig", () => {
   const crop = resolveCropConfig({ defaultProfile: "hero" }, APP_PROFILES);
 
-  it("sets size, aspect, format, and quality from the profile per viewport", () => {
-    const transform = { ...DEFAULT_TRANSFORM, operation: "fit" as const, width: 10, height: 10, aspect: "9:9", quality: 5 };
+  it("sets aspect, format, and quality from the profile per viewport", () => {
+    const transform = { ...DEFAULT_TRANSFORM, width: 10, height: 10, aspect: "9:9", quality: 5 };
     expect(applyCropConfig(transform, crop, "desktop")).toMatchObject({
       operation: "fill",
-      width: 2000,
-      height: 1125,
+      width: null,
+      height: null,
       aspect: "16:9",
       format: "webp",
       quality: 80,
     });
-    expect(applyCropConfig(transform, crop, "mobile")).toMatchObject({ width: 960, height: 720, aspect: "4:3" });
+    expect(applyCropConfig(transform, crop, "mobile")).toMatchObject({ aspect: "4:3", width: null, height: null });
   });
 
-  it("uses desktop sizes for mobile when desktopMobileMode is off", () => {
+  it("uses the desktop aspect for mobile when desktopMobileMode is off", () => {
     const single = resolveCropConfig({ desktopMobileMode: false, defaultProfile: "hero" }, APP_PROFILES);
-    expect(applyCropConfig(DEFAULT_TRANSFORM, single, "mobile")).toMatchObject({ width: 2000, aspect: "16:9" });
+    expect(applyCropConfig(DEFAULT_TRANSFORM, single, "mobile")).toMatchObject({ aspect: "16:9" });
   });
 
-  it("uses the asset's own aspect ratio without a profile, never wider than the original", () => {
+  it("uses the asset's own aspect ratio without a profile", () => {
     const original = resolveCropConfig({}, {});
-    const size = { originalAssetWidth: 1500, originalAssetHeight: 1000 };
+    const size = { origWidth: 1500, origHeight: 1000 };
     expect(applyCropConfig(DEFAULT_TRANSFORM, original, "desktop", size)).toMatchObject({
-      width: 1500,
-      height: 1000,
+      width: null,
+      height: null,
       aspect: "3:2",
     });
-    expect(applyCropConfig(DEFAULT_TRANSFORM, original, "mobile", size)).toMatchObject({ width: 960, height: 640 });
-    expect(applyCropConfig(DEFAULT_TRANSFORM, original, "desktop")).toMatchObject({ width: 2000, height: null, aspect: null });
-  });
-
-  it("turns a legacy Crop into Fill", () => {
-    expect(applyCropConfig({ ...DEFAULT_TRANSFORM, operation: "crop" }, crop).operation).toBe("fill");
+    expect(applyCropConfig(DEFAULT_TRANSFORM, original, "desktop")).toMatchObject({
+      width: null,
+      height: null,
+      aspect: null,
+    });
   });
 
   it("seeds a new asset at the center with Fill and no mobile override", () => {
     const seeded = seedAssetCrop(crop);
     expect(seeded.focalPoint).toEqual({ x: 0.5, y: 0.5 });
-    expect(seeded.transform).toMatchObject({ operation: "fill", width: 2000, aspect: "16:9" });
+    expect(seeded.transform).toMatchObject({ operation: "fill", width: null, aspect: "16:9" });
     expect(seeded.mobile).toBeUndefined();
   });
 });
 
 describe("srcsetWidths", () => {
-  it("cuts the steps at targetWidth and always ends with it", () => {
-    expect(srcsetWidths(2000)).toEqual([640, 960, 1280, 1600, 1920, 2000]);
-    expect(srcsetWidths(960)).toEqual([640, 960]);
-    expect(srcsetWidths(500)).toEqual([500]);
-    expect(srcsetWidths(1000, [1200, 400, 400])).toEqual([400, 1000]);
+  it("caps each step so neither side passes maxDimension and drops duplicates", () => {
+    expect(srcsetWidths("16:9", 2000)).toEqual([640, 960, 1280, 1600, 1920, 2000]);
+    expect(srcsetWidths("3:2", 2000)).toEqual([640, 960, 1280, 1600, 1920, 2000]);
+    expect(srcsetWidths("9:16", 2000)).toEqual([640, 960, 1125]);
+    expect(srcsetWidths("16:9", 2000, [1200, 400, 400, 9000])).toEqual([400, 1200, 2000]);
   });
 });
 
@@ -673,29 +587,6 @@ describe("resolveVideoDefaults", () => {
         { video: { autoplay: false, controls: false, loop: true }, videoMuted: true }
       )
     ).toEqual({ autoplay: true, muted: true, controls: false, loop: true });
-  });
-});
-
-describe("resolveVideoFieldVisibility", () => {
-  it("shows every playback checkbox unless a showField flag turns it off", async () => {
-    const { resolveVideoFieldVisibility } = await import("./fieldConfig");
-    expect(resolveVideoFieldVisibility({}, {})).toEqual({
-      autoplay: true,
-      muted: true,
-      controls: true,
-      loop: true,
-    });
-    expect(
-      resolveVideoFieldVisibility(
-        { showFieldAutoplay: false, showFieldMute: false },
-        { showFieldMuted: true, showFieldLoop: false, showFieldControls: false }
-      )
-    ).toEqual({
-      autoplay: false,
-      muted: false,
-      controls: false,
-      loop: false,
-    });
   });
 });
 

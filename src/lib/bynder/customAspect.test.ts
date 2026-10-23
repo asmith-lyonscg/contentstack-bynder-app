@@ -14,7 +14,7 @@ import {
 
 const APP = {
   profiles: {
-    hero: { desktop: { aspectRatio: "16:9", maxWidth: 2000 }, mobile: { aspectRatio: "4:3", maxWidth: 960 } },
+    hero: { desktop: "16:9", mobile: "4:3" },
   },
 };
 
@@ -56,15 +56,15 @@ describe("custom aspect frame", () => {
 });
 
 describe("Customize profile", () => {
-  it("seeds each viewport from that file and keeps the current widths", () => {
+  it("seeds each viewport from that file and keeps quality and format", () => {
     const current = resolveCropConfig({ defaultProfile: "hero" }, APP).active;
     const next = customProfileSettings(
       current,
-      { originalAssetWidth: 4000, originalAssetHeight: 3000 },
-      { originalAssetWidth: 900, originalAssetHeight: 1600 }
+      { origWidth: 4000, origHeight: 3000 },
+      { origWidth: 900, origHeight: 1600 }
     );
-    expect(next.desktop).toEqual({ aspectRatio: "4:3", targetWidth: current.desktop.targetWidth });
-    expect(next.mobile).toEqual({ aspectRatio: "9:16", targetWidth: current.mobile.targetWidth });
+    expect(next.desktop).toBe("4:3");
+    expect(next.mobile).toBe("9:16");
     expect(next.quality).toBe(current.quality);
     expect(next.format).toBe(current.format);
   });

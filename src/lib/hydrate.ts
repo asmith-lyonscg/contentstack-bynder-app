@@ -6,7 +6,6 @@ import { withoutDesktopMobile } from "./viewportCrop";
 
 export interface HydrateOptions {
   cropConfig: CropFieldConfig;
-  enableDat: boolean;
   omitWebImage?: boolean;
   omitName?: boolean;
   authorFields?: readonly Pick<AdditionalFieldDefinition, "property" | "type">[];
@@ -63,7 +62,7 @@ export function resolveEntryProfile(
 /**
  * Normalizes a stored field value exactly the way a save would, and reports
  * whether that differs from what is stored. `changed` is true only when the
- * current field/app config (or a legacy shape) produces a different payload.
+ * current field or app config produces a different payload.
  */
 export function hydrateFieldValue(raw: unknown, options: HydrateOptions): HydrateResult {
   const saved = parseSavedSettings(raw);
@@ -82,7 +81,6 @@ export function hydrateFieldValue(raw: unknown, options: HydrateOptions): Hydrat
       activeViewport: undefined,
       profile: cropConfig.profile,
       profileSettings: cropConfig.active,
-      enableDat: options.enableDat,
       omitWebImage: options.omitWebImage,
       omitName: options.omitName,
       authorFields: options.authorFields,

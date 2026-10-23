@@ -18,10 +18,14 @@ export default function Home() {
         <li>
           App Configuration: <code>/app-configuration</code>
         </li>
+        <li>
+          Content Type Sidebar: <code>/content-type-sidebar</code>
+        </li>
       </ul>
       <p>
         Local routes: <Link to="/custom-field">Custom Field</Link> ·{" "}
-        <Link to="/app-configuration">App Config</Link>
+        <Link to="/app-configuration">App Config</Link> ·{" "}
+        <Link to="/content-type-sidebar">Content Type Sidebar</Link>
       </p>
     </div>
   );

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_TRANSFORM } from "../types";
 import { bynderMediaUrl, formatFileSize, listThumbForAsset, moveAsset, thumbCaption } from "./assetUi";
-import { scaleToMinSide } from "./composeDatUrl";
 
 describe("moveAsset", () => {
   const list = [{ id: "a" }, { id: "b" }, { id: "c" }];
@@ -41,16 +40,14 @@ describe("listThumbForAsset", () => {
       live: {
         focalPoint: { x: 0.2, y: 0.8 },
         transform: { ...DEFAULT_TRANSFORM, width: 1200, height: 675, aspect: "16:9" },
-        datEnabled: true,
       },
     });
     expect(thumb.url).toBe(asset.sourceUrl);
     expect(thumb.height).toBe(200);
     expect(thumb.width).toBe(200);
     expect(thumb.objectPosition).toBe("20% 80%");
-    expect(thumb.operation).toBe("fill");
-    expect(thumb.aspectW).toBe(1200);
-    expect(thumb.aspectH).toBe(675);
+    expect(thumb.aspectW).toBe(16);
+    expect(thumb.aspectH).toBe(9);
     expect(thumb.caption).toBe("16:9 · WebP");
   });
 
@@ -61,13 +58,28 @@ describe("listThumbForAsset", () => {
       live: {
         focalPoint: { x: 0.25, y: 0.75 },
         transform: { ...DEFAULT_TRANSFORM, width: 800, height: 1000, aspect: "4:5" },
-        datEnabled: true,
       },
     });
     expect(thumb.url).toBe(asset.sourceUrl);
     expect(thumb.width).toBe(200);
     expect(thumb.height).toBe(200);
     expect(thumb.objectPosition).toBe("25% 75%");
+  });
+
+  it("frames a document as a letter page and does not use the image profile", () => {
+    const thumb = listThumbForAsset({
+      asset: { id: "pdf", type: "DOCUMENT", sourceUrl: "https://cdn.example/spec.pdf" },
+      datAllowed: false,
+      live: {
+        focalPoint: { x: 0.5, y: 0.5 },
+        transform: { ...DEFAULT_TRANSFORM, aspect: "21:9" },
+      },
+      slot: { width: 300, height: 200 },
+    });
+    expect(thumb.aspectW).toBe(17);
+    expect(thumb.aspectH).toBe(22);
+    expect(thumb.objectPosition).toBe("0% 0%");
+    expect(thumb.caption).toBeUndefined();
   });
 
   it("uses a 300×200 desktop slot when asked", () => {
@@ -78,14 +90,6 @@ describe("listThumbForAsset", () => {
         slot: { width: 300, height: 200 },
       })
     ).toMatchObject({ width: 300, height: 200 });
-  });
-});
-
-describe("scaleToMinSide", () => {
-  it("keeps the short side at 64 and lets the long side grow", () => {
-    expect(scaleToMinSide(1200, 675)).toEqual({ width: 114, height: 64 });
-    expect(scaleToMinSide(800, 1000)).toEqual({ width: 64, height: 80 });
-    expect(scaleToMinSide(500, 500)).toEqual({ width: 64, height: 64 });
   });
 });
 

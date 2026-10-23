@@ -70,30 +70,13 @@ export function withoutMobileCrop(crop: AssetCropSettings | undefined): AssetCro
   return desktop;
 }
 
-/** Only the author's choices. Size, aspect, format, and quality come from the profile per viewport. */
-function normalizeTransform(transform: TransformSettings): Record<string, unknown> {
-  const operation = transform.operation === "fit" ? "fit" : "fill";
-  const fit = operation === "fit";
-  const background = fit ? transform.extendBackground || "auto" : null;
-  return {
-    operation,
-    background,
-    color: background === "custom" ? transform.extendBackgroundColor ?? "" : null,
-  };
-}
-
-/** True when mobile still follows desktop (no separate mobile crop). */
+/** True when mobile still follows desktop. The focal point is the only author choice that can differ. */
 export function viewportCropsEqual(a: ViewportCropSettings, b: ViewportCropSettings): boolean {
   const ax = a.focalPoint?.x ?? 0.5;
   const ay = a.focalPoint?.y ?? 0.5;
   const bx = b.focalPoint?.x ?? 0.5;
   const by = b.focalPoint?.y ?? 0.5;
-  if (!a.transform || !b.transform) return !a.transform && !b.transform && ax === bx && ay === by;
-  return (
-    Math.round(ax * 1000) === Math.round(bx * 1000) &&
-    Math.round(ay * 1000) === Math.round(by * 1000) &&
-    JSON.stringify(normalizeTransform(a.transform)) === JSON.stringify(normalizeTransform(b.transform))
-  );
+  return Math.round(ax * 1000) === Math.round(bx * 1000) && Math.round(ay * 1000) === Math.round(by * 1000);
 }
 
 /**

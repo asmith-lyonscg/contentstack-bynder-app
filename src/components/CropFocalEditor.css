@@ -64,18 +64,6 @@
   cursor: crosshair;
 }
 
-.crop-editor.is-fit {
-  cursor: default;
-}
-
-.crop-editor.is-pannable {
-  cursor: grab;
-}
-
-.crop-editor.is-panning {
-  cursor: grabbing;
-}
-
 .crop-image-layer {
   position: absolute;
   left: 0;

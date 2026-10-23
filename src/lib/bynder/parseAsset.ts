@@ -1,6 +1,4 @@
 import type { ParsedBynderAsset } from "../types";
-import { parseAspect } from "./composeDatUrl";
-import { aspectRatioFromPixels } from "../profiles";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -477,21 +475,16 @@ export function slimPersistedAsset(
     slimWebImage(filesIn, parsed.transformBaseUrl ? undefined : parsed.sourceUrl) ??
     slimWebImage({ webImage: asset.webImage }, parsed.transformBaseUrl ? undefined : parsed.sourceUrl);
   if (webImage && !options?.omitWebImage) next.webImage = webImage;
-  const savedWidth = pickNumber(asset.originalAssetWidth);
-  const savedHeight = pickNumber(asset.originalAssetHeight);
+  const savedWidth = pickNumber(asset.origWidth);
+  const savedHeight = pickNumber(asset.origHeight);
   const measured = savedWidth || savedHeight ? {} : assetPixelSize(raw);
   const originalWidth = savedWidth ?? measured.width;
   const originalHeight = savedHeight ?? measured.height;
-  if (originalWidth) next.originalAssetWidth = Math.round(originalWidth);
-  if (originalHeight) next.originalAssetHeight = Math.round(originalHeight);
-  const savedAspect = typeof asset.aspectRatio === "string" ? asset.aspectRatio.trim() : "";
-  const aspectRatio = aspectRatioFromPixels(originalWidth, originalHeight) ?? (parseAspect(savedAspect) ? savedAspect : undefined);
-  if (aspectRatio) next.aspectRatio = aspectRatio;
+  if (originalWidth) next.origWidth = Math.round(originalWidth);
+  if (originalHeight) next.origHeight = Math.round(originalHeight);
   if (isRecord(asset.focalPoint)) next.focalPoint = asset.focalPoint;
   if (isRecord(asset.transform)) next.transform = asset.transform;
-  for (const key of ["operation", "extendBackground", "extendBackgroundColor"]) {
-    if (asset[key] !== undefined) next[key] = asset[key];
-  }
+  if (asset.operation !== undefined) next.operation = asset.operation;
   if (isRecord(asset.mobile)) {
     const mobile = { ...asset.mobile };
     const nested = isRecord(mobile.asset) ? mobile.asset : undefined;
@@ -649,7 +642,7 @@ function pixelSize(record: Record<string, unknown> | null | undefined): { width?
 /**
  * Original pixel size, then the selected file, then the web image.
  * GraphQL `width` / `height` are the original file. `selectedFile` is often a smaller derivative.
- * Saved as `originalAssetWidth` / `originalAssetHeight`.
+ * Saved as `origWidth` / `origHeight`.
  */
 export function assetPixelSize(
   raw: unknown,
@@ -678,6 +671,15 @@ export function isVideoAsset(
   const fileType = asset.fileType?.trim() ?? "";
   if (VIDEO_FILE.test(fileType)) return true;
   return VIDEO_EXT.test(asset.sourceUrl ?? "") || VIDEO_EXT.test(asset.name ?? "");
+}
+
+/** Images are the only assets that can use a separate mobile file. */
+export function isImageAsset(
+  asset?: { type?: string; fileType?: string; sourceUrl?: string; name?: string; url?: string } | null
+): boolean {
+  if (!asset || isVideoAsset(asset) || isDocumentAsset(asset)) return false;
+  const type = asset.type?.trim().toUpperCase();
+  return !type || type === "IMAGE";
 }
 
 /**
@@ -710,6 +712,46 @@ export function withBynderDownloadParam(url: string): string {
   }
 }
 
+const RASTER_EXT = /\.(webp|jpe?g|png|gif|avif)(?:$|\?)/i;
+
+function isPreviewImageUrl(url: string): boolean {
+  return /\/thumbnail\//i.test(url) || RASTER_EXT.test(url);
+}
+
+/**
+ * Bynder list preview for a document. A `/asset/{id}/{file}.pdf` URL becomes
+ * `/asset/{id}/thumbnail/thul-{file}` (no extension, no cache-buster). An existing
+ * thumbnail or web-image URL is used as-is. Undefined when the file URL is not
+ * that shape — the list then shows a document icon.
+ */
+export function documentThumbnailUrl(asset: { sourceUrl?: string; url?: string; name?: string }): string | undefined {
+  const candidates = [asset.sourceUrl, asset.url].filter((item): item is string => Boolean(item));
+  const preview = candidates.find(isPreviewImageUrl);
+  if (preview) return preview;
+  const fileUrl = candidates.find((item) => DOCUMENT_EXT.test(item));
+  if (!fileUrl) return undefined;
+  try {
+    const parsed = new URL(fileUrl);
+    const parts = parsed.pathname
+      .split("/")
+      .filter(Boolean)
+      .map((part) => decodeURIComponent(part));
+    if (parts[0] !== "asset" || parts.length < 3) return undefined;
+    const stem = parts[parts.length - 1].replace(/\.[^.]+$/, "");
+    if (!stem) return undefined;
+    const prefix = parts
+      .slice(0, -1)
+      .map((part) => encodeURIComponent(part))
+      .join("/");
+    parsed.pathname = `/${prefix}/thumbnail/${encodeURIComponent(`thul-${stem}`)}`;
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Public original file URL for a document (PDF / office). Prefer `originalUrl` /
  * `files.original` over preview derivatives (often a WebP thumbnail).
@@ -727,7 +769,7 @@ export function resolveDocumentFileUrl(raw: unknown): string | undefined {
   for (const candidate of candidates) {
     if (!candidate) continue;
     // Prefer real document files; skip image preview derivatives when possible.
-    if (DOCUMENT_EXT.test(candidate) || !/\.(webp|jpe?g|png|gif|avif)(?:$|\?)/i.test(candidate)) {
+    if (DOCUMENT_EXT.test(candidate) || !RASTER_EXT.test(candidate)) {
       return candidate;
     }
   }

@@ -77,18 +77,9 @@ describe("viewportCropsEqual", () => {
     expect(viewportCropsEqual(desktop, mobile)).toBe(true);
   });
 
-  it("compares focal point, operation, and letterbox, and ignores a legacy zoom", () => {
-    const with_ = (transform: object, focalPoint = desktop.focalPoint) => ({
-      focalPoint,
-      transform: { ...desktop.transform, ...transform },
-    });
-    expect(viewportCropsEqual(desktop, with_({}, { x: 0.6, y: 0.3 }))).toBe(false);
-    expect(viewportCropsEqual(desktop, with_({ operation: "fit" }))).toBe(false);
-    expect(viewportCropsEqual(with_({ operation: "scale" }), with_({ operation: "fill" }))).toBe(true);
-    expect(viewportCropsEqual(desktop, with_({ zoom: 2 }))).toBe(true);
-    expect(
-      viewportCropsEqual(with_({ operation: "fit" }), with_({ operation: "fit", extendBackground: "black" }))
-    ).toBe(false);
+  it("compares the focal point and ignores profile size on the transform", () => {
+    expect(viewportCropsEqual(desktop, { ...desktop, focalPoint: { x: 0.6, y: 0.3 } })).toBe(false);
+    expect(viewportCropsEqual(desktop, { focalPoint: desktop.focalPoint, transform: { ...DEFAULT_TRANSFORM } })).toBe(true);
   });
 });
 

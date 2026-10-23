@@ -1,10 +1,4 @@
-import type {
-  DatOperation,
-  ExtendBackgroundMode,
-  FocalPoint,
-  ProfileSettings,
-  TransformSettings,
-} from "../types";
+import type { FocalPoint, ProfileSettings, TransformSettings } from "../types";
 
 const DEFAULT_FOCAL: FocalPoint = { x: 0.5, y: 0.5 };
 
@@ -83,42 +77,6 @@ export function cssCropBox(transform: TransformSettings): { width: number; heigh
   return { width: width as number, height: height as number };
 }
 
-export function lockToAspect(transform: TransformSettings, aspect: string | null): TransformSettings {
-  const next = { ...transform, aspect };
-  if (!aspect) return next;
-  const parsed = parseAspect(aspect);
-  if (!parsed) return next;
-  const width = POSITIVE(next.width);
-  const height = POSITIVE(next.height);
-  if (width) {
-    return { ...next, width, height: Math.round((width * parsed.h) / parsed.w) };
-  }
-  if (height) {
-    return { ...next, width: Math.round((height * parsed.w) / parsed.h), height };
-  }
-  const defaultWidth = 1200;
-  return {
-    ...next,
-    width: defaultWidth,
-    height: Math.round((defaultWidth * parsed.h) / parsed.w),
-  };
-}
-
-/** Scale a box so the shorter side is at least `minSide`; the longer side stays proportional. */
-export function scaleToMinSide(
-  width: number,
-  height: number,
-  minSide = 64
-): { width: number; height: number } {
-  const w = Math.max(1, width);
-  const h = Math.max(1, height);
-  const scale = minSide / Math.min(w, h);
-  return {
-    width: Math.max(minSide, Math.round(w * scale)),
-    height: Math.max(minSide, Math.round(h * scale)),
-  };
-}
-
 export function fitPreviewBox(
   transform: TransformSettings,
   maxWidth = 520,
@@ -134,16 +92,6 @@ export function fitPreviewBox(
   };
 }
 
-/** True when the on-screen crop frame is 1:1 with the configured width/height. */
-export function previewIsToScale(fitted: {
-  width: number;
-  height: number;
-  sourceWidth: number;
-  sourceHeight: number;
-}): boolean {
-  return fitted.width === fitted.sourceWidth && fitted.height === fitted.sourceHeight;
-}
-
 function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
@@ -154,56 +102,10 @@ function appendQuery(baseUrl: string, query: string): string {
   return `${baseUrl}${hasQuery ? "&" : "?"}${query}`;
 }
 
-function gravityFromFocal(focal: FocalPoint): string {
-  const col = focal.x < 1 / 3 ? "left" : focal.x > 2 / 3 ? "right" : "";
-  const row = focal.y < 1 / 3 ? "top" : focal.y > 2 / 3 ? "bottom" : "";
-  return `${row}${col}` || "center";
-}
-
-/**
- * Map our Transform type to a Bynder DAT `io` operation.
- * Fit uses `extend` (letterbox). Anything else, including a legacy `scale`, uses `fill`.
- */
-export function datIoOperation(operation: string | null | undefined): "fill" | "extend" | "crop" {
-  if (operation === "fit") return "extend";
-  if (operation === "crop") return "crop";
-  return "fill";
-}
-
-/** DAT `background:` value for Fit/extend. Always set — Bynder defaults to white without it. */
-export function resolveExtendBackground(transform: {
-  extendBackground?: string | null;
-  extendBackgroundColor?: string | null;
-}): string {
-  const mode = transform.extendBackground ?? "auto";
-  if (mode === "transparent") return "00000000";
-  if (mode === "black") return "000000";
-  if (mode === "white") return "ffffff";
-  if (mode === "custom") {
-    const hex = String(transform.extendBackgroundColor ?? "")
-      .trim()
-      .replace(/^#/, "")
-      .toLowerCase();
-    if (/^[0-9a-f]{6}([0-9a-f]{2})?$/.test(hex)) return hex;
-    return "auto";
-  }
-  return "auto";
-}
-
-function buildIoParam(
-  operation: string,
-  width?: number,
-  height?: number,
-  gravity?: string,
-  background?: string
-): string {
-  const parts = [`transform:${datIoOperation(operation)}`];
+function buildIoParam(width?: number, height?: number): string {
+  const parts = ["transform:fill"];
   if (width) parts.push(`width:${width}`);
   if (height) parts.push(`height:${height}`);
-  if (gravity) parts.push(`gravity:${gravity}`);
-  if (datIoOperation(operation) === "extend") {
-    parts.push(`background:${background || "auto"}`);
-  }
   return `io=${parts.join(",")}`;
 }
 
@@ -213,12 +115,9 @@ export function composeDatQuery(options: {
   transform: TransformSettings;
 }): string {
   const { width, height } = resolveDimensions(options.transform);
-  const operation = options.transform.operation || "fill";
   const focal = options.focalPoint ? normalizeFocalPoint(options.focalPoint) : null;
-  const gravity = operation === "crop" && focal ? gravityFromFocal(focal) : undefined;
-  const background = operation === "fit" ? resolveExtendBackground(options.transform) : undefined;
-  const fragments: string[] = [buildIoParam(operation, width, height, gravity, background)];
-  if (focal && operation !== "fit") fragments.push(`focuspoint=${focal.x},${focal.y}`);
+  const fragments: string[] = [buildIoParam(width, height)];
+  if (focal) fragments.push(`focuspoint=${focal.x},${focal.y}`);
   const format = options.transform.format;
   if (format) fragments.push(`format=${format}`);
   const quality = POSITIVE(options.transform.quality);
@@ -226,12 +125,9 @@ export function composeDatQuery(options: {
   return fragments.join("&");
 }
 
-/** The author's per-viewport choices, as saved on the entry. */
+/** Focal point for one DAT request. A missing point is the center. */
 export interface DatCrop {
   focalPoint?: FocalPoint | null;
-  operation?: DatOperation | null;
-  extendBackground?: ExtendBackgroundMode | null;
-  extendBackgroundColor?: string | null;
 }
 
 /**
@@ -250,18 +146,15 @@ export function datQueryForWidth(
     if (profile.format !== "png") fragments.push(`quality=${Math.min(100, Math.max(1, Math.round(profile.quality)))}`);
     return fragments.join("&");
   }
-  const operation = crop.operation === "fit" ? "fit" : "fill";
   return composeDatQuery({
     focalPoint: crop.focalPoint ?? DEFAULT_FOCAL,
     transform: {
-      operation,
+      operation: "fill",
       width: w,
       height: Math.max(1, Math.round((w * parsed.h) / parsed.w)),
       aspect: profile.aspectRatio,
       format: profile.format,
       quality: profile.quality,
-      extendBackground: crop.extendBackground,
-      extendBackgroundColor: crop.extendBackgroundColor,
     },
   });
 }

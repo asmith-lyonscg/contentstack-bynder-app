@@ -5,6 +5,7 @@ import { MarketplaceAppProvider } from "./common/providers/MarketplaceAppProvide
 
 const CustomField = lazy(() => import("./locations/CustomField/CustomField"));
 const AppConfig = lazy(() => import("./locations/AppConfig/AppConfig"));
+const ContentTypeSidebar = lazy(() => import("./locations/ContentTypeSidebar/ContentTypeSidebar"));
 const Home = lazy(() => import("./locations/Home/Home"));
 const PickerPopup = lazy(() => import("./locations/PickerPopup/PickerPopup"));
 
@@ -45,6 +46,22 @@ function App() {
             element={
               <MarketplaceAppProvider>
                 <AppConfig />
+              </MarketplaceAppProvider>
+            }
+          />
+          <Route
+            path="/content-type-sidebar"
+            element={
+              <MarketplaceAppProvider whenUnavailable={<ContentTypeSidebar />}>
+                <ContentTypeSidebar />
+              </MarketplaceAppProvider>
+            }
+          />
+          <Route
+            path="/content-type-sidebar.html"
+            element={
+              <MarketplaceAppProvider whenUnavailable={<ContentTypeSidebar />}>
+                <ContentTypeSidebar />
               </MarketplaceAppProvider>
             }
           />

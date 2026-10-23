@@ -38,7 +38,7 @@ describe("mergeOriginalSizes", () => {
   };
 
   it("lists images that have no original size and skips ones that already do", () => {
-    expect(missingOriginalSizeIds([asset, { ...asset, id: "known", originalAssetWidth: 10, originalAssetHeight: 10 }])).toEqual([
+    expect(missingOriginalSizeIds([asset, { ...asset, id: "known", origWidth: 10, origHeight: 10 }])).toEqual([
       asset.id,
     ]);
   });
@@ -49,10 +49,10 @@ describe("mergeOriginalSizes", () => {
       ["known", { width: 1, height: 1 }],
     ]);
     const merged = mergeOriginalSizes(
-      [asset, { ...asset, id: "known", originalAssetWidth: 10, originalAssetHeight: 20, aspectRatio: "1:2" }],
+      [asset, { ...asset, id: "known", origWidth: 10, origHeight: 20 }],
       sizes
     );
-    expect(merged?.[0]).toMatchObject({ originalAssetWidth: 5472, originalAssetHeight: 3648, aspectRatio: "3:2" });
-    expect(merged?.[1]).toMatchObject({ originalAssetWidth: 10, originalAssetHeight: 20 });
+    expect(merged?.[0]).toMatchObject({ origWidth: 5472, origHeight: 3648 });
+    expect(merged?.[1]).toMatchObject({ origWidth: 10, origHeight: 20 });
   });
 });
