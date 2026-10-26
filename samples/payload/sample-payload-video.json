@@ -17,7 +17,7 @@
       "origWidth": 1920,
       "origHeight": 1080,
       "video": {
-        "autoplay": false,
+        "autoplay": true,
         "muted": true,
         "controls": true,
         "loop": false,

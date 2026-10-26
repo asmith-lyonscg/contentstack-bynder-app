@@ -589,11 +589,11 @@ describe("resolveSiblingAsset", () => {
 });
 
 describe("resolveVideoDefaults", () => {
-  it("defaults to controls on and the other playback flags off", async () => {
+  it("defaults to autoplay, mute, and controls on, and loop off", async () => {
     const { resolveVideoDefaults } = await import("./fieldConfig");
     expect(resolveVideoDefaults({}, {})).toEqual({
-      autoplay: false,
-      muted: false,
+      autoplay: true,
+      muted: true,
       controls: true,
       loop: false,
       controlsTheme: "light",

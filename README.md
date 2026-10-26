@@ -202,7 +202,7 @@ Add one JSON custom field. A Group around it is optional.
   "type": ["video"],
   "desktopMobileMode": false,
   "video": {
-    "autoplay": false,
+    "autoplay": true,
     "muted": true,
     "controls": true,
     "loop": false,
@@ -309,7 +309,7 @@ Field **Config Parameter** unless the row says App Config. A field key replaces 
 | `suppressMetadata` | `boolean` | `false` | | Drop `name` and `webImage` from the saved JSON. Keeps `id`, `type`, `transformBaseUrl`, crop fields, and alt text. Use this when an entry will not save because the JSON field is over 10KB. Example: `true` |
 | `maxNumberOfAssets` | `number` | `1` | `advanced.max_limit` | Cap on selected assets. `1` is Single Select. Values above 1 use Multi Select. Example: `3` |
 | `compactLanguage` | `string` | `en_US` | | Compact View locale. Example: `"en_US"` |
-| `video` | `object` | controls on; autoplay, mute, and loop off; `controlsTheme` `light`; `showControlsTheme` true | `videoAutoplay`, `videoMuted`, `videoControls`, `videoLoop` | Defaults for Autoplay, Mute, Controls, and Loop, plus `controlsTheme` (`"light"` or `"dark"`). Light controls are for dark content behind the player; dark controls are for light content. `showControlsTheme: false` hides that toggle. The playback flags and `controlsTheme` save on the asset as `video`. A missing `controlsTheme` means light. Example: `{ "controls": true, "controlsTheme": "light", "showControlsTheme": true }` |
+| `video` | `object` | autoplay, mute, and controls on; loop off; `controlsTheme` `light`; `showControlsTheme` true | `videoAutoplay`, `videoMuted`, `videoControls`, `videoLoop` | Defaults for Autoplay, Mute, Controls, and Loop, plus `controlsTheme` (`"light"` or `"dark"`). Light controls are for dark content behind the player; dark controls are for light content. `showControlsTheme: false` hides that toggle. The playback flags and `controlsTheme` save on the asset as `video`. A missing `controlsTheme` means light. Example: `{ "controls": true, "controlsTheme": "light", "showControlsTheme": true }` |
 | `additionalFields` | `additionalField[]` | none | | Extra author inputs. Each item is `{ "property", "type", "label" }` with `type` `"string"`, `"number"`, or `"boolean"`. Values save under `additional`. An invalid list replaces the custom field with a red error. |
 | `compactViewConfig` | `object` | images and videos | `custom_settings.compact_view_options` | [Universal Compact View](https://developers.bynder.com/universal-compact-view) props we pass through. Portal URL, callbacks, and `mode` are not taken from here. |
 | `custom_settings.dat_settings` | `object` | omitted | | Marketplace DAT presets. `default` becomes Compact View `defaultImageDerivativeName`. |
@@ -381,7 +381,7 @@ The image samples are the same two Bynder files under three profiles. The video 
 | [`sample-payload-large-hero.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-large-hero.json) | `largeHero`, desktop `16:9`, mobile `5:3` |
 | [`sample-payload-split-left-right.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-split-left-right.json) | `splitLeftRight`, desktop `7:4`, mobile `16:9` |
 | [`sample-payload-custom.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-custom.json) | `id` `"custom"`, desktop `2:1`, mobile `3:2` |
-| [`sample-payload-video.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-video.json) | No crop. `video.controlsTheme` is `"dark"`, with autoplay off, muted on, controls on, and loop off. `webImage.url` is the file |
+| [`sample-payload-video.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-video.json) | No crop. `video.controlsTheme` is `"dark"`, with autoplay on, muted on, controls on, and loop off. `webImage.url` is the file |
 | [`sample-payload-document.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-document.json) | Browser `url`, direct `downloadUrl`, and `thumbnail`. The site chooses which to render |
 
 #### Sample React handler

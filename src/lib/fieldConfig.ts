@@ -427,8 +427,8 @@ function pickVideoFlag(
 /** Defaults for a newly picked video. Field config wins over App Config. */
 export function resolveVideoDefaults(fieldConfig: unknown, appConfig: unknown): VideoPlayback {
   return {
-    autoplay: pickVideoFlag(fieldConfig, appConfig, "autoplay", "videoAutoplay", false),
-    muted: pickVideoFlag(fieldConfig, appConfig, "muted", "videoMuted", false),
+    autoplay: pickVideoFlag(fieldConfig, appConfig, "autoplay", "videoAutoplay", true),
+    muted: pickVideoFlag(fieldConfig, appConfig, "muted", "videoMuted", true),
     controls: pickVideoFlag(fieldConfig, appConfig, "controls", "videoControls", true),
     loop: pickVideoFlag(fieldConfig, appConfig, "loop", "videoLoop", false),
     controlsTheme: pickControlsTheme(fieldConfig, appConfig),

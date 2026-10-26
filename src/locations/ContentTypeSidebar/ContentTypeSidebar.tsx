@@ -33,7 +33,7 @@ const COMPLEX_FIELD = `{
   "defaultProfile": "banner",
   "allowCustomAspect": true,
   "video": {
-    "autoplay": false,
+    "autoplay": true,
     "muted": true,
     "controls": true,
     "loop": false,
@@ -81,7 +81,7 @@ const KEYS: { key: string; type: string; defaultValue: string }[] = [
   { key: "maxNumberOfAssets", type: "number", defaultValue: "1" },
   { key: "suppressMetadata", type: "boolean", defaultValue: "false" },
   { key: "compactLanguage", type: "string", defaultValue: "en_US" },
-  { key: "video", type: "object", defaultValue: "controls: true, controlsTheme: light" },
+  { key: "video", type: "object", defaultValue: "autoplay: true, muted: true, controls: true, controlsTheme: light" },
   { key: "additionalFields", type: "object[]", defaultValue: "—" },
   { key: "compactViewConfig", type: "object", defaultValue: "—" },
 ];
