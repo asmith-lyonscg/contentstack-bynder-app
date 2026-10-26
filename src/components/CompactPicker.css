@@ -446,6 +446,46 @@
   gap: 2px;
 }
 
+.copy-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.copy-menu-panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 4px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 148px;
+  padding: 4px;
+  border: 1px solid #d4deee;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(22, 24, 35, 0.16);
+}
+
+.copy-menu-panel button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #212121;
+  font: 600 12px/1.2 Inter, system-ui, sans-serif;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.copy-menu-panel button:hover {
+  background: #f3f5fb;
+}
+
+.asset-preview:has(.copy-menu.is-open) .asset-caption {
+  opacity: 1;
+  visibility: visible;
+}
+
 .copy-feedback {
   margin-left: 6px;
   font: 600 12px/1 Inter, system-ui, sans-serif;
@@ -577,10 +617,20 @@
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 
+.confirm-dialog h2 {
+  margin: 0 0 8px;
+  font: 700 18px/1.3 Inter, system-ui, sans-serif;
+  color: #9b2c2c;
+}
+
 .confirm-dialog p {
   margin: 0;
   font: 14px/1.45 Inter, system-ui, sans-serif;
   color: #212121;
+}
+
+.confirm-dialog.is-block {
+  border-top: 4px solid #c0392b;
 }
 
 .confirm-actions {

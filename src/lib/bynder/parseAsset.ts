@@ -444,20 +444,13 @@ function slimDocumentAsset(
   const fileUrl =
     resolveDocumentFileUrl(raw) ??
     (typeof asset.url === "string" && asset.url ? asset.url : undefined);
-  if (fileUrl) {
+    if (fileUrl) {
     const view = stripBynderDownloadParam(fileUrl);
     next.url = view;
-    if (asset.download === true) {
-      next.download = true;
-      next.downloadUrl = withBynderDownloadParam(view);
-    }
-    if (asset.includeThumbnail === false) {
-      next.includeThumbnail = false;
-    } else {
-      const stored = typeof asset.thumbnail === "string" ? asset.thumbnail : "";
-      const thumb = stored || documentThumbnailUrl({ url: view, name: parsed.name });
-      if (thumb) next.thumbnail = thumb;
-    }
+    next.downloadUrl = withBynderDownloadParam(view);
+    const stored = typeof asset.thumbnail === "string" ? asset.thumbnail : "";
+    const thumb = stored || documentThumbnailUrl({ url: view, name: parsed.name });
+    if (thumb) next.thumbnail = thumb;
   }
   const additional = slimAuthorAdditional(asset, options?.additionalProperties);
   if (additional) next.additional = additional;

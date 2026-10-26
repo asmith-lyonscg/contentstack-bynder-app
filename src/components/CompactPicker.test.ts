@@ -159,6 +159,6 @@ describe("CompactPicker actions column", () => {
           assets: [{ ...image, id: "brief", type: "DOCUMENT", sourceUrl: "https://cdn.example/brief.pdf" }],
         })
       )
-    ).toEqual(["Document settings", "Preview", "Open in Bynder", "Change Asset", "Remove"]);
+    ).toEqual(["Preview", "Open in Bynder", "Copy a document URL", "Change Asset", "Remove"]);
   });
 });

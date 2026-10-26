@@ -754,17 +754,7 @@ export default function CustomField() {
   const onFocusAsset = useCallback(
     (id: string, viewport?: ViewportKind) => {
       const parsed = assets.find((item) => item.id === id);
-      if (!parsed) return;
-      if (isDocumentAsset(parsed)) {
-        const source = settingsRef.current;
-        if (id === focused?.id) {
-          setEditorOpen((open) => !open);
-          return;
-        }
-        setEditorOpen(true);
-        persist({ ...stashActiveCrop(source, focused?.id), activeAssetId: id, activeViewport: undefined });
-        return;
-      }
+      if (!parsed || isDocumentAsset(parsed)) return;
       const source = settingsRef.current;
       const currentViewport = resolveActiveViewport(source);
       const nextViewport =
@@ -979,25 +969,21 @@ export default function CustomField() {
           ...(keepMobile ? { mobile: asset.mobile, differentMobileAsset: asset.differentMobileAsset } : {}),
         };
       });
-      const selectable = !isDocumentAsset(parsed);
-      const wasFocused = source.activeAssetId === rowId || source.activeAssetId === saved.id;
+      const document = isDocumentAsset(parsed);
       setAssets((current) => current.map((item) => (item.id === rowId ? parsed : item)));
       persist({
         ...stashed,
         assets: nextAssets,
-        activeAssetId: selectable ? saved.id : wasFocused ? undefined : source.activeAssetId,
-        ...(selectable
-          ? {
+        activeAssetId: document ? undefined : saved.id,
+        ...(document
+          ? { activeViewport: undefined }
+          : {
               activeViewport: "desktop" as const,
               focalPoint,
               transform: seeded.transform ?? defaultTransform(),
-            }
-          : wasFocused
-            ? { activeViewport: undefined }
-            : {}),
+            }),
       });
-      if (selectable) setEditorOpen(true);
-      else if (wasFocused) setEditorOpen(false);
+      if (!document) setEditorOpen(true);
     },
     [cropConfig, persist, persistPolicy.omitName, persistPolicy.omitWebImage]
   );
@@ -1150,8 +1136,7 @@ export default function CustomField() {
   }, [assetReady, customField, settings]);
 
   const panel = focused ?? panelAsset;
-  const showCropChrome = Boolean(panel) && !isDocumentAsset(focused ?? panel);
-  const showDocumentChrome = Boolean(focused && focusedIsDocument);
+  const showCropChrome = Boolean(panel) && !isDocumentAsset(panel);
   const hasDatUrl = Boolean(panel?.transformBaseUrl);
   const datActive = hasDatUrl;
   const profileOptions = profileSelectOptions(cropConfig, desktopMobileMode);
@@ -1236,11 +1221,6 @@ export default function CustomField() {
       else delete next.additional;
       return next;
     });
-  };
-
-  const patchDocument = (update: Partial<SavedBynderAsset>) => {
-    if (!focusedIsDocument) return;
-    patchFocusedAsset((asset) => ({ ...asset, ...update }));
   };
 
   const patchVideo = (key: keyof VideoPlayback, value: boolean | "light" | "dark") => {
@@ -1393,46 +1373,6 @@ export default function CustomField() {
             ])
         )}
       />
-
-      {showDocumentChrome && focusedSaved ? (
-        <div className="document-settings">
-          <h3>Document settings</h3>
-          <fieldset className="video-options">
-            <legend>Link</legend>
-            <label className="video-option">
-              <input
-                type="radio"
-                name={`document-link-${focused?.id ?? "doc"}`}
-                checked={focusedSaved.download !== true}
-                onChange={() => patchDocument({ download: undefined })}
-              />
-              Open in browser
-            </label>
-            <label className="video-option">
-              <input
-                type="radio"
-                name={`document-link-${focused?.id ?? "doc"}`}
-                checked={focusedSaved.download === true}
-                onChange={() => patchDocument({ download: true })}
-              />
-              Download
-            </label>
-          </fieldset>
-          <fieldset className="video-options">
-            <legend>Thumbnail</legend>
-            <label className="video-option">
-              <input
-                type="checkbox"
-                checked={focusedSaved.includeThumbnail !== false}
-                onChange={(event) =>
-                  patchDocument({ includeThumbnail: event.target.checked ? undefined : false })
-                }
-              />
-              Include thumbnail
-            </label>
-          </fieldset>
-        </div>
-      ) : null}
 
       {showCropChrome ? (
       <div className={`crop-editor-collapse${focused && !focusedIsDocument ? " is-open" : ""}`} aria-hidden={!focused || focusedIsDocument}>

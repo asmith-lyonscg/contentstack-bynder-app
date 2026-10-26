@@ -253,7 +253,12 @@ describe("normalizeCompactAssets", () => {
       type: "DOCUMENT",
       url: "https://assets.example/m/pdf-guid/original/T342703-CZLHD_IntegratedDiverter_Infographic.pdf",
     });
-    expect(normalized).not.toHaveProperty("downloadUrl");
+    expect(normalized).toMatchObject({
+      downloadUrl:
+        "https://assets.example/m/pdf-guid/original/T342703-CZLHD_IntegratedDiverter_Infographic.pdf?download=true",
+    });
+    expect(normalized).not.toHaveProperty("download");
+    expect(normalized).not.toHaveProperty("includeThumbnail");
     expect(normalized).not.toHaveProperty("extensions");
     expect(normalized).not.toHaveProperty("webImage");
     expect(normalized).not.toHaveProperty("transform");

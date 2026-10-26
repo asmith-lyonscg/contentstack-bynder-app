@@ -6,6 +6,9 @@ import {
   isDocumentAsset,
   isImageAsset,
   isVideoAsset,
+  parseBynderAssets,
+  stripBynderDownloadParam,
+  withBynderDownloadParam,
 } from "../lib/bynder/parseAsset";
 import { selectedAssetsForPicker } from "../lib/bynder/preselect";
 import { ImageSpinner } from "./ImageSpinner";
@@ -187,10 +190,78 @@ export function AssetToolbar({
   );
 }
 
+function documentCopyLinks(asset: ParsedBynderAsset): { label: string; url: string }[] {
+  const view = asset.sourceUrl ? stripBynderDownloadParam(asset.sourceUrl) : "";
+  const thumb =
+    asset.thumbnail ||
+    documentThumbnailUrl({ sourceUrl: asset.sourceUrl, url: asset.sourceUrl, name: asset.name }) ||
+    "";
+  return [
+    { label: "Thumbnail", url: thumb },
+    { label: "Browser link", url: view },
+    { label: "Direct download", url: view ? withBynderDownloadParam(view) : "" },
+  ].filter((item) => item.url);
+}
+
+function CopyMenu({ links }: { links: { label: string; url: string }[] }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const available = links.filter((item) => item.url);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  useEffect(() => {
+    if (!copied) return undefined;
+    const timer = window.setTimeout(() => setCopied(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  if (!available.length) return null;
+  return (
+    <span className={open ? "copy-menu is-open" : "copy-menu"} ref={rootRef}>
+      <IconButton label="Copy a document URL" onClick={() => setOpen((current) => !current)}>
+        <CopyIcon />
+      </IconButton>
+      {open ? (
+        <span className="copy-menu-panel" role="menu">
+          {available.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                void navigator.clipboard.writeText(item.url).then(
+                  () => {
+                    setCopied(true);
+                    setOpen(false);
+                  },
+                  () => undefined
+                );
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </span>
+      ) : null}
+      {copied ? <span className="copy-feedback">Copied</span> : null}
+    </span>
+  );
+}
+
 function AssetIconSet({
   previewUrl,
   bynderUrl,
   copyUrl,
+  copyLinks,
   changeLabel,
   onChange,
   onCopied,
@@ -198,6 +269,7 @@ function AssetIconSet({
   previewUrl?: string;
   bynderUrl?: string;
   copyUrl?: string;
+  copyLinks?: { label: string; url: string }[];
   changeLabel: string;
   onChange: () => void;
   onCopied?: () => void;
@@ -220,6 +292,7 @@ function AssetIconSet({
       >
         <ExternalIcon />
       </IconButton>
+      {copyLinks?.length ? <CopyMenu links={copyLinks} /> : null}
       {copyUrl !== undefined ? (
         <IconButton
           label="Copy URL of the transformed Bynder asset."
@@ -306,6 +379,7 @@ export function CompactPicker({
   mobileFiles,
 }: CompactPickerProps) {
   const [openError, setOpenError] = useState<string>();
+  const [blockedMessage, setBlockedMessage] = useState<string>();
   const [confirm, setConfirm] = useState<{ message: string; confirmLabel: string; action: () => void }>();
   const [dragId, setDragId] = useState<string>();
   const [ordered, setOrdered] = useState(assets);
@@ -392,9 +466,11 @@ export function CompactPicker({
     const compactPayload = pickingOne ? { ...compact, mode: "SingleSelect" as const, maxLimit: 1 } : { ...compact };
     if (mobileForId) {
       compactPayload.assetTypes = ["IMAGE"];
-      if (compactPayload.assetFilter) {
-        compactPayload.assetFilter = { ...compactPayload.assetFilter, predefinedAssetType: ["IMAGE"] };
-      }
+      compactPayload.assetFilter = {
+        ...(compactPayload.assetFilter ?? {}),
+        showToolbar: compactPayload.assetFilter?.showToolbar ?? true,
+        predefinedAssetType: ["IMAGE"],
+      };
     }
     const mobileFile = mobileForId ? mobileFiles?.[mobileForId] : undefined;
     const source = replaceDesktopId
@@ -451,7 +527,19 @@ export function CompactPicker({
             return { id: record.id, databaseId: record.databaseId };
           })
         );
-        if (mobileForId && onSelectMobile) onSelectMobile(mobileForId, data.assets, data.additionalInfo);
+        if (mobileForId && onSelectMobile) {
+          const chosen = parseBynderAssets(data.assets)[0];
+          if (!chosen || !isImageAsset(chosen)) {
+            const label = chosen && isDocumentAsset(chosen)
+              ? "this file is a PDF or other document."
+              : chosen && isVideoAsset(chosen)
+                ? "this file is a video."
+                : "this file is not an image.";
+            setBlockedMessage(label);
+            return;
+          }
+          onSelectMobile(mobileForId, data.assets, data.additionalInfo);
+        }
         else if (replaceDesktopId && onReplaceDesktop) onReplaceDesktop(replaceDesktopId, data.assets, data.additionalInfo);
         else onSelect(data.assets, data.additionalInfo);
       }
@@ -579,7 +667,7 @@ export function CompactPicker({
               const video = isVideoAsset(asset);
               const document = isDocumentAsset(asset);
               const image = isImageAsset(asset);
-              const selectable = true;
+              const selectable = !document;
               const rowFocused = focused && selectable;
               const showMobile = showMobileColumn && image;
               const mobileAssetUnsupported = showMobileColumn && !image;
@@ -679,7 +767,7 @@ export function CompactPicker({
                     <ThumbCaption caption={desktopThumb?.caption}>
                       {selectable ? (
                         <IconButton
-                          label={document ? "Document settings" : showMobile ? "Edit desktop crop" : "Edit"}
+                          label={showMobile ? "Edit desktop crop" : "Edit"}
                           onClick={() => onFocus(asset.id, showMobile ? "desktop" : undefined)}
                         >
                           <EditIcon />
@@ -688,6 +776,7 @@ export function CompactPicker({
                       <AssetIconSet
                         previewUrl={asset.sourceUrl}
                         bynderUrl={bynderMediaUrl(portalUrl, asset)}
+                        copyLinks={document ? documentCopyLinks(asset) : undefined}
                         changeLabel={pairActions ? "Change desktop asset" : reselectLabel}
                         onChange={() => (pairActions ? openPicker(undefined, asset.id) : openPicker())}
                       />
@@ -824,16 +913,14 @@ export function CompactPicker({
                     {!showMobileColumn ? (
                       <>
                         {selectable ? (
-                          <IconButton
-                            label={document ? "Document settings" : "Edit"}
-                            onClick={() => onFocus(asset.id)}
-                          >
+                          <IconButton label="Edit" onClick={() => onFocus(asset.id)}>
                             <EditIcon />
                           </IconButton>
                         ) : null}
                         <AssetIconSet
                           previewUrl={asset.sourceUrl}
                           bynderUrl={bynderMediaUrl(portalUrl, asset)}
+                          copyLinks={document ? documentCopyLinks(asset) : undefined}
                           changeLabel={reselectLabel}
                           onChange={() => openPicker()}
                         />
@@ -943,6 +1030,28 @@ export function CompactPicker({
         </p>
       ) : null}
       {openError ? <p className="compact-open-error">{openError}</p> : null}
+      {blockedMessage ? (
+        <div className="confirm-backdrop" role="presentation">
+          <div
+            className="confirm-dialog is-block"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="mobile-reject-title"
+            aria-describedby="mobile-reject-message"
+          >
+            <h2 id="mobile-reject-title">This file cannot be the mobile asset</h2>
+            <p id="mobile-reject-message">
+              Because the desktop asset type is <b>image</b>, {blockedMessage} Bynder lists some PDFs under Images
+              because they also have a JPG preview. <b>You must choose an image.</b>
+            </p>
+            <div className="confirm-actions">
+              <button type="button" className="is-danger" autoFocus onClick={() => setBlockedMessage(undefined)}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {confirm ? (
         <div className="confirm-backdrop" role="presentation" onClick={() => setConfirm(undefined)}>
           <div

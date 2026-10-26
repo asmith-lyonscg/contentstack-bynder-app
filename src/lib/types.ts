@@ -150,18 +150,11 @@ export interface SavedBynderAsset extends AssetCropSettings, OriginalAssetSize {
   /** Document / PDF: public file URL for viewing (no `download` param). */
   url?: string;
   /**
-   * Document / PDF: author chose a direct download. `downloadUrl` is `url` with `download=true`.
-   * Omitted means the link opens in the browser.
-   */
-  download?: boolean;
-  /**
-   * Document / PDF: same as `url` with Bynder `download=true`. Present only when `download` is true.
+   * Document / PDF: `url` with Bynder `download=true`. The site chooses a browser link or a download.
    */
   downloadUrl?: string;
-  /** Document / PDF: Bynder thumbnail. Omitted when the author turns thumbnails off. */
+  /** Document / PDF: Bynder thumbnail. The site chooses whether to show it. */
   thumbnail?: string;
-  /** Document / PDF: false stores a text link and leaves `thumbnail` off the payload. */
-  includeThumbnail?: boolean;
   /** Web playback flags. Present on video assets. */
   video?: VideoPlayback;
   /**
