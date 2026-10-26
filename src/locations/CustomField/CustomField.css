@@ -255,6 +255,15 @@
   gap: 18px;
 }
 
+.document-settings {
+  margin-top: 16px;
+}
+
+.document-settings h3 {
+  margin: 0;
+  font: 600 14px/1.3 Inter, system-ui, sans-serif;
+}
+
 .video-options {
   display: flex;
   flex-direction: column;
@@ -281,6 +290,20 @@
 
 .video-option input {
   accent-color: #6c5ce7;
+}
+
+.video-theme {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 4px;
+}
+
+.video-theme-label {
+  flex: 1 0 100%;
+  font: 13px/1.4 Inter, system-ui, sans-serif;
+  color: #243044;
 }
 
 .additional-fields {

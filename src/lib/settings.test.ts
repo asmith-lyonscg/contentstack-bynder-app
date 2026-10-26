@@ -379,7 +379,34 @@ describe("stashActiveCrop", () => {
       name: "Spec sheet",
       type: "DOCUMENT",
       url: "https://cdn.example/m/hash/original/spec.pdf",
-      downloadUrl: "https://cdn.example/m/hash/original/spec.pdf?download=true",
     });
+  });
+
+  it("saves a document download link and thumbnail when the author asks for them", () => {
+    const current = emptySettings();
+    current.assets = [
+      {
+        id: "pdf-guid",
+        name: "Spec sheet",
+        type: "DOCUMENT",
+        url: "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/Spec.pdf",
+        download: true,
+      },
+    ];
+    const next = buildSettingsPayload(current, { assets: current.assets });
+    expect(next.assets?.[0]).toMatchObject({
+      url: "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/Spec.pdf",
+      download: true,
+      downloadUrl:
+        "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/Spec.pdf?download=true",
+      thumbnail:
+        "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/thumbnail/thul-Spec",
+    });
+    const textOnly = buildSettingsPayload(current, {
+      assets: [{ ...current.assets[0], download: undefined, includeThumbnail: false }],
+    });
+    expect(textOnly.assets?.[0]).not.toHaveProperty("thumbnail");
+    expect(textOnly.assets?.[0]).not.toHaveProperty("downloadUrl");
+    expect(textOnly.assets?.[0]?.includeThumbnail).toBe(false);
   });
 });

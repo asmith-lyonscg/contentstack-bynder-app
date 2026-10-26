@@ -9,6 +9,7 @@ import type {
   ProfileSettings,
   SavedBynderAsset,
   TransformSettings,
+  VideoControlsTheme,
   VideoPlayback,
   ViewportKind,
 } from "./types";
@@ -385,10 +386,30 @@ const RESERVED_ADDITIONAL_PROPERTIES = new Set([
   "downloadUrl",
 ]);
 
+function pickControlsTheme(fieldConfig: unknown, appConfig: unknown): VideoControlsTheme {
+  const fieldVideo = asRecord(asRecord(fieldConfig)?.video);
+  const appVideo = asRecord(asRecord(appConfig)?.video);
+  const raw = fieldVideo?.controlsTheme ?? appVideo?.controlsTheme;
+  return raw === "dark" ? "dark" : "light";
+}
+
+/** False hides the light/dark control toggle. The configured `controlsTheme` still applies. */
+export function showVideoControlsTheme(fieldConfig: unknown, appConfig: unknown): boolean {
+  const fieldVideo = asRecord(asRecord(fieldConfig)?.video);
+  const appVideo = asRecord(asRecord(appConfig)?.video);
+  return (
+    pickBool(fieldVideo, "showControlsTheme") ??
+    pickBool(fieldConfig, "showControlsTheme") ??
+    pickBool(appVideo, "showControlsTheme") ??
+    pickBool(appConfig, "showControlsTheme") ??
+    true
+  );
+}
+
 function pickVideoFlag(
   fieldConfig: unknown,
   appConfig: unknown,
-  key: keyof VideoPlayback,
+  key: "autoplay" | "muted" | "controls" | "loop",
   flatKey: string,
   fallback: boolean
 ): boolean {
@@ -410,6 +431,7 @@ export function resolveVideoDefaults(fieldConfig: unknown, appConfig: unknown): 
     muted: pickVideoFlag(fieldConfig, appConfig, "muted", "videoMuted", false),
     controls: pickVideoFlag(fieldConfig, appConfig, "controls", "videoControls", true),
     loop: pickVideoFlag(fieldConfig, appConfig, "loop", "videoLoop", false),
+    controlsTheme: pickControlsTheme(fieldConfig, appConfig),
   };
 }
 

@@ -201,7 +201,14 @@ Add one JSON custom field. A Group around it is optional.
 {
   "type": ["video"],
   "desktopMobileMode": false,
-  "video": { "autoplay": false, "muted": true, "controls": true, "loop": false }
+  "video": {
+    "autoplay": false,
+    "muted": true,
+    "controls": true,
+    "loop": false,
+    "controlsTheme": "light",
+    "showControlsTheme": true
+  }
 }
 ```
 
@@ -239,7 +246,7 @@ Author values save on each asset under `additional`.
 { "type": ["pdf"], "desktopMobileMode": false, "maxNumberOfAssets": 1 }
 ```
 
-Documents save identity plus two public file links. No crop, DAT, alt, or desktop/mobile pair. `url` opens the file. `downloadUrl` is the same URL with Bynder’s `download=true`. The authoring list does not store a thumbnail. For an `/asset/{id}/{file}.pdf` URL it requests `/asset/{id}/thumbnail/thul-{file}` while the field is open, and shows a document icon if that image fails. See [DELIVERY](#delivery) for the saved object.
+Documents save identity, a view `url`, and a `thumbnail` when Bynder’s `/asset/{id}/{file}` preview can be built. No crop, DAT, alt, or desktop/mobile pair. Select the document for **Document settings**. **Open in browser** keeps `url` without `download=true`. **Download** sets `"download": true` and adds `downloadUrl` (`url` with `download=true`). **Include thumbnail** is on by default. Turning it off saves `"includeThumbnail": false` and leaves `thumbnail` off the payload. The list still shows a preview while editing. The saved shape is [`sample-payload-document.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-document.json). A video’s saved `video` object, including `controlsTheme`, is [`sample-payload-video.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-video.json).
 
 **Images and videos, metadata stripped so a large list can stay under 10KB**
 
@@ -302,7 +309,7 @@ Field **Config Parameter** unless the row says App Config. A field key replaces 
 | `suppressMetadata` | `boolean` | `false` | | Drop `name` and `webImage` from the saved JSON. Keeps `id`, `type`, `transformBaseUrl`, crop fields, and alt text. Use this when an entry will not save because the JSON field is over 10KB. Example: `true` |
 | `maxNumberOfAssets` | `number` | `1` | `advanced.max_limit` | Cap on selected assets. `1` is Single Select. Values above 1 use Multi Select. Example: `3` |
 | `compactLanguage` | `string` | `en_US` | | Compact View locale. Example: `"en_US"` |
-| `video` | `object` | controls on; autoplay, mute, and loop off | `videoAutoplay`, `videoMuted`, `videoControls`, `videoLoop` | Default checked state for Autoplay, Mute, Controls, and Loop. Those four checkboxes always show. Saved on the asset as `video`. Example: `{ "autoplay": false, "muted": true, "controls": true, "loop": false }` |
+| `video` | `object` | controls on; autoplay, mute, and loop off; `controlsTheme` `light`; `showControlsTheme` true | `videoAutoplay`, `videoMuted`, `videoControls`, `videoLoop` | Defaults for Autoplay, Mute, Controls, and Loop, plus `controlsTheme` (`"light"` or `"dark"`). Light controls are for dark content behind the player; dark controls are for light content. `showControlsTheme: false` hides that toggle. The playback flags and `controlsTheme` save on the asset as `video`. A missing `controlsTheme` means light. Example: `{ "controls": true, "controlsTheme": "light", "showControlsTheme": true }` |
 | `additionalFields` | `additionalField[]` | none | | Extra author inputs. Each item is `{ "property", "type", "label" }` with `type` `"string"`, `"number"`, or `"boolean"`. Values save under `additional`. An invalid list replaces the custom field with a red error. |
 | `compactViewConfig` | `object` | images and videos | `custom_settings.compact_view_options` | [Universal Compact View](https://developers.bynder.com/universal-compact-view) props we pass through. Portal URL, callbacks, and `mode` are not taken from here. |
 | `custom_settings.dat_settings` | `object` | omitted | | Marketplace DAT presets. `default` becomes Compact View `defaultImageDerivativeName`. |
@@ -330,7 +337,7 @@ The entry stores no DAT URLs. It stores the profile snapshot and each asset’s 
 
 `profile` is `{ id, settings }`. `id` is the profile name. `settings.desktop` and `settings.mobile` are aspect-ratio strings. `settings` also has `quality` and `format`. **Customize** saves `id: "custom"`. With no profile, `id`, `desktop`, and `mobile` are omitted and the site uses `origWidth` / `origHeight`. `maxDimension` is on the snapshot only when it is not 2000.
 
-Each asset has `id`, `name`, `type`, `transformBaseUrl`, `alt`, `origWidth`, `origHeight`, and `operation` (`"fill"`). `focalPoint` is saved only when it is not `0.5`, `0.5`. Those pixels are the Bynder original. A video also stores `video` (`autoplay`, `muted`, `controls`, `loop`) and no focal point. Play `webImage.url` when it is present and leave that URL unchanged. A document stores `url` (view) and `downloadUrl` (download). `webImage` is saved only when an image has no `transformBaseUrl`. Configured `additionalFields` values are on `additional`.
+Each asset has `id`, `name`, `type`, `transformBaseUrl`, `alt`, `origWidth`, `origHeight`, and `operation` (`"fill"`). `focalPoint` is saved only when it is not `0.5`, `0.5`. Those pixels are the Bynder original. A video also stores `video` (`autoplay`, `muted`, `controls`, `loop`, `controlsTheme`) and no focal point. `controlsTheme` is `"light"` or `"dark"`. Light is the default. An older video that omits it is light. Play `webImage.url` when it is present and leave that URL unchanged. See [`sample-payload-video.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-video.json). A document stores `url` (open in the browser). `"download": true` also stores `downloadUrl`. `thumbnail` is the preview image unless `"includeThumbnail": false`. See [`sample-payload-document.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-document.json). `webImage` is saved only when an image has no `transformBaseUrl`. Configured `additionalFields` values are on `additional`.
 
 Mobile that still matches desktop is omitted. A mobile with its own focal point, or a different file, is `assets[n].mobile`. A different file also has its own `id`, `transformBaseUrl`, `origWidth`, `origHeight`, and `alt`.
 
@@ -365,15 +372,17 @@ Mobile that still matches desktop is omitted. A mobile with its own focal point,
 
 ### Sample files
 
-The same two Bynder files are saved under three profiles. A sample payload is the field value (`v`, `profile`, `assets`), not a full entry. The sample React handler turns a payload into a `<picture>`. The sample HTML output is the markup that handler returns.
+The image samples are the same two Bynder files under three profiles. The video and document samples are separate files. A sample payload is the field value (`v`, `profile`, `assets`), not a full entry. The sample React handler turns an image payload into a `<picture>`. Video and document HTML are not produced by that handler.
 
 #### Sample payload
 
-| File | Profile |
+| File | Saved as |
 |---|---|
 | [`sample-payload-large-hero.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-large-hero.json) | `largeHero`, desktop `16:9`, mobile `5:3` |
 | [`sample-payload-split-left-right.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-split-left-right.json) | `splitLeftRight`, desktop `7:4`, mobile `16:9` |
 | [`sample-payload-custom.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-custom.json) | `id` `"custom"`, desktop `2:1`, mobile `3:2` |
+| [`sample-payload-video.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-video.json) | No crop. `video.controlsTheme` is `"dark"`, with autoplay off, muted on, controls on, and loop off. `webImage.url` is the file |
+| [`sample-payload-document.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-document.json) | Opens in the browser (`url`) and includes `thumbnail`. `"download": true` adds `downloadUrl`. `"includeThumbnail": false` drops the thumbnail |
 
 #### Sample React handler
 
@@ -390,6 +399,8 @@ A centered focal point is omitted in the payload and requested as `focuspoint=0.
 | [`sample-html-large-hero.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-large-hero.html) | `sizes="100vw"`, desktop `img` 2000×1125 |
 | [`sample-html-split-left-right.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-split-left-right.html) | `sizes="40vw"`, desktop `img` 1280×731 |
 | [`sample-html-custom.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-custom.html) | `sizes="100vw"`, desktop `img` 2000×1000 |
+| [`sample-html-video.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-video.html) | `<video>` for the video payload. `data-controls-theme="dark"`. No DAT URL |
+| [`sample-html-document.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-document.html) | Linked thumbnail. Use `downloadUrl` when `download` is true, or a text link when `includeThumbnail` is false |
 
 Copy these and keep the layout so the imports still resolve:
 
@@ -432,4 +443,4 @@ const thumb = composeBynderImageUrl(value, { width: 400 });
 
 `alt` is `assets[].alt`. An empty string stays empty. Set CSS `object-position` from `objectPosition` so an asset that only has `webImage` uses the same focal point. With no `transformBaseUrl`, `buildBynderSources` returns `src` and `objectPosition` only. Without a profile, the image uses `origWidth` / `origHeight`. When those pixels were never recorded, the helper requests `io=transform:scale,width:W` and returns no `height`.
 
-Use the helper for `type: "IMAGE"`. For a video, use the stored `video` flags and do not build a DAT URL. For a document, use `url` and `downloadUrl`.
+Use the helper for `type: "IMAGE"`. For a video, play `webImage.url` with the stored `video` flags and do not build a DAT URL. `controlsTheme` `"light"` is for dark content behind the player; `"dark"` is for light content. See [`sample-html-video.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-video.html). For a document, link `thumbnail` to `url`, or to `downloadUrl` when `download` is true. With `includeThumbnail: false`, use a text link. See [`sample-html-document.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-document.html).

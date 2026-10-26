@@ -150,10 +150,18 @@ export interface SavedBynderAsset extends AssetCropSettings, OriginalAssetSize {
   /** Document / PDF: public file URL for viewing (no `download` param). */
   url?: string;
   /**
-   * Document / PDF: same as `url` with Bynder `download=true` so the browser downloads the file.
-   * Omitted for images and videos.
+   * Document / PDF: author chose a direct download. `downloadUrl` is `url` with `download=true`.
+   * Omitted means the link opens in the browser.
+   */
+  download?: boolean;
+  /**
+   * Document / PDF: same as `url` with Bynder `download=true`. Present only when `download` is true.
    */
   downloadUrl?: string;
+  /** Document / PDF: Bynder thumbnail. Omitted when the author turns thumbnails off. */
+  thumbnail?: string;
+  /** Document / PDF: false stores a text link and leaves `thumbnail` off the payload. */
+  includeThumbnail?: boolean;
   /** Web playback flags. Present on video assets. */
   video?: VideoPlayback;
   /**
@@ -189,6 +197,8 @@ export interface ParsedBynderAsset {
   type?: string;
   transformBaseUrl?: string;
   sourceUrl: string;
+  /** Stored document thumbnail, when the payload includes one. */
+  thumbnail?: string;
   width?: number;
   height?: number;
   fileSize?: number;
@@ -241,11 +251,15 @@ export interface AppInstallationConfig {
   profiles?: Record<string, RenderProfile>;
 }
 
+export type VideoControlsTheme = "light" | "dark";
+
 export interface VideoPlayback {
   autoplay: boolean;
   muted: boolean;
   controls: boolean;
   loop: boolean;
+  /** Player controls for the content behind the video. Omitted on older saves, which means light. */
+  controlsTheme?: VideoControlsTheme;
 }
 
 export type AdditionalFieldType = "string" | "number" | "boolean";

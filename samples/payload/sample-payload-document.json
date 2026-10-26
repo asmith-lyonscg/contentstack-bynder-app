@@ -1,0 +1,18 @@
+{
+  "v": 2,
+  "profile": {
+    "settings": {
+      "quality": 80,
+      "format": "webp"
+    }
+  },
+  "assets": [
+    {
+      "id": "24C6FBF2-3B38-4307-B2B8DA43A35BDF24",
+      "name": "T342703-CZLHD_IntegratedDiverter_Infographic",
+      "type": "DOCUMENT",
+      "url": "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/T342703-CZLHD_IntegratedDiverter_Infographic.pdf",
+      "thumbnail": "https://assets.deltafaucet.com/asset/24c6fbf2-3b38-4307-b2b8-da43a35bdf24/thumbnail/thul-T342703-CZLHD_IntegratedDiverter_Infographic"
+    }
+  ]
+}

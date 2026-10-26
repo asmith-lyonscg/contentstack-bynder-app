@@ -17,7 +17,8 @@ import field from "../payload/sample-payload-large-hero.json";
  * `STANDARD_WIDTHS` at `sizes="100vw"`. splitLeftRight passes
  * `[480, 640, 800, 960, 1280]` at `sizes="40vw"`.
  *
- * The HTML files in `samples/html-output/` are the markup this component returns.
+ * The image HTML files in `samples/html-output/` are the markup this component returns.
+ * Video and document payloads have their own HTML samples and are not pictures.
  * `width` and `height` on the `img` are the largest desktop request.
  * largeHero is 16:9, so that file is 2000×1125, and its mobile file (5:3) is
  * 2000×1200. custom (`profile.id` `"custom"`) is desktop 2:1 → 2000×1000 and

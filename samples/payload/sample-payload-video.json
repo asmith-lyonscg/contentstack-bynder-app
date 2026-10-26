@@ -1,0 +1,28 @@
+{
+  "v": 2,
+  "profile": {
+    "settings": {
+      "quality": 80,
+      "format": "webp"
+    }
+  },
+  "assets": [
+    {
+      "id": "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
+      "name": "Product launch",
+      "type": "VIDEO",
+      "webImage": {
+        "url": "https://assets.deltafaucet.com/asset/a1b2c3d4-e5f6-7890-abcd-ef1234567890/Product-launch.mp4"
+      },
+      "origWidth": 1920,
+      "origHeight": 1080,
+      "video": {
+        "autoplay": false,
+        "muted": true,
+        "controls": true,
+        "loop": false,
+        "controlsTheme": "dark"
+      }
+    }
+  ]
+}

@@ -579,7 +579,7 @@ export function CompactPicker({
               const video = isVideoAsset(asset);
               const document = isDocumentAsset(asset);
               const image = isImageAsset(asset);
-              const selectable = !document;
+              const selectable = true;
               const rowFocused = focused && selectable;
               const showMobile = showMobileColumn && image;
               const mobileAssetUnsupported = showMobileColumn && !image;
@@ -656,7 +656,12 @@ export function CompactPicker({
                       }}
                     >
                       {document ? (
-                        <DocumentThumb src={documentThumbnailUrl({ sourceUrl: asset.sourceUrl, name: asset.name })} />
+                        <DocumentThumb
+                          src={
+                            asset.thumbnail ||
+                            documentThumbnailUrl({ sourceUrl: asset.sourceUrl, url: asset.sourceUrl, name: asset.name })
+                          }
+                        />
                       ) : (
                         <ThumbImage
                           src={desktopThumb?.url ?? asset.sourceUrl}
@@ -674,7 +679,7 @@ export function CompactPicker({
                     <ThumbCaption caption={desktopThumb?.caption}>
                       {selectable ? (
                         <IconButton
-                          label={showMobile ? "Edit desktop crop" : "Edit"}
+                          label={document ? "Document settings" : showMobile ? "Edit desktop crop" : "Edit"}
                           onClick={() => onFocus(asset.id, showMobile ? "desktop" : undefined)}
                         >
                           <EditIcon />
@@ -819,7 +824,10 @@ export function CompactPicker({
                     {!showMobileColumn ? (
                       <>
                         {selectable ? (
-                          <IconButton label="Edit" onClick={() => onFocus(asset.id)}>
+                          <IconButton
+                            label={document ? "Document settings" : "Edit"}
+                            onClick={() => onFocus(asset.id)}
+                          >
                             <EditIcon />
                           </IconButton>
                         ) : null}

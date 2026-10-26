@@ -35,6 +35,7 @@ import {
   resolveCompactViewConfig,
   resolveCropConfig,
   resolveVideoDefaults,
+  showVideoControlsTheme,
   seedAssetCrop,
   withActiveProfile,
 } from "../../lib/fieldConfig";
@@ -333,6 +334,7 @@ export default function CustomField() {
     [fieldConfig, appConfig]
   );
   const videoDefaults = useMemo(() => resolveVideoDefaults(fieldConfig, appConfig), [fieldConfig, appConfig]);
+  const showControlsTheme = useMemo(() => showVideoControlsTheme(fieldConfig, appConfig), [fieldConfig, appConfig]);
   const additionalFields = useMemo(
     () => resolveAdditionalFields(fieldConfig, appConfig),
     [fieldConfig, appConfig]
@@ -752,7 +754,17 @@ export default function CustomField() {
   const onFocusAsset = useCallback(
     (id: string, viewport?: ViewportKind) => {
       const parsed = assets.find((item) => item.id === id);
-      if (!parsed || isDocumentAsset(parsed)) return;
+      if (!parsed) return;
+      if (isDocumentAsset(parsed)) {
+        const source = settingsRef.current;
+        if (id === focused?.id) {
+          setEditorOpen((open) => !open);
+          return;
+        }
+        setEditorOpen(true);
+        persist({ ...stashActiveCrop(source, focused?.id), activeAssetId: id, activeViewport: undefined });
+        return;
+      }
       const source = settingsRef.current;
       const currentViewport = resolveActiveViewport(source);
       const nextViewport =
@@ -1139,6 +1151,7 @@ export default function CustomField() {
 
   const panel = focused ?? panelAsset;
   const showCropChrome = Boolean(panel) && !isDocumentAsset(focused ?? panel);
+  const showDocumentChrome = Boolean(focused && focusedIsDocument);
   const hasDatUrl = Boolean(panel?.transformBaseUrl);
   const datActive = hasDatUrl;
   const profileOptions = profileSelectOptions(cropConfig, desktopMobileMode);
@@ -1225,7 +1238,12 @@ export default function CustomField() {
     });
   };
 
-  const patchVideo = (key: keyof VideoPlayback, value: boolean) => {
+  const patchDocument = (update: Partial<SavedBynderAsset>) => {
+    if (!focusedIsDocument) return;
+    patchFocusedAsset((asset) => ({ ...asset, ...update }));
+  };
+
+  const patchVideo = (key: keyof VideoPlayback, value: boolean | "light" | "dark") => {
     if (!focusedIsVideo) return;
     patchFocusedAsset((asset) => ({
       ...asset,
@@ -1376,6 +1394,46 @@ export default function CustomField() {
         )}
       />
 
+      {showDocumentChrome && focusedSaved ? (
+        <div className="document-settings">
+          <h3>Document settings</h3>
+          <fieldset className="video-options">
+            <legend>Link</legend>
+            <label className="video-option">
+              <input
+                type="radio"
+                name={`document-link-${focused?.id ?? "doc"}`}
+                checked={focusedSaved.download !== true}
+                onChange={() => patchDocument({ download: undefined })}
+              />
+              Open in browser
+            </label>
+            <label className="video-option">
+              <input
+                type="radio"
+                name={`document-link-${focused?.id ?? "doc"}`}
+                checked={focusedSaved.download === true}
+                onChange={() => patchDocument({ download: true })}
+              />
+              Download
+            </label>
+          </fieldset>
+          <fieldset className="video-options">
+            <legend>Thumbnail</legend>
+            <label className="video-option">
+              <input
+                type="checkbox"
+                checked={focusedSaved.includeThumbnail !== false}
+                onChange={(event) =>
+                  patchDocument({ includeThumbnail: event.target.checked ? undefined : false })
+                }
+              />
+              Include thumbnail
+            </label>
+          </fieldset>
+        </div>
+      ) : null}
+
       {showCropChrome ? (
       <div className={`crop-editor-collapse${focused && !focusedIsDocument ? " is-open" : ""}`} aria-hidden={!focused || focusedIsDocument}>
         <div className="crop-editor-collapse-inner">
@@ -1445,6 +1503,29 @@ export default function CustomField() {
                     {label}
                   </label>
                 ))}
+                {showControlsTheme ? (
+                  <div className="video-theme" role="group" aria-label="Control appearance">
+                    <span className="video-theme-label">Control appearance</span>
+                    <label className="video-option">
+                      <input
+                        type="radio"
+                        name="video-controls-theme"
+                        checked={playback.controlsTheme !== "dark"}
+                        onChange={() => patchVideo("controlsTheme", "light")}
+                      />
+                      Light
+                    </label>
+                    <label className="video-option">
+                      <input
+                        type="radio"
+                        name="video-controls-theme"
+                        checked={playback.controlsTheme === "dark"}
+                        onChange={() => patchVideo("controlsTheme", "dark")}
+                      />
+                      Dark
+                    </label>
+                  </div>
+                ) : null}
               </fieldset>
               <fieldset className="video-options">
                 <legend>Initial Playback Settings</legend>

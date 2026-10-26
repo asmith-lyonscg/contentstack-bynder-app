@@ -5,8 +5,10 @@ import {
   cleanVideoPlayback,
   isDocumentAsset,
   isVideoAsset,
+  documentThumbnailUrl,
   resolveDocumentFileUrl,
   slimPersistedAssets,
+  stripBynderDownloadParam,
   withBynderDownloadParam,
 } from "./bynder/parseAsset";
 import { normalizeFocalPoint } from "./bynder/composeDatUrl";
@@ -136,10 +138,12 @@ export function asSavedAsset(raw: unknown, additionalProperties?: readonly strin
       type: "DOCUMENT",
     };
     if (fileUrl) {
-      next.url = fileUrl;
-      next.downloadUrl =
-        (typeof record.downloadUrl === "string" && record.downloadUrl) || withBynderDownloadParam(fileUrl);
+      next.url = stripBynderDownloadParam(fileUrl);
     }
+    if (record.download === true) next.download = true;
+    if (typeof record.downloadUrl === "string" && record.downloadUrl) next.downloadUrl = record.downloadUrl;
+    if (typeof record.thumbnail === "string" && record.thumbnail) next.thumbnail = record.thumbnail;
+    if (record.includeThumbnail === false) next.includeThumbnail = false;
     copyAuthorProperties(next, record, additionalProperties);
     return next;
   }
@@ -473,7 +477,10 @@ function mergeIdentityAndCrops(
           ...identity,
           name: identity.name ?? existing?.name,
           url: identity.url ?? existing?.url,
+          download: identity.download ?? existing?.download,
           downloadUrl: identity.downloadUrl ?? existing?.downloadUrl,
+          thumbnail: identity.thumbnail ?? existing?.thumbnail,
+          includeThumbnail: identity.includeThumbnail ?? existing?.includeThumbnail,
           additional: identity.additional ?? existing?.additional,
         })
       );
@@ -502,17 +509,25 @@ function mergeIdentityAndCrops(
 }
 
 function asDocumentAsset(asset: SavedBynderAsset): SavedBynderAsset {
-  const fileUrl = asset.url;
+  const rawUrl = asset.url || (asset.downloadUrl ? stripBynderDownloadParam(asset.downloadUrl) : undefined);
   const next: SavedBynderAsset = {
     id: asset.id,
     type: "DOCUMENT",
   };
   if (asset.name) next.name = asset.name;
-  if (fileUrl) {
-    next.url = fileUrl;
-    next.downloadUrl = asset.downloadUrl || withBynderDownloadParam(fileUrl);
-  } else if (asset.downloadUrl) {
-    next.downloadUrl = asset.downloadUrl;
+  if (rawUrl) {
+    const view = stripBynderDownloadParam(rawUrl);
+    next.url = view;
+    if (asset.download === true) {
+      next.download = true;
+      next.downloadUrl = withBynderDownloadParam(view);
+    }
+    if (asset.includeThumbnail === false) {
+      next.includeThumbnail = false;
+    } else {
+      const thumb = asset.thumbnail || documentThumbnailUrl({ url: view, name: asset.name });
+      if (thumb) next.thumbnail = thumb;
+    }
   }
   if (asset.additional) next.additional = asset.additional;
   return next;

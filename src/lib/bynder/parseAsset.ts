@@ -445,9 +445,19 @@ function slimDocumentAsset(
     resolveDocumentFileUrl(raw) ??
     (typeof asset.url === "string" && asset.url ? asset.url : undefined);
   if (fileUrl) {
-    next.url = fileUrl;
-    next.downloadUrl =
-      (typeof asset.downloadUrl === "string" && asset.downloadUrl) || withBynderDownloadParam(fileUrl);
+    const view = stripBynderDownloadParam(fileUrl);
+    next.url = view;
+    if (asset.download === true) {
+      next.download = true;
+      next.downloadUrl = withBynderDownloadParam(view);
+    }
+    if (asset.includeThumbnail === false) {
+      next.includeThumbnail = false;
+    } else {
+      const stored = typeof asset.thumbnail === "string" ? asset.thumbnail : "";
+      const thumb = stored || documentThumbnailUrl({ url: view, name: parsed.name });
+      if (thumb) next.thumbnail = thumb;
+    }
   }
   const additional = slimAuthorAdditional(asset, options?.additionalProperties);
   if (additional) next.additional = additional;
@@ -515,19 +525,28 @@ export function cleanVideoPlayback(value: unknown): {
   muted: boolean;
   controls: boolean;
   loop: boolean;
+  controlsTheme?: "light" | "dark";
 } | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
-  const next: { autoplay?: boolean; muted?: boolean; controls?: boolean; loop?: boolean } = {};
+  const next: {
+    autoplay?: boolean;
+    muted?: boolean;
+    controls?: boolean;
+    loop?: boolean;
+    controlsTheme?: "light" | "dark";
+  } = {};
   if (typeof record.autoplay === "boolean") next.autoplay = record.autoplay;
   if (typeof record.muted === "boolean") next.muted = record.muted;
   if (typeof record.controls === "boolean") next.controls = record.controls;
   if (typeof record.loop === "boolean") next.loop = record.loop;
+  if (record.controlsTheme === "light" || record.controlsTheme === "dark") next.controlsTheme = record.controlsTheme;
   if (
     next.autoplay === undefined &&
     next.muted === undefined &&
     next.controls === undefined &&
-    next.loop === undefined
+    next.loop === undefined &&
+    next.controlsTheme === undefined
   ) {
     return undefined;
   }
@@ -536,6 +555,7 @@ export function cleanVideoPlayback(value: unknown): {
     muted: next.muted ?? false,
     controls: next.controls ?? true,
     loop: next.loop ?? false,
+    ...(next.controlsTheme ? { controlsTheme: next.controlsTheme } : {}),
   };
 }
 
@@ -611,6 +631,7 @@ export function parseBynderAsset(raw: unknown): ParsedBynderAsset | null {
     type: resolveAssetType(asset, files, selectedFile),
     transformBaseUrl,
     sourceUrl,
+    thumbnail: pickString(asset.thumbnail),
     width:
       pickNumber(webImageRecord?.width) ??
       pickNumber(originalRecord?.width) ??
@@ -698,6 +719,17 @@ export function isDocumentAsset(
     DOCUMENT_EXT.test(asset.name ?? "") ||
     DOCUMENT_EXT.test(asset.url ?? "")
   );
+}
+
+/** Remove Bynder `download` so the public file URL opens in the browser. */
+export function stripBynderDownloadParam(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete("download");
+    return parsed.toString();
+  } catch {
+    return url.replace(/([?&])download=[^&]*/i, "").replace(/[?&]$/, "");
+  }
 }
 
 /** Append Bynder `download=true` so the public file URL triggers a download. */

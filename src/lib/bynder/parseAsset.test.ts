@@ -252,9 +252,8 @@ describe("normalizeCompactAssets", () => {
       name: "T342703-CZLHD_IntegratedDiverter_Infographic",
       type: "DOCUMENT",
       url: "https://assets.example/m/pdf-guid/original/T342703-CZLHD_IntegratedDiverter_Infographic.pdf",
-      downloadUrl:
-        "https://assets.example/m/pdf-guid/original/T342703-CZLHD_IntegratedDiverter_Infographic.pdf?download=true",
     });
+    expect(normalized).not.toHaveProperty("downloadUrl");
     expect(normalized).not.toHaveProperty("extensions");
     expect(normalized).not.toHaveProperty("webImage");
     expect(normalized).not.toHaveProperty("transform");
