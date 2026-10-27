@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import "./InfoTooltip.css";
 
@@ -10,7 +10,7 @@ const PANEL_WIDTH = 240;
 const MARGIN = 8;
 
 export function InfoTooltip({ children }: InfoTooltipProps) {
-  const tooltipId = useId();
+  const tooltipId = useRef(`bynder-tip-${Math.random().toString(36).slice(2, 8)}`).current;
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLSpanElement>(null);
   const hideTimer = useRef(0);

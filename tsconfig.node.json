@@ -14,5 +14,5 @@
     "declaration": true,
     "noEmit": false
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "vite.rte.config.ts"]
 }

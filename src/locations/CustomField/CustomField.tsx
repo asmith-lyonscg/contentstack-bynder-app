@@ -63,6 +63,7 @@ import {
 } from "../../lib/settings";
 import type {
   AdditionalFieldDefinition,
+  AppInstallationConfig,
   BynderImageSettings,
   FocalPoint,
   OriginalAssetSize,
@@ -320,15 +321,27 @@ function safeJsonStringify(value: unknown): string {
   }
 }
 
-export default function CustomField() {
+export interface EditorHost {
+  appConfig: AppInstallationConfig;
+  fieldConfig?: unknown;
+  initialValue: unknown;
+  onDraft: (payload: Record<string, unknown>) => void;
+  singleAsset?: boolean;
+}
+
+export default function CustomField({ editorHost }: { editorHost?: EditorHost } = {}) {
   const sdk = useAppSdk();
-  const appConfig = useAppConfig();
-  const customField = sdk?.location.CustomField;
-  const fieldConfig = readFieldConfig(customField);
-  const compact = useMemo(
-    () => resolveCompactViewConfig(fieldConfig, appConfig),
-    [fieldConfig, appConfig]
-  );
+  const contextConfig = useAppConfig();
+  const appConfig = editorHost?.appConfig ?? contextConfig;
+  const customField = editorHost ? undefined : sdk?.location.CustomField;
+  const fieldConfig = editorHost ? editorHost.fieldConfig : readFieldConfig(customField);
+  const editorHostRef = useRef(editorHost);
+  editorHostRef.current = editorHost;
+  const compact = useMemo(() => {
+    const resolved = resolveCompactViewConfig(fieldConfig, appConfig);
+    if (!editorHost?.singleAsset) return resolved;
+    return { ...resolved, mode: "SingleSelect" as const, maxLimit: 1 };
+  }, [appConfig, editorHost?.singleAsset, fieldConfig]);
   const fieldCropConfig = useMemo(
     () => resolveCropConfig(fieldConfig, appConfig),
     [fieldConfig, appConfig]
@@ -1055,25 +1068,32 @@ export default function CustomField() {
   );
 
   useEffect(() => {
-    if (!customField || hydrated.current) return;
+    const host = editorHostRef.current;
+    if (hydrated.current || (!host && !customField)) return;
     try {
-      const { settings: prepared, changed, missingProfile: missing } = hydrateFieldValue(customField.field.getData(), {
+      const raw = host ? host.initialValue : customField!.field.getData();
+      const { settings: prepared, changed, missingProfile: missing } = hydrateFieldValue(raw, {
         cropConfig: fieldCropConfig,
         omitWebImage: persistPolicy.omitWebImage,
         omitName: persistPolicy.omitName,
         authorFields: additionalFields.fields,
       });
-      lastSaved.current = changed ? "" : safeJsonStringify(persistedPayload(prepared));
+      const limited = host?.singleAsset && prepared.assets && prepared.assets.length > 1
+        ? { ...prepared, assets: prepared.assets.slice(0, 1) }
+        : prepared;
+      const payload = persistedPayload(limited);
+      lastSaved.current = host || changed ? "" : safeJsonStringify(payload);
       setChangedOnLoad(changed);
       setMissingProfile(missing);
-      settingsRef.current = prepared;
-      setSettings(prepared);
-      const parsedList = parseBynderAssets(prepared.assets);
+      settingsRef.current = limited;
+      setSettings(limited);
+      const parsedList = parseBynderAssets(limited.assets);
       if (parsedList.length) setAssets(parsedList);
       else {
-        const fromSettings = assetFromSettings(prepared);
+        const fromSettings = assetFromSettings(limited);
         setAssets(fromSettings ? [fromSettings] : []);
       }
+      if (host) host.onDraft(payload);
     } catch (error) {
       console.error("Bynder Image Settings hydrate failed", error);
     } finally {
@@ -1115,13 +1135,20 @@ export default function CustomField() {
   }, [assetReady, bynderTokenTick, compact.portalUrl, persist]);
 
   useEffect(() => {
-    if (!assetReady || !customField?.field) return undefined;
+    if (!assetReady) return undefined;
+    const host = editorHostRef.current;
+    if (!host && !customField?.field) return undefined;
     const payload = persistedPayload(settings);
     const serialized = safeJsonStringify(payload);
     if (!serialized || serialized === lastSaved.current) return undefined;
+    if (host) {
+      host.onDraft(payload);
+      lastSaved.current = serialized;
+      return undefined;
+    }
     const timer = window.setTimeout(() => {
       try {
-        const done = customField.field.setData(payload);
+        const done = customField!.field.setData(payload);
         lastSaved.current = serialized;
         if (done && typeof (done as Promise<unknown>).then === "function") {
           void (done as Promise<unknown>).catch((error) => {
@@ -1233,7 +1260,7 @@ export default function CustomField() {
 
   const playback = focusedSaved?.video ?? videoDefaults;
 
-  if (!customField) {
+  if (!customField && !editorHost) {
     return (
       <div className="bynder-settings" ref={shellRef}>
         <p className="notice">This view only works as a Custom Field location.</p>

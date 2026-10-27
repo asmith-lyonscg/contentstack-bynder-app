@@ -6,8 +6,8 @@
   "description": "Contentstack Marketplace App: Bynder Compact View picker plus focal point and crop in one JSON field",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "build:pages": "tsc --noEmit && vite build --base /contentstack-bynder-app/",
+    "build": "tsc --noEmit && vite build && vite build --config vite.rte.config.ts",
+    "build:pages": "tsc --noEmit && vite build --base /contentstack-bynder-app/ && vite build --config vite.rte.config.ts",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

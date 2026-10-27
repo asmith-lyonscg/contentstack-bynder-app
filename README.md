@@ -36,10 +36,12 @@ Create a private app in Developer Hub and point it at this app. The sections bel
    | Custom Field | Bynder Asset Settings | `/custom-field` | **JSON** |
    | App Configuration | (default) | `/app-configuration` | — |
    | Content Type Sidebar | Bynder field setup | `/content-type-sidebar` | — |
+   | JSON RTE | Bynder | `/json-rte.js` | — |
 
 6. Install the app on the stack.
 7. Open **App Configuration** and enter the Bynder portal host, then use Contentstack’s **Save**. See [APP SETTINGS](#app-settings).
 8. On a content type, add this app’s JSON custom field. Paste a Config Parameter on the field when that field should differ from the app defaults. See [CUSTOM FIELD CONFIGS](#custom-field-configs).
+9. On the content type, edit the JSON Rich Text Editor field and choose this app’s plugin, the same way a field selects any other JSON RTE plugin. The toolbar button is titled **Bynder**. The location path is `/json-rte.js`. Opening that URL shows the SystemJS plugin (`System.register`). Enabling the location in App Configuration makes the plugin available to the field. The field still has to select it. The toolbar overflow menu (Divider) is the built-in insert list.
 
 ### Open the field guide
 
@@ -78,7 +80,7 @@ npm run typecheck
 npm run build
 ```
 
-`npm run build` writes `dist/` (`404.html`, `.nojekyll`, and HTML shells for `/custom-field`, `/app-configuration`, `/content-type-sidebar`, and `/picker`).
+`npm run build` writes `dist/` (`404.html`, `.nojekyll`, HTML shells for `/custom-field`, `/app-configuration`, `/content-type-sidebar`, and `/picker`, and `json-rte.js` for the JSON RTE plugin).
 
 ```
 samples/payload/                 Sample payloads (saved field JSON)
@@ -383,6 +385,7 @@ The image samples are the same two Bynder files under three profiles. The video 
 | [`sample-payload-custom.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-custom.json) | `id` `"custom"`, desktop `2:1`, mobile `3:2` |
 | [`sample-payload-video.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-video.json) | No crop. `video.controlsTheme` is `"dark"`, with autoplay on, muted on, controls on, and loop off. `webImage.url` is the file |
 | [`sample-payload-document.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-document.json) | Browser `url`, direct `downloadUrl`, and `thumbnail`. The site chooses which to render |
+| [`sample-payload-rte.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-rte.json) | One largeHero asset inside a `bynder` RTE node, with `display` width, height, float left, caption, and link |
 
 #### Sample React handler
 
@@ -401,6 +404,7 @@ A centered focal point is omitted in the payload and requested as `focuspoint=0.
 | [`sample-html-custom.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-custom.html) | `sizes="100vw"`, desktop `img` 2000×1000 |
 | [`sample-html-video.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-video.html) | `<video>` for the video payload. `data-controls-theme="dark"`. No DAT URL |
 | [`sample-html-document.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-document.html) | One option: a thumbnail linked to `url`. `downloadUrl` is there for a direct download |
+| [`sample-html-rte.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-rte.html) | The largeHero picture at `display` 276×155, floated left, with a caption and link |
 
 Copy these and keep the layout so the imports still resolve:
 
@@ -442,5 +446,7 @@ const thumb = composeBynderImageUrl(value, { width: 400 });
 `sizes` is the CSS width of the slot (`"100vw"` for a full-bleed hero, `"40vw"` for a split column). `widths` is the file widths to request. The default list is 640, 960, 1280, 1600, 1920, 2560, 3200, 3840. A narrower slot passes a shorter list. Leave `maxDimension` unset: the helper reads `profile.settings.maxDimension`, or 2000 when the snapshot omits it, and drops any step that would make either side larger. `src` and the `img` `width` / `height` are the largest remaining desktop step.
 
 `alt` is `assets[].alt`. An empty string stays empty. Set CSS `object-position` from `objectPosition` so an asset that only has `webImage` uses the same focal point. With no `transformBaseUrl`, `buildBynderSources` returns `src` and `objectPosition` only. Without a profile, the image uses `origWidth` / `origHeight`. When those pixels were never recorded, the helper requests `io=transform:scale,width:W` and returns no `height`.
+
+A JSON RTE Bynder node is one field payload plus `display`. Pass `v`, `profile`, and `assets` to the same helper. `display.width` and `display.height` are the author-set pixel size (both change together from the scale handle). `display.alignment` is `left`, `center`, `right`, `floatLeft`, or `floatRight`. A float is inline, with text wrapping on that side. `display.inline` without a float sits in the line. `display.caption` and `display.link` wrap the asset when they are set. `display.linkNewTab` opens that link in a new tab. Alt text is `assets[0].alt`. See [`sample-payload-rte.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-rte.json) and [`sample-html-rte.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-rte.html).
 
 Use the helper for `type: "IMAGE"`. For a video, play `webImage.url` with the stored `video` flags and do not build a DAT URL. `controlsTheme` `"light"` is for dark content behind the player; `"dark"` is for light content. See [`sample-html-video.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-video.html). For a document, the site chooses a thumbnail linked to `url`, a text link to `url`, or `downloadUrl` for a direct download. See [`sample-html-document.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-document.html).
