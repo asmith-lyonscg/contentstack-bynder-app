@@ -6,6 +6,7 @@ import bynderIconUrl from "../../assets/bynder_thumb.png";
 import { openAssetEditor } from "./AssetEditorModal";
 import { BynderRteNode } from "./BynderRteNode";
 import { ensureEditorStyles } from "./editorStyles";
+import { readRteRenderArgs } from "./renderArgs";
 
 const BynderIcon = (
   <img src={bynderIconUrl} alt="" width={18} height={18} style={{ display: "block" }} />
@@ -43,7 +44,18 @@ const bynderPlugin = new PluginBuilder(RTE_ELEMENT_TYPE)
   .icon(BynderIcon)
   .display(["toolbar", "hoveringToolbar"])
   .elementType((element) => (element.attrs?.display?.inline ? ["inline", "void"] : ["void"]))
-  .render((_element, attrs, path, rte) => <BynderRteNode attrs={attrs} path={path} rte={rte} />)
+  .render((...args: unknown[]) => {
+    const model = readRteRenderArgs(...args);
+    return (
+      <BynderRteNode
+        attrs={model.attrs}
+        path={model.path}
+        rte={model.rte}
+        attributes={model.attributes}
+        slateChildren={model.children}
+      />
+    );
+  })
   .on("exec", (rte) => {
     ensureEditorStyles();
     void editorConfig(rte).then(async ({ appConfig, fieldConfig }) => {

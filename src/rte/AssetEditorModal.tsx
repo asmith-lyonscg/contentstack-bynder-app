@@ -22,10 +22,9 @@ export function openAssetEditor(options: {
     const close = (value: Record<string, unknown> | null) => {
       if (settled) return;
       settled = true;
-      void closeCmsFullscreen();
       root.unmount();
       host.remove();
-      resolve(value);
+      void closeCmsFullscreen().finally(() => resolve(value));
     };
     root.render(
       <AssetEditorModal

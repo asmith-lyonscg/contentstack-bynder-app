@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { IRteParam } from "@contentstack/app-sdk/dist/src/RTE/types";
 import type { AppInstallationConfig } from "../lib/types";
@@ -27,7 +27,8 @@ const ALIGNMENT_LABELS: Record<RteAlignment, string> = {
   floatRight: "Float right",
 };
 
-function saveNode(rte: IRteParam, path: number[], previous: RteDisplay, attrs: Record<string, unknown>) {
+function saveNode(rte: IRteParam | undefined, path: number[], previous: RteDisplay, attrs: Record<string, unknown>) {
+  if (!rte || !path.length) return;
   const nextInline = Boolean(splitRteAttrs(attrs).display.inline);
   const wasInline = Boolean(previous.inline);
   rte.setAttrs({ attrs }, { at: path });
@@ -49,15 +50,27 @@ export function BynderRteNode({
   attrs,
   path,
   rte,
+  attributes,
+  slateChildren,
 }: {
   attrs: Record<string, unknown>;
   path: number[];
-  rte: IRteParam;
+  rte?: IRteParam;
+  attributes?: HTMLAttributes<HTMLElement>;
+  slateChildren?: ReactNode;
 }) {
   ensureEditorStyles();
   const [appConfig, setAppConfig] = useState<AppInstallationConfig>({});
-  const fieldConfig = rte.getConfig();
+  let fieldConfig: unknown = {};
+  if (rte && typeof rte.getConfig === "function") {
+    try {
+      fieldConfig = rte.getConfig();
+    } catch {
+      fieldConfig = {};
+    }
+  }
   useEffect(() => {
+    if (!rte?.sdk || typeof rte.sdk.getConfig !== "function") return undefined;
     let cancelled = false;
     void rte.sdk
       .getConfig()
@@ -119,8 +132,12 @@ export function BynderRteNode({
     setPropertiesOpen(true);
   };
 
+  const { className: slateClassName, ...slateAttributes } = attributes ?? {};
+  const slateClass = typeof slateClassName === "string" ? slateClassName : "";
+
   return (
-    <span className={className} contentEditable={false}>
+    <span {...slateAttributes} className={[slateClass, className].filter(Boolean).join(" ")}>
+      <span contentEditable={false}>
       <span className="bynder-rte-frame" ref={frameRef} style={{ width, height }}>
         {preview ? <img src={preview} alt={assetAlt(split.payload)} /> : null}
         <button type="button" className="bynder-rte-handle" aria-label="Scale asset" onPointerDown={scale} />
@@ -145,6 +162,7 @@ export function BynderRteNode({
             type="button"
             aria-label="Remove"
             onClick={() => {
+              if (!rte || !path.length) return;
               const entry = rte.getNode(path);
               if (entry?.[0]) rte.removeNode(entry[0]);
             }}
@@ -184,6 +202,8 @@ export function BynderRteNode({
             document.body
           )
         : null}
+      </span>
+      {slateChildren}
     </span>
   );
 }
