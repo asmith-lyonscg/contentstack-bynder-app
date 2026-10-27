@@ -134,6 +134,10 @@ export default function ContentTypeSidebar() {
       </p>
       <h3>Advanced configuration</h3>
       <p className="sub">Paste into the custom field's advanced settings &gt; Config Parameter.</p>
+      <p className="sub">
+        The JSON RTE Bynder button uses this same app configuration and saves one asset in the same shape, plus a
+        display size, alignment, caption, and link.
+      </p>
 
       <h3>Examples</h3>
       <Snippet title="Common" code={SIMPLE_FIELD} />

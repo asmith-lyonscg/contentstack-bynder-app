@@ -1,0 +1,48 @@
+{
+  "type": "bynder",
+  "attrs": {
+    "v": 2,
+    "profile": {
+      "id": "largeHero",
+      "settings": {
+        "desktop": "16:9",
+        "mobile": "5:3",
+        "quality": 80,
+        "format": "webp"
+      }
+    },
+    "assets": [
+      {
+        "id": "09C73413-5F93-4D0D-B1594DDB817E06CA",
+        "name": "AVS3-WQ2101-SS_MODEL_WATER_09",
+        "type": "IMAGE",
+        "transformBaseUrl": "https://assets.deltafaucet.com/transform/09c73413-5f93-4d0d-b159-4ddb817e06ca/AVS3-WQ2101-SS_MODEL_WATER_09",
+        "alt": "A chrome faucet running water",
+        "origWidth": 8000,
+        "origHeight": 6000,
+        "operation": "fill",
+        "mobile": {
+          "operation": "fill",
+          "id": "D3E57CF2-6BE6-4F16-A85A5599AB54DA27",
+          "name": "35903LF-BL_BETTER_PACKAGING",
+          "type": "IMAGE",
+          "transformBaseUrl": "https://assets.deltafaucet.com/transform/d3e57cf2-6be6-4f16-a85a-5599ab54da27/35903LF-BL_BETTER_PACKAGING",
+          "alt": "",
+          "origWidth": 11512,
+          "origHeight": 8700
+        },
+        "differentMobileAsset": true
+      }
+    ],
+    "display": {
+      "width": 276,
+      "height": 155,
+      "alignment": "floatLeft",
+      "caption": "Faucet detail",
+      "link": "https://www.deltafaucet.com",
+      "linkNewTab": true,
+      "inline": true
+    }
+  },
+  "children": [{ "text": "" }]
+}

@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
@@ -32,6 +32,40 @@ export default defineConfig({
   plugins: [
     react(),
     {
+      name: "serve-json-rte",
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          const url = req.url?.split("?")[0];
+          if (url !== "/json-rte.js") return next();
+          // rte-extension.contentstack.com loads this script from loopback.
+          // Chrome blocks that unless the preflight opts into private-network access.
+          const origin = req.headers.origin;
+          res.setHeader("Access-Control-Allow-Origin", typeof origin === "string" && origin ? origin : "*");
+          res.setHeader("Access-Control-Allow-Private-Network", "true");
+          res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+          const requestedHeaders = req.headers["access-control-request-headers"];
+          res.setHeader(
+            "Access-Control-Allow-Headers",
+            typeof requestedHeaders === "string" && requestedHeaders ? requestedHeaders : "*"
+          );
+          res.setHeader("Vary", "Origin");
+          if (req.method === "OPTIONS") {
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+          const file = path.resolve(__dirname, "dist/json-rte.js");
+          if (!existsSync(file)) {
+            res.statusCode = 404;
+            res.end("dist/json-rte.js is missing. Run npm run build.");
+            return;
+          }
+          res.setHeader("Content-Type", "text/javascript; charset=utf-8");
+          res.end(readFileSync(file));
+        });
+      },
+    },
+    {
       name: "spa-static-shells",
       closeBundle() {
         const dist = path.resolve(__dirname, "dist");
@@ -50,11 +84,19 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+      },
+    },
   },
   server: {
     port: 3000,
     host: true,
     allowedHosts: true,
+    headers: {
+      "Access-Control-Allow-Private-Network": "true",
+    },
   },
   test: {
     environment: "node",

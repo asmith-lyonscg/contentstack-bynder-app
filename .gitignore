@@ -1,5 +1,6 @@
 node_modules
 dist
+public/json-rte.js
 data
 .env
 .env.local
