@@ -1,10 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import {
-  isSameOrigin,
-  PICKER_INIT,
+  isPickerInit,
   PICKER_READY,
   PICKER_RESULT,
-  type PickerInitMessage,
+  pickerReplyOrigin,
   type PickerInitPayload,
 } from "../../lib/picker/protocol";
 import "./PickerPopup.css";
@@ -12,7 +11,9 @@ import "./PickerPopup.css";
 const CompactViewHost = lazy(() => import("../../components/CompactViewHost"));
 
 export default function PickerPopup() {
-  const id = new URLSearchParams(window.location.search).get("id") ?? "";
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get("id") ?? "";
+  const replyOrigin = pickerReplyOrigin(params.get("opener"), window.location.origin);
   const [payload, setPayload] = useState<PickerInitPayload>();
   const [missingOpener, setMissingOpener] = useState(!window.opener || !id);
 
@@ -23,13 +24,13 @@ export default function PickerPopup() {
     }
 
     const pingReady = () => {
-      window.opener?.postMessage({ type: PICKER_READY, id }, window.location.origin);
+      window.opener?.postMessage({ type: PICKER_READY, id }, replyOrigin);
     };
 
     const onMessage = (event: MessageEvent) => {
-      if (!isSameOrigin(event)) return;
-      const data = event.data as PickerInitMessage | null;
-      if (data?.type !== PICKER_INIT || data.id !== id || !data.payload) return;
+      if (event.source !== window.opener || event.origin !== replyOrigin) return;
+      const data = event.data;
+      if (!isPickerInit(data, id)) return;
       window.clearInterval(readyTimer);
       console.info("[bynder-picker] Compact View selectedAssets", data.payload.selectedAssets);
       setPayload((current) => current ?? data.payload);
@@ -42,14 +43,14 @@ export default function PickerPopup() {
       window.clearInterval(readyTimer);
       window.removeEventListener("message", onMessage);
     };
-  }, [id]);
+  }, [id, replyOrigin]);
 
   const finish = (ok: boolean, assets: unknown[] = [], additionalInfo?: unknown) => {
     window.opener?.postMessage(
       ok
         ? { type: PICKER_RESULT, id, ok: true, assets, additionalInfo }
         : { type: PICKER_RESULT, id, ok: false },
-      window.location.origin
+      replyOrigin
     );
     window.close();
   };

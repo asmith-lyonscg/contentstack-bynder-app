@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import CustomField from "../locations/CustomField/CustomField";
 import type { AppInstallationConfig } from "../lib/types";
+import { closeCmsFullscreen, openCmsFullscreen } from "./cmsModal";
 import { ensureEditorStyles } from "./editorStyles";
 
 export function openAssetEditor(options: {
@@ -15,8 +16,13 @@ export function openAssetEditor(options: {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
+  void openCmsFullscreen(host);
   return new Promise((resolve) => {
+    let settled = false;
     const close = (value: Record<string, unknown> | null) => {
+      if (settled) return;
+      settled = true;
+      void closeCmsFullscreen();
       root.unmount();
       host.remove();
       resolve(value);
@@ -55,6 +61,9 @@ function AssetEditorModal({
       <div className="bynder-rte-dialog" role="dialog" aria-modal="true" aria-labelledby="bynder-rte-editor-title">
         <header>
           <h2 id="bynder-rte-editor-title">{title}</h2>
+          <button type="button" className="bynder-rte-close" aria-label="Close" onClick={onCancel}>
+            ×
+          </button>
         </header>
         <div className="bynder-rte-dialog-body">
           <CustomField

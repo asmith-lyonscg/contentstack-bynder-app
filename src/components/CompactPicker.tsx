@@ -12,14 +12,7 @@ import {
 } from "../lib/bynder/parseAsset";
 import { selectedAssetsForPicker } from "../lib/bynder/preselect";
 import { ImageSpinner } from "./ImageSpinner";
-import {
-  isSameOrigin,
-  PICKER_INIT,
-  PICKER_READY,
-  PICKER_RESULT,
-  type PickerReadyMessage,
-  type PickerResultMessage,
-} from "../lib/picker/protocol";
+import { isPickerReady, isPickerResult, PICKER_INIT } from "../lib/picker/protocol";
 import { appHref } from "../lib/appBase";
 import type { CompactViewConfig, ParsedBynderAsset, ViewportKind } from "../lib/types";
 import "./CompactPicker.css";
@@ -454,7 +447,10 @@ export function CompactPicker({
     setOpenError(undefined);
 
     const id = crypto.randomUUID();
-    const url = appHref(`picker.html?id=${encodeURIComponent(id)}`);
+    const url = appHref(
+      `picker.html?id=${encodeURIComponent(id)}&opener=${encodeURIComponent(window.location.origin)}`
+    );
+    const popupOrigin = new URL(url).origin;
     const width = 1280;
     const height = 860;
     const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
@@ -491,7 +487,7 @@ export function CompactPicker({
             selectedAssets,
           },
         },
-        window.location.origin
+        popupOrigin
       );
     };
 
@@ -507,17 +503,14 @@ export function CompactPicker({
     };
 
     const onMessage = (event: MessageEvent) => {
-      if (!isSameOrigin(event)) return;
-      const data = event.data as PickerReadyMessage | PickerResultMessage | null;
-      if (data?.id !== id) return;
-      if (data.type === PICKER_READY) {
-        const target =
-          event.source && "postMessage" in event.source ? (event.source as Window) : popup;
-        if (target && !target.closed) sendInit(target);
+      if (event.source !== popup || event.origin !== popupOrigin) return;
+      const data = event.data;
+      if (isPickerReady(data, id)) {
+        if (popup && !popup.closed) sendInit(popup);
         window.clearInterval(initTimer);
         return;
       }
-      if (data.type !== PICKER_RESULT) return;
+      if (!isPickerResult(data, id)) return;
       cleanup();
       if (data.ok && data.assets.length) {
         console.info(

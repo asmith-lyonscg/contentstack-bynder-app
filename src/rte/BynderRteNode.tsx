@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import type { IRteParam } from "@contentstack/app-sdk/dist/src/RTE/types";
 import type { AppInstallationConfig } from "../lib/types";
 import {
@@ -15,6 +16,7 @@ import {
   type RteDisplay,
 } from "../lib/rteDisplay";
 import { openAssetEditor } from "./AssetEditorModal";
+import { closeCmsFullscreen, openCmsFullscreen } from "./cmsModal";
 import { ensureEditorStyles } from "./editorStyles";
 
 const ALIGNMENT_LABELS: Record<RteAlignment, string> = {
@@ -152,37 +154,42 @@ export function BynderRteNode({
         </span>
       </span>
       {display.caption ? <span className="bynder-rte-caption">{display.caption}</span> : null}
-      {propertiesOpen && draft ? (
-        <PropertiesModal
-          alt={draft.alt}
-          display={draft.display}
-          onChange={setDraft}
-          onCancel={() => setPropertiesOpen(false)}
-          onSave={() => {
-            const payload = payloadWithAlt(split.payload, draft.alt);
-            saveNode(rte, path, display, joinRteAttrs(payload, draft.display));
-            setPropertiesOpen(false);
-          }}
-          onAssetSettings={() => {
-            void openAssetEditor({
-              appConfig,
-              fieldConfig,
-              initialValue: split.payload,
-              title: "Bynder asset",
-              confirmLabel: "Update",
-            }).then((payload) => {
-              if (!payload) return;
-              saveNode(rte, path, display, joinRteAttrs(payload, draft.display));
-              setPropertiesOpen(false);
-            });
-          }}
-        />
-      ) : null}
+      {propertiesOpen && draft
+        ? createPortal(
+            <PropertiesModal
+              preview={preview}
+              alt={draft.alt}
+              display={draft.display}
+              onChange={setDraft}
+              onCancel={() => setPropertiesOpen(false)}
+              onSave={() => {
+                const payload = payloadWithAlt(split.payload, draft.alt);
+                saveNode(rte, path, display, joinRteAttrs(payload, draft.display));
+                setPropertiesOpen(false);
+              }}
+              onAssetSettings={() => {
+                void openAssetEditor({
+                  appConfig,
+                  fieldConfig,
+                  initialValue: split.payload,
+                  title: "Bynder asset",
+                  confirmLabel: "Update",
+                }).then((payload) => {
+                  if (!payload) return;
+                  saveNode(rte, path, display, joinRteAttrs(payload, draft.display));
+                  setPropertiesOpen(false);
+                });
+              }}
+            />,
+            document.body
+          )
+        : null}
     </span>
   );
 }
 
 function PropertiesModal({
+  preview,
   alt,
   display,
   onChange,
@@ -190,6 +197,7 @@ function PropertiesModal({
   onSave,
   onAssetSettings,
 }: {
+  preview?: string;
   alt: string;
   display: RteDisplay;
   onChange: (next: { alt: string; display: RteDisplay }) => void;
@@ -197,12 +205,24 @@ function PropertiesModal({
   onSave: () => void;
   onAssetSettings: () => void;
 }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return undefined;
+    void openCmsFullscreen(host);
+    return () => {
+      void closeCmsFullscreen();
+    };
+  }, []);
   const setDisplay = (patch: Partial<RteDisplay>) => onChange({ alt, display: { ...display, ...patch } });
   return (
-    <div className="bynder-rte-properties" role="presentation">
+    <div className="bynder-rte-properties" role="presentation" ref={hostRef}>
       <div className="bynder-rte-properties-card" role="dialog" aria-modal="true" aria-labelledby="bynder-rte-properties-title">
         <header>
           <h2 id="bynder-rte-properties-title">Edit Image Properties</h2>
+          <button type="button" className="bynder-rte-close" aria-label="Close" onClick={onCancel}>
+            ×
+          </button>
         </header>
         <form
           onSubmit={(event) => {
@@ -210,53 +230,60 @@ function PropertiesModal({
             onSave();
           }}
         >
-          <label>
-            Alt text
-            <input value={alt} onChange={(event) => onChange({ alt: event.target.value, display })} />
-          </label>
-          <label>
-            Alignment
-            <select
-              value={display.alignment ?? "left"}
-              onChange={(event) => {
-                const alignment = event.target.value as RteAlignment;
-                setDisplay({ alignment, inline: isFloatAlignment(alignment) ? true : display.inline });
-              }}
-            >
-              {RTE_ALIGNMENTS.map((value) => (
-                <option key={value} value={value}>
-                  {ALIGNMENT_LABELS[value]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Caption
-            <input value={display.caption ?? ""} onChange={(event) => setDisplay({ caption: event.target.value })} />
-          </label>
-          <label>
-            Embed link
-            <input value={display.link ?? ""} onChange={(event) => setDisplay({ link: event.target.value })} />
-          </label>
-          <label className="bynder-rte-check">
-            <input
-              type="checkbox"
-              checked={display.linkNewTab === true}
-              onChange={(event) => setDisplay({ linkNewTab: event.target.checked })}
-            />
-            Open link in a new tab
-          </label>
-          <label className="bynder-rte-check">
-            <input
-              type="checkbox"
-              checked={display.inline === true || isFloatAlignment(display.alignment)}
-              onChange={(event) => setDisplay({ inline: event.target.checked })}
-            />
-            Inline asset
-          </label>
-          <button type="button" className="bynder-rte-asset-settings" onClick={onAssetSettings}>
-            Asset settings
-          </button>
+          <div className="bynder-rte-properties-layout">
+            <div className="bynder-rte-properties-preview">
+              {preview ? <img src={preview} alt={alt} /> : null}
+            </div>
+            <div className="bynder-rte-properties-fields">
+              <label>
+                Alt text
+                <input value={alt} onChange={(event) => onChange({ alt: event.target.value, display })} />
+              </label>
+              <label>
+                Alignment
+                <select
+                  value={display.alignment ?? "left"}
+                  onChange={(event) => {
+                    const alignment = event.target.value as RteAlignment;
+                    setDisplay({ alignment, inline: isFloatAlignment(alignment) ? true : display.inline });
+                  }}
+                >
+                  {RTE_ALIGNMENTS.map((value) => (
+                    <option key={value} value={value}>
+                      {ALIGNMENT_LABELS[value]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Caption
+                <input value={display.caption ?? ""} onChange={(event) => setDisplay({ caption: event.target.value })} />
+              </label>
+              <label>
+                Embed link
+                <input value={display.link ?? ""} onChange={(event) => setDisplay({ link: event.target.value })} />
+              </label>
+              <label className="bynder-rte-check">
+                <input
+                  type="checkbox"
+                  checked={display.linkNewTab === true}
+                  onChange={(event) => setDisplay({ linkNewTab: event.target.checked })}
+                />
+                Open link in a new tab
+              </label>
+              <label className="bynder-rte-check">
+                <input
+                  type="checkbox"
+                  checked={display.inline === true || isFloatAlignment(display.alignment)}
+                  onChange={(event) => setDisplay({ inline: event.target.checked })}
+                />
+                Inline asset
+              </label>
+              <button type="button" className="bynder-rte-asset-settings" onClick={onAssetSettings}>
+                Asset settings
+              </button>
+            </div>
+          </div>
         </form>
         <footer>
           <button type="button" onClick={onCancel}>

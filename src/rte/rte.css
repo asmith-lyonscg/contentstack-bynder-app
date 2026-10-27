@@ -13,8 +13,9 @@
 .bynder-rte-dialog {
   display: flex;
   flex-direction: column;
-  width: min(1100px, 100%);
-  max-height: min(860px, 100%);
+  width: min(1120px, calc(100vw - 64px));
+  height: min(860px, calc(100vh - 80px));
+  max-height: calc(100vh - 64px);
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
@@ -36,8 +37,22 @@
 }
 
 .bynder-rte-dialog-body {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 12px 18px 18px;
+}
+
+.bynder-rte-dialog .bynder-rte-close,
+.bynder-rte-properties-card .bynder-rte-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #475161;
+  font: 400 22px/1 Inter, system-ui, sans-serif;
+  cursor: pointer;
 }
 
 .bynder-rte-dialog footer,
@@ -173,17 +188,51 @@
 }
 
 .bynder-rte-properties-card {
-  width: min(480px, 100%);
+  display: flex;
+  flex-direction: column;
+  width: min(1040px, calc(100vw - 64px));
+  max-height: calc(100vh - 64px);
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
 }
 
 .bynder-rte-properties-card form {
+  overflow: auto;
+}
+
+.bynder-rte-properties-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.1fr) minmax(260px, 0.9fr);
+  gap: 20px;
+  padding: 16px 18px;
+}
+
+.bynder-rte-properties-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  border-radius: 8px;
+  background: #f4f4f4;
+}
+
+.bynder-rte-properties-preview img {
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+}
+
+.bynder-rte-properties-fields {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px 18px;
+}
+
+@media (max-width: 720px) {
+  .bynder-rte-properties-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .bynder-rte-properties-card label {
