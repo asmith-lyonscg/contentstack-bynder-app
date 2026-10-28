@@ -39,6 +39,22 @@ function isEmptyValue(raw: unknown): boolean {
 }
 
 /**
+ * The field value is `v`, `profile`, and `assets`. A JSON RTE node also stores
+ * `display` (and the editor may add `style` or a nested `attrs`) on the same
+ * object. Those siblings are not part of the saved field, so they cannot count
+ * as an unsaved change.
+ */
+function storedFieldPayload(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const record = raw as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+  if ("v" in record) next.v = record.v;
+  if ("profile" in record) next.profile = record.profile;
+  if ("assets" in record) next.assets = record.assets;
+  return next;
+}
+
+/**
  * The saved profile when this field still allows it. A name App Config dropped keeps the saved
  * snapshot. Anything else falls back to the field's default profile.
  */
@@ -92,6 +108,6 @@ export function hydrateFieldValue(raw: unknown, options: HydrateOptions): Hydrat
   if (missingProfile) result.missingProfile = missingProfile;
   result.changed = isEmptyValue(raw)
     ? Array.isArray(next.assets) && next.assets.length > 0
-    : stableStringify(next) !== stableStringify(raw);
+    : stableStringify(next) !== stableStringify(storedFieldPayload(raw));
   return result;
 }

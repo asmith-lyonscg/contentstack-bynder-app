@@ -562,6 +562,8 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
     const prepared = desktopMobileMode ? payload : withoutDesktopMobile(payload);
     settingsRef.current = prepared;
     setSettings(prepared);
+    const host = editorHostRef.current;
+    if (host) host.onDraft(persistedPayload(prepared));
     return prepared;
   }, [additionalFields.fields, cropConfig, desktopMobileMode, persistPolicy.omitName, persistPolicy.omitWebImage]);
 
@@ -1338,9 +1340,18 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
 
       {changedOnLoad ? (
         <div className="notice-card warning compact unsaved-notice" role="status">
-          <strong>Unsaved changes.</strong> This field’s settings changed since the entry was last saved, so its
-          saved value was updated to match (for example the render profile or the original image size). Save
-          the entry to keep it.
+          {editorHost ? (
+            <>
+              <strong>Unsaved changes.</strong> These settings were updated to match the current configuration.
+              Save to keep them.
+            </>
+          ) : (
+            <>
+              <strong>Unsaved changes.</strong> This field’s settings changed since the entry was last saved, so its
+              saved value was updated to match (for example the render profile or the original image size). Save
+              the entry to keep it.
+            </>
+          )}
         </div>
       ) : null}
 

@@ -19,12 +19,13 @@ import {
 import type { ViewportKind } from "../lib/types";
 import { openAssetEditor } from "./AssetEditorModal";
 import { ensureEditorStyles } from "./editorStyles";
+import { writeRteAttrs } from "./writeAttrs";
 
 function saveNode(rte: IRteParam | undefined, path: number[], previous: RteDisplay, attrs: Record<string, unknown>) {
   if (!rte || !path.length) return;
   const nextInline = Boolean(splitRteAttrs(attrs).display.inline);
   const wasInline = Boolean(previous.inline);
-  rte.setAttrs({ attrs }, { at: path });
+  writeRteAttrs(rte, path, attrs);
   if (nextInline && !wasInline) {
     rte.wrapNode(
       {

@@ -49,6 +49,17 @@ const image: SavedBynderAsset = {
 describe("hydrateFieldValue", () => {
   const options = { cropConfig: resolveCropConfig({ defaultProfile: "hero" }, APP) };
 
+  it("ignores JSON RTE display and other sibling keys", () => {
+    const stored = savedBy([image]);
+    const wrapped = {
+      ...stored,
+      display: { width: 276, height: 155, alignment: "floatLeft", inline: true },
+      style: { float: "left" },
+      attrs: { v: 1 },
+    };
+    expect(hydrateFieldValue(wrapped, options).changed).toBe(false);
+  });
+
   it("is a no-op for a payload the app saved itself", () => {
     const stored = savedBy([image]);
     expect(stored).toMatchObject({
