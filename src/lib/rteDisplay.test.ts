@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   displayAspect,
   joinRteAttrs,
+  scaleDisplaySize,
   normalizeRteDisplay,
   payloadWithAlt,
   splitRteAttrs,
@@ -70,5 +71,19 @@ describe("splitRteAttrs", () => {
 
   it("uses the desktop profile ratio for the scale handle", () => {
     expect(displayAspect(imagePayload)).toBeCloseTo(16 / 9);
+  });
+});
+
+describe("scaleDisplaySize", () => {
+  it("scales from the right edge and the bottom edge by the same proportion", () => {
+    expect(scaleDisplaySize({ width: 200, height: 100 }, 50, "x")).toEqual({ width: 250, height: 125 });
+    expect(scaleDisplaySize({ width: 200, height: 100 }, 40, "y")).toEqual({ width: 280, height: 140 });
+  });
+
+  it("stops at the smallest box that keeps the current proportion", () => {
+    expect(scaleDisplaySize({ width: 200, height: 100 }, -500, "x")).toEqual({ width: 96, height: 48 });
+    expect(scaleDisplaySize({ width: 200, height: 100 }, -500, "y")).toEqual({ width: 96, height: 48 });
+    expect(scaleDisplaySize({ width: 100, height: 200 }, -500, "x")).toEqual({ width: 80, height: 160 });
+    expect(scaleDisplaySize({ width: 100, height: 200 }, -500, "y")).toEqual({ width: 80, height: 160 });
   });
 });

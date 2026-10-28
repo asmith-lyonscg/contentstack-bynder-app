@@ -96,6 +96,43 @@ export function assetAlt(payload: Record<string, unknown>): string {
   return parseSavedSettings(payload).assets?.[0]?.alt ?? "";
 }
 
+const MIN_DISPLAY_WIDTH = 80;
+const MIN_DISPLAY_HEIGHT = 48;
+
+/** Dragging either edge keeps the current proportion and stores both pixel sizes. */
+export function scaleDisplaySize(
+  start: { width: number; height: number },
+  delta: number,
+  axis: "x" | "y"
+): { width: number; height: number } {
+  const aspect = start.width / Math.max(1, start.height);
+  if (!Number.isFinite(aspect) || aspect <= 0) {
+    return { width: MIN_DISPLAY_WIDTH, height: MIN_DISPLAY_HEIGHT };
+  }
+  const width = axis === "x" ? Math.round(start.width + delta) : Math.round(Math.round(start.height + delta) * aspect);
+  const height = axis === "x" ? Math.round(width / aspect) : Math.round(start.height + delta);
+  return fitDisplayBox(width, height, aspect);
+}
+
+/** Grow the box until both edges clear their minimums without changing the ratio. */
+function fitDisplayBox(width: number, height: number, aspect: number): { width: number; height: number } {
+  let nextWidth = width;
+  let nextHeight = height;
+  if (nextWidth < MIN_DISPLAY_WIDTH) {
+    nextWidth = MIN_DISPLAY_WIDTH;
+    nextHeight = Math.round(nextWidth / aspect);
+  }
+  if (nextHeight < MIN_DISPLAY_HEIGHT) {
+    nextHeight = MIN_DISPLAY_HEIGHT;
+    nextWidth = Math.round(nextHeight * aspect);
+  }
+  if (nextWidth < MIN_DISPLAY_WIDTH) {
+    nextWidth = MIN_DISPLAY_WIDTH;
+    nextHeight = Math.round(nextWidth / aspect);
+  }
+  return { width: nextWidth, height: Math.max(1, nextHeight) };
+}
+
 /** Width / height ratio used while the author drags the scale handle. */
 export function displayAspect(payload: Record<string, unknown>): number {
   const settings = parseSavedSettings(payload);

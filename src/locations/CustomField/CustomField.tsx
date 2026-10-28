@@ -1709,7 +1709,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
               </div>
                 </div>
               </div>
-              <div className="field-group">
+              {editorHost ? null : <div className="field-group">
                 <div className="panel-title">
                   <span className="panel-title-label">
                     {focusedSaved?.differentMobileAsset && focusedSaved.mobile?.id && activeViewport === "mobile"
@@ -1734,7 +1734,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
                     persist(stashActiveCrop({ ...settings, alt: event.target.value }, focused?.id))
                   }
                 />
-              </div>
+              </div>}
               <AdditionalFields fields={additionalFields.fields} values={authorValues(focusedSaved)} onChange={patchAdditional} />
             </aside>
             <section className="editor-preview">

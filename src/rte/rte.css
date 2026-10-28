@@ -16,6 +16,7 @@
   width: min(1120px, calc(100vw - 64px));
   height: min(860px, calc(100vh - 80px));
   max-height: calc(100vh - 64px);
+  overflow: hidden;
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
@@ -191,10 +192,19 @@
 }
 
 .bynder-rte-frame {
-  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   border: 1px solid #d4deee;
   background: #f3f3f3;
+}
+
+.bynder-rte-box {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  height: auto;
 }
 
 .bynder-rte-frame img,
@@ -207,33 +217,58 @@
 
 .bynder-rte-handle {
   position: absolute;
+  z-index: 2;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.bynder-rte-handle.is-east {
   top: 0;
   right: -6px;
   width: 12px;
   height: 100%;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
   cursor: ew-resize;
-  padding: 0;
+}
+
+.bynder-rte-handle.is-south {
+  left: 0;
+  bottom: -6px;
+  width: 100%;
+  height: 12px;
+  cursor: ns-resize;
 }
 
 .bynder-rte-handle::after {
   content: "";
   position: absolute;
+  border-radius: 4px;
+  background: #6c5ce7;
+}
+
+.bynder-rte-handle.is-east::after {
   top: 50%;
   left: 3px;
   width: 4px;
   height: 28px;
-  border-radius: 4px;
-  background: #6c5ce7;
   transform: translateY(-50%);
+}
+
+.bynder-rte-handle.is-south::after {
+  left: 50%;
+  top: 3px;
+  width: 28px;
+  height: 4px;
+  transform: translateX(-50%);
 }
 
 .bynder-rte-toolbar {
   position: absolute;
   left: 8px;
   bottom: 8px;
+  z-index: 3;
   display: none;
   gap: 4px;
   padding: 4px;
@@ -248,17 +283,89 @@
 }
 
 .bynder-rte-toolbar button {
+  position: relative;
   width: 28px;
   height: 28px;
   padding: 0;
 }
 
+.bynder-rte-toolbar button::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  z-index: 3;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #212121;
+  color: #fff;
+  font: 500 11px/1.2 Inter, system-ui, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.bynder-rte-toolbar button:hover::after,
+.bynder-rte-toolbar button:focus-visible::after {
+  opacity: 1;
+}
+
 .bynder-rte-caption {
-  margin: 0;
+  margin: 6px 0 0;
   padding-top: 4px;
   color: #6e6e8a;
   font: 400 12px/1.4 Inter, system-ui, sans-serif;
   line-height: 1.4;
+}
+
+.bynder-rte-display {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  max-height: 42%;
+  overflow: auto;
+  padding: 12px 18px 4px;
+  border-top: 1px solid #e4e9f2;
+}
+
+.bynder-rte-display h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font: 700 13px/1.3 Inter, system-ui, sans-serif;
+  color: #243044;
+}
+
+.bynder-rte-display label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #475161;
+  font: 600 12px/1.3 Inter, system-ui, sans-serif;
+}
+
+.bynder-rte-display input,
+.bynder-rte-display textarea,
+.bynder-rte-display select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #c5cde0;
+  border-radius: 6px;
+  padding: 7px 8px;
+  color: #212121;
+  font: 400 13px/1.4 Inter, system-ui, sans-serif;
+  background: #fff;
+}
+
+.bynder-rte-display .bynder-rte-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.bynder-rte-display .bynder-rte-check input {
+  width: auto;
 }
 
 .bynder-rte-properties-card {

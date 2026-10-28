@@ -1,31 +1,18 @@
 import { useEffect, useRef, useState, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import type { IRteParam } from "@contentstack/app-sdk/dist/src/RTE/types";
 import type { AppInstallationConfig } from "../lib/types";
 import {
-  RTE_ALIGNMENTS,
   assetAlt,
   displayAspect,
-  isFloatAlignment,
   joinRteAttrs,
-  payloadWithAlt,
   rteOpenUrl,
   rtePreviewUrl,
+  scaleDisplaySize,
   splitRteAttrs,
-  type RteAlignment,
   type RteDisplay,
 } from "../lib/rteDisplay";
 import { openAssetEditor } from "./AssetEditorModal";
-import { closeCmsFullscreen, openCmsFullscreen } from "./cmsModal";
 import { ensureEditorStyles } from "./editorStyles";
-
-const ALIGNMENT_LABELS: Record<RteAlignment, string> = {
-  left: "Left",
-  center: "Center",
-  right: "Right",
-  floatLeft: "Float left",
-  floatRight: "Float right",
-};
 
 function saveNode(rte: IRteParam | undefined, path: number[], previous: RteDisplay, attrs: Record<string, unknown>) {
   if (!rte || !path.length) return;
@@ -83,13 +70,20 @@ export function BynderRteNode({
     };
   }, [rte]);
   const split = splitRteAttrs(attrs);
-  const [propertiesOpen, setPropertiesOpen] = useState(false);
-  const [draft, setDraft] = useState<{ alt: string; display: RteDisplay } | null>(null);
-  const frameRef = useRef<HTMLDivElement>(null);
+  const editing = useRef(false);
+  const dragging = useRef(false);
+  const dragCleanup = useRef<(() => void) | undefined>(undefined);
   const display = split.display;
   const aspect = displayAspect(split.payload);
   const width = display.width ?? 320;
   const height = display.height ?? Math.max(1, Math.round(width / aspect));
+  const [box, setBox] = useState<{ width: number; height: number } | null>(null);
+  const shownWidth = box?.width ?? width;
+  const shownHeight = box?.height ?? height;
+  useEffect(() => {
+    if (!dragging.current && box && box.width === width && box.height === height) setBox(null);
+  }, [box, width, height]);
+  useEffect(() => () => dragCleanup.current?.(), []);
   const preview = rtePreviewUrl(split.payload);
   const alignment = display.alignment ?? "left";
   const className = [
@@ -103,33 +97,84 @@ export function BynderRteNode({
     .filter(Boolean)
     .join(" ");
 
-  const scale = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const scale = (event: ReactPointerEvent<HTMLButtonElement>, axis: "x" | "y") => {
     event.preventDefault();
     event.stopPropagation();
-    const startX = event.clientX;
-    const startWidth = width;
-    const onMove = (move: globalThis.PointerEvent) => {
-      const nextWidth = Math.max(80, Math.round(startWidth + (move.clientX - startX)));
-      const nextHeight = Math.max(1, Math.round(nextWidth / aspect));
-      if (frameRef.current) {
-        frameRef.current.style.width = `${nextWidth}px`;
-        frameRef.current.style.height = `${nextHeight}px`;
-      }
+    dragCleanup.current?.();
+    dragging.current = true;
+    const handle = event.currentTarget;
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch {
+      // The pointer can already be gone. Window listeners still follow the drag.
+    }
+    const origin = axis === "x" ? event.clientX : event.clientY;
+    const start = { width: shownWidth, height: shownHeight };
+    let latest = start;
+    const pointOf = (move: PointerEvent) => (axis === "x" ? move.clientX : move.clientY);
+    const onMove = (move: PointerEvent) => {
+      latest = scaleDisplaySize(start, pointOf(move) - origin, axis);
+      setBox(latest);
     };
-    const onUp = (up: globalThis.PointerEvent) => {
+    const finish = (end: PointerEvent) => {
+      dragCleanup.current = undefined;
+      dragging.current = false;
       window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      const nextWidth = Math.max(80, Math.round(startWidth + (up.clientX - startX)));
-      const nextHeight = Math.max(1, Math.round(nextWidth / aspect));
-      saveNode(rte, path, display, joinRteAttrs(split.payload, { ...display, width: nextWidth, height: nextHeight }));
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (end.type !== "pointercancel") latest = scaleDisplaySize(start, pointOf(end) - origin, axis);
+      try {
+        if (handle.hasPointerCapture(end.pointerId)) handle.releasePointerCapture(end.pointerId);
+      } catch {
+        // The pointer was already released.
+      }
+      if (latest.width === start.width && latest.height === start.height) {
+        setBox(null);
+        return;
+      }
+      setBox(latest);
+      saveNode(rte, path, display, joinRteAttrs(split.payload, { ...display, width: latest.width, height: latest.height }));
     };
     window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    dragCleanup.current = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
   };
 
-  const openProperties = () => {
-    setDraft({ alt: assetAlt(split.payload), display });
-    setPropertiesOpen(true);
+  const editImage = () => {
+    if (editing.current) return;
+    editing.current = true;
+    const open = (config: AppInstallationConfig) =>
+      openAssetEditor({
+        appConfig: config,
+        fieldConfig,
+        initialValue: split.payload,
+        display,
+        title: "Edit Image Properties",
+        confirmLabel: "Save",
+      }).then((next) => {
+        if (next) saveNode(rte, path, display, next);
+      });
+    let pending: Promise<unknown>;
+    try {
+      pending =
+        rte?.sdk && typeof rte.sdk.getConfig === "function"
+          ? rte.sdk
+              .getConfig()
+              .then((config) => open((config ?? appConfig) as AppInstallationConfig))
+              .catch(() => open(appConfig))
+          : open(appConfig);
+    } catch {
+      editing.current = false;
+      return;
+    }
+    void Promise.resolve(pending).finally(() => {
+      editing.current = false;
+    });
   };
 
   const { className: slateClassName, ...slateAttributes } = attributes ?? {};
@@ -138,16 +183,39 @@ export function BynderRteNode({
   return (
     <span {...slateAttributes} className={[slateClass, className].filter(Boolean).join(" ")}>
       <span contentEditable={false}>
-      <span className="bynder-rte-frame" ref={frameRef} style={{ width, height }}>
-        {preview ? <img src={preview} alt={assetAlt(split.payload)} /> : null}
-        <button type="button" className="bynder-rte-handle" aria-label="Scale asset" onPointerDown={scale} />
+      <span className="bynder-rte-box" style={{ width: shownWidth, aspectRatio: `${shownWidth} / ${shownHeight}` }}>
+        <span className="bynder-rte-frame">
+          {preview ? <img src={preview} alt={assetAlt(split.payload)} /> : null}
+        </span>
+        <button
+          type="button"
+          className="bynder-rte-handle is-east"
+          aria-label="Drag the right edge to scale"
+          title="Drag the right edge to scale"
+          onPointerDown={(event) => scale(event, "x")}
+        />
+        <button
+          type="button"
+          className="bynder-rte-handle is-south"
+          aria-label="Drag the bottom edge to scale"
+          title="Drag the bottom edge to scale"
+          onPointerDown={(event) => scale(event, "y")}
+        />
         <span className="bynder-rte-toolbar">
-          <button type="button" aria-label="Preview" onClick={() => preview && window.open(preview, "_blank", "noopener")}>
+          <button
+            type="button"
+            aria-label="Preview"
+            title="Preview"
+            data-tip="Preview"
+            onClick={() => preview && window.open(preview, "_blank", "noopener")}
+          >
             <EyeIcon />
           </button>
           <button
             type="button"
             aria-label="Open file"
+            title="Open file"
+            data-tip="Open file"
             onClick={() => {
               const url = rteOpenUrl(split.payload);
               if (url) window.open(url, "_blank", "noopener");
@@ -155,12 +223,14 @@ export function BynderRteNode({
           >
             <ExternalIcon />
           </button>
-          <button type="button" aria-label="Edit image properties" onClick={openProperties}>
+          <button type="button" aria-label="Edit image properties" title="Edit image properties" data-tip="Edit image properties" onClick={editImage}>
             <ImageIcon />
           </button>
           <button
             type="button"
             aria-label="Remove"
+            title="Remove"
+            data-tip="Remove"
             onClick={() => {
               if (!rte || !path.length) return;
               const entry = rte.getNode(path);
@@ -172,149 +242,9 @@ export function BynderRteNode({
         </span>
       </span>
       {display.caption ? <span className="bynder-rte-caption">{display.caption}</span> : null}
-      {propertiesOpen && draft
-        ? createPortal(
-            <PropertiesModal
-              preview={preview}
-              alt={draft.alt}
-              display={draft.display}
-              onChange={setDraft}
-              onCancel={() => setPropertiesOpen(false)}
-              onSave={() => {
-                const payload = payloadWithAlt(split.payload, draft.alt);
-                saveNode(rte, path, display, joinRteAttrs(payload, draft.display));
-                setPropertiesOpen(false);
-              }}
-              onAssetSettings={() => {
-                void openAssetEditor({
-                  appConfig,
-                  fieldConfig,
-                  initialValue: split.payload,
-                  title: "Bynder asset",
-                  confirmLabel: "Update",
-                }).then((payload) => {
-                  if (!payload) return;
-                  saveNode(rte, path, display, joinRteAttrs(payload, draft.display));
-                  setPropertiesOpen(false);
-                });
-              }}
-            />,
-            document.body
-          )
-        : null}
       </span>
       {slateChildren}
     </span>
-  );
-}
-
-function PropertiesModal({
-  preview,
-  alt,
-  display,
-  onChange,
-  onCancel,
-  onSave,
-  onAssetSettings,
-}: {
-  preview?: string;
-  alt: string;
-  display: RteDisplay;
-  onChange: (next: { alt: string; display: RteDisplay }) => void;
-  onCancel: () => void;
-  onSave: () => void;
-  onAssetSettings: () => void;
-}) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const host = hostRef.current;
-    if (!host) return undefined;
-    void openCmsFullscreen(host);
-    return () => {
-      void closeCmsFullscreen();
-    };
-  }, []);
-  const setDisplay = (patch: Partial<RteDisplay>) => onChange({ alt, display: { ...display, ...patch } });
-  return (
-    <div className="bynder-rte-properties" role="presentation" ref={hostRef}>
-      <div className="bynder-rte-properties-card" role="dialog" aria-modal="true" aria-labelledby="bynder-rte-properties-title">
-        <header>
-          <h2 id="bynder-rte-properties-title">Edit Image Properties</h2>
-          <button type="button" className="bynder-rte-close" aria-label="Close" onClick={onCancel}>
-            ×
-          </button>
-        </header>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSave();
-          }}
-        >
-          <div className="bynder-rte-properties-layout">
-            <div className="bynder-rte-properties-preview">
-              {preview ? <img src={preview} alt={alt} /> : null}
-            </div>
-            <div className="bynder-rte-properties-fields">
-              <label>
-                Alt text
-                <input value={alt} onChange={(event) => onChange({ alt: event.target.value, display })} />
-              </label>
-              <label>
-                Alignment
-                <select
-                  value={display.alignment ?? "left"}
-                  onChange={(event) => {
-                    const alignment = event.target.value as RteAlignment;
-                    setDisplay({ alignment, inline: isFloatAlignment(alignment) ? true : display.inline });
-                  }}
-                >
-                  {RTE_ALIGNMENTS.map((value) => (
-                    <option key={value} value={value}>
-                      {ALIGNMENT_LABELS[value]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Caption
-                <input value={display.caption ?? ""} onChange={(event) => setDisplay({ caption: event.target.value })} />
-              </label>
-              <label>
-                Embed link
-                <input value={display.link ?? ""} onChange={(event) => setDisplay({ link: event.target.value })} />
-              </label>
-              <label className="bynder-rte-check">
-                <input
-                  type="checkbox"
-                  checked={display.linkNewTab === true}
-                  onChange={(event) => setDisplay({ linkNewTab: event.target.checked })}
-                />
-                Open link in a new tab
-              </label>
-              <label className="bynder-rte-check">
-                <input
-                  type="checkbox"
-                  checked={display.inline === true || isFloatAlignment(display.alignment)}
-                  onChange={(event) => setDisplay({ inline: event.target.checked })}
-                />
-                Inline asset
-              </label>
-              <button type="button" className="bynder-rte-asset-settings" onClick={onAssetSettings}>
-                Asset settings
-              </button>
-            </div>
-          </div>
-        </form>
-        <footer>
-          <button type="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="button" className="is-primary" onClick={onSave}>
-            Save
-          </button>
-        </footer>
-      </div>
-    </div>
   );
 }
 

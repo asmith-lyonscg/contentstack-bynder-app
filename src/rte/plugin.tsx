@@ -1,7 +1,7 @@
 import ContentstackAppSDK, { PluginBuilder } from "@contentstack/app-sdk";
 import type { IRteParam } from "@contentstack/app-sdk/dist/src/RTE/types";
 import type { AppInstallationConfig } from "../lib/types";
-import { RTE_ELEMENT_TYPE, joinRteAttrs, splitRteAttrs } from "../lib/rteDisplay";
+import { RTE_ELEMENT_TYPE, splitRteAttrs } from "../lib/rteDisplay";
 import bynderIconUrl from "../../assets/bynder_thumb.png";
 import { openAssetEditor } from "./AssetEditorModal";
 import { BynderRteNode } from "./BynderRteNode";
@@ -59,15 +59,15 @@ const bynderPlugin = new PluginBuilder(RTE_ELEMENT_TYPE)
   .on("exec", (rte) => {
     ensureEditorStyles();
     void editorConfig(rte).then(async ({ appConfig, fieldConfig }) => {
-      const payload = await openAssetEditor({
+      const attrs = await openAssetEditor({
         appConfig,
         fieldConfig,
         initialValue: null,
         title: "Insert Bynder asset",
         confirmLabel: "Insert",
       });
-      if (!payload) return;
-      insertBynder(rte, joinRteAttrs(payload, {}));
+      if (!attrs) return;
+      insertBynder(rte, attrs);
     });
   })
   .build();
