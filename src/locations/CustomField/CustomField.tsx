@@ -326,6 +326,8 @@ export interface EditorHost {
   fieldConfig?: unknown;
   initialValue: unknown;
   onDraft: (payload: Record<string, unknown>) => void;
+  /** The Desktop or Mobile tab the author is editing. */
+  onViewport?: (viewport: ViewportKind) => void;
   singleAsset?: boolean;
 }
 
@@ -392,6 +394,11 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
   const focusedIsDocument = isDocumentAsset(focused);
   const desktopMobileMode = cropConfig.desktopMobileMode !== false;
   const activeViewport = desktopMobileMode ? resolveActiveViewport(settings) : "desktop";
+  const onViewportRef = useRef(editorHost?.onViewport);
+  onViewportRef.current = editorHost?.onViewport;
+  useEffect(() => {
+    onViewportRef.current?.(activeViewport);
+  }, [activeViewport]);
   const focusedSaved = savedAssetById(settings, focused?.id);
   const sameMobileAsset = desktopMobileMode && !focusedSaved?.differentMobileAsset;
   const mobileDiverged = Boolean(sameMobileAsset && focusedSaved?.mobile);

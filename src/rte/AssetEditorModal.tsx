@@ -5,12 +5,16 @@ import type { AppInstallationConfig } from "../lib/types";
 import {
   RTE_ALIGNMENTS,
   assetAlt,
+  editDisplayPlacement,
   isFloatAlignment,
   joinRteAttrs,
   payloadWithAlt,
+  placementFor,
+  relinkDisplayPlacement,
   type RteAlignment,
   type RteDisplay,
 } from "../lib/rteDisplay";
+import type { ViewportKind } from "../lib/types";
 import { closeCmsFullscreen, openCmsFullscreen } from "./cmsModal";
 import { ensureEditorStyles } from "./editorStyles";
 
@@ -76,10 +80,14 @@ function AssetEditorModal({
   const draft = useRef<Record<string, unknown>>(record(initialValue));
   const altTouched = useRef(false);
   const assetId = useRef<string | undefined>(firstAssetId(record(initialValue)));
+  const splitMobile = useRef(usesDifferentMobile(record(initialValue)));
   const [empty, setEmpty] = useState(false);
   const [alt, setAlt] = useState(() => assetAlt(record(initialValue)));
   const [display, setDisplay] = useState<RteDisplay>(initialDisplay ?? {});
-  const patchDisplay = (patch: Partial<RteDisplay>) => setDisplay((current) => ({ ...current, ...patch }));
+  const [editorViewport, setEditorViewport] = useState<ViewportKind>("desktop");
+  const placement = placementFor(display, editorViewport);
+  const patchPlacement = (patch: { alignment?: RteAlignment; inline?: boolean }) =>
+    setDisplay((current) => editDisplayPlacement(current, editorViewport, patch));
   return (
     <div className="bynder-rte-modal" role="presentation">
       <div className="bynder-rte-dialog" role="dialog" aria-modal="true" aria-labelledby="bynder-rte-editor-title">
@@ -96,8 +104,12 @@ function AssetEditorModal({
               fieldConfig,
               initialValue,
               singleAsset: true,
+              onViewport: setEditorViewport,
               onDraft: (payload) => {
+                const split = usesDifferentMobile(payload);
                 draft.current = payload;
+                if (splitMobile.current && !split) setDisplay((current) => relinkDisplayPlacement(current));
+                splitMobile.current = split;
                 const nextId = firstAssetId(payload);
                 if (nextId && nextId !== assetId.current) {
                   assetId.current = nextId;
@@ -125,15 +137,15 @@ function AssetEditorModal({
             </label>
             <label>
               Alignment
+              <span className="bynder-rte-viewport">{editorViewport === "mobile" ? "Mobile" : "Desktop"}</span>
               <select
-                value={display.alignment ?? "left"}
+                value={placement.alignment ?? "left"}
                 onChange={(event) => {
                   const alignment = event.target.value as RteAlignment;
-                  setDisplay((current) => ({
-                    ...current,
+                  patchPlacement({
                     alignment,
-                    inline: isFloatAlignment(alignment) ? true : current.inline,
-                  }));
+                    inline: isFloatAlignment(alignment) ? true : placement.inline,
+                  });
                 }}
               >
                 {RTE_ALIGNMENTS.map((value) => (
@@ -145,33 +157,34 @@ function AssetEditorModal({
             </label>
             <label>
               Caption
-              <input value={display.caption ?? ""} onChange={(event) => patchDisplay({ caption: event.target.value })} />
+              <input value={display.caption ?? ""} onChange={(event) => setDisplay((current) => ({ ...current, caption: event.target.value }))} />
             </label>
             <label>
               Embed link
-              <input value={display.link ?? ""} onChange={(event) => patchDisplay({ link: event.target.value })} />
+              <input value={display.link ?? ""} onChange={(event) => setDisplay((current) => ({ ...current, link: event.target.value }))} />
             </label>
             <label className="bynder-rte-check">
               <input
                 type="checkbox"
                 checked={display.linkNewTab === true}
-                onChange={(event) => patchDisplay({ linkNewTab: event.target.checked })}
+                onChange={(event) => setDisplay((current) => ({ ...current, linkNewTab: event.target.checked }))}
               />
               Open link in a new tab
             </label>
             <label className="bynder-rte-check">
               <input
                 type="checkbox"
-                checked={display.inline === true || isFloatAlignment(display.alignment)}
+                checked={placement.inline === true || isFloatAlignment(placement.alignment)}
                 onChange={(event) => {
-                  if (!event.target.checked && isFloatAlignment(display.alignment)) {
-                    patchDisplay({ inline: false, alignment: "left" });
+                  if (!event.target.checked && isFloatAlignment(placement.alignment)) {
+                    patchPlacement({ inline: false, alignment: "left" });
                     return;
                   }
-                  patchDisplay({ inline: event.target.checked });
+                  patchPlacement({ inline: event.target.checked });
                 }}
               />
               Inline asset
+              <span className="bynder-rte-viewport">{editorViewport === "mobile" ? "Mobile" : "Desktop"}</span>
             </label>
           </section>
         <footer>
@@ -207,4 +220,11 @@ function firstAssetId(payload: Record<string, unknown>): string | undefined {
   if (!Array.isArray(assets) || !assets[0] || typeof assets[0] !== "object") return undefined;
   const id = (assets[0] as { id?: unknown }).id;
   return typeof id === "string" ? id : undefined;
+}
+
+function usesDifferentMobile(payload: Record<string, unknown>): boolean {
+  const assets = payload.assets;
+  const asset = Array.isArray(assets) ? assets[0] : undefined;
+  if (!asset || typeof asset !== "object") return false;
+  return (asset as { differentMobileAsset?: unknown }).differentMobileAsset === true;
 }

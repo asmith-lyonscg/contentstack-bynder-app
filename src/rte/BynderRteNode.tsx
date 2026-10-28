@@ -4,13 +4,19 @@ import type { AppInstallationConfig } from "../lib/types";
 import {
   assetAlt,
   displayAspect,
+  editDisplayScale,
+  imageViewportsDiffer,
   joinRteAttrs,
+  resetDisplayScale,
   rteOpenUrl,
   rtePreviewUrl,
   scaleDisplaySize,
+  scaleFor,
+  scaleIsCustom,
   splitRteAttrs,
   type RteDisplay,
 } from "../lib/rteDisplay";
+import type { ViewportKind } from "../lib/types";
 import { openAssetEditor } from "./AssetEditorModal";
 import { ensureEditorStyles } from "./editorStyles";
 
@@ -74,9 +80,13 @@ export function BynderRteNode({
   const dragging = useRef(false);
   const dragCleanup = useRef<(() => void) | undefined>(undefined);
   const display = split.display;
-  const aspect = displayAspect(split.payload);
-  const width = display.width ?? 320;
-  const height = display.height ?? Math.max(1, Math.round(width / aspect));
+  const canToggle = imageViewportsDiffer(split.payload, display);
+  const [showMobile, setShowMobile] = useState(false);
+  const previewViewport: ViewportKind = canToggle && showMobile ? "mobile" : "desktop";
+  const aspect = displayAspect(split.payload, previewViewport);
+  const savedBox = scaleFor(display, previewViewport, aspect);
+  const width = savedBox.width;
+  const height = savedBox.height;
   const [box, setBox] = useState<{ width: number; height: number } | null>(null);
   const shownWidth = box?.width ?? width;
   const shownHeight = box?.height ?? height;
@@ -84,7 +94,7 @@ export function BynderRteNode({
     if (!dragging.current && box && box.width === width && box.height === height) setBox(null);
   }, [box, width, height]);
   useEffect(() => () => dragCleanup.current?.(), []);
-  const preview = rtePreviewUrl(split.payload);
+  const preview = rtePreviewUrl(split.payload, previewViewport);
   const alignment = display.alignment ?? "left";
   const className = [
     "bynder-rte-node",
@@ -133,7 +143,12 @@ export function BynderRteNode({
         return;
       }
       setBox(latest);
-      saveNode(rte, path, display, joinRteAttrs(split.payload, { ...display, width: latest.width, height: latest.height }));
+      saveNode(
+        rte,
+        path,
+        display,
+        joinRteAttrs(split.payload, editDisplayScale(display, previewViewport, latest))
+      );
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", finish);
@@ -217,7 +232,7 @@ export function BynderRteNode({
             title="Open file"
             data-tip="Open file"
             onClick={() => {
-              const url = rteOpenUrl(split.payload);
+              const url = rteOpenUrl(split.payload, previewViewport);
               if (url) window.open(url, "_blank", "noopener");
             }}
           >
@@ -226,6 +241,36 @@ export function BynderRteNode({
           <button type="button" aria-label="Edit image properties" title="Edit image properties" data-tip="Edit image properties" onClick={editImage}>
             <ImageIcon />
           </button>
+          {canToggle ? (
+            <button
+              type="button"
+              className={previewViewport === "mobile" ? "is-active" : ""}
+              aria-label={previewViewport === "mobile" ? "Show desktop image" : "Show mobile image"}
+              aria-pressed={previewViewport === "mobile"}
+              title={previewViewport === "mobile" ? "Show desktop image" : "Show mobile image"}
+              data-tip={previewViewport === "mobile" ? "Show desktop image" : "Show mobile image"}
+              onClick={() => {
+                setBox(null);
+                setShowMobile((current) => !current);
+              }}
+            >
+              <PhoneIcon />
+            </button>
+          ) : null}
+          {scaleIsCustom(display, previewViewport) ? (
+            <button
+              type="button"
+              aria-label="Revert to original scale"
+              title="Revert to original scale"
+              data-tip="Revert to original scale"
+              onClick={() => {
+                setBox(null);
+                saveNode(rte, path, display, joinRteAttrs(split.payload, resetDisplayScale(display)));
+              }}
+            >
+              <ResetIcon />
+            </button>
+          ) : null}
           <button
             type="button"
             aria-label="Remove"
@@ -276,6 +321,22 @@ function MinusIcon() {
   return (
     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
       <path fill="currentColor" d="M3 7.2h10v1.6H3z" />
+    </svg>
+  );
+}
+
+function PhoneIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+      <path fill="currentColor" d="M6 1.5h4c.6 0 1 .4 1 1v11c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-11c0-.6.4-1 1-1zm.3 1.3v.5h3.4v-.5H6.3zM8 12.2a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z" />
+    </svg>
+  );
+}
+
+function ResetIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+      <path fill="currentColor" d="M8 2.2V.6L4.8 3.2 8 5.8V4.2a3.8 3.8 0 1 1-3.3 1.9l-1.3-.7A5.2 5.2 0 1 0 8 2.2z" />
     </svg>
   );
 }
