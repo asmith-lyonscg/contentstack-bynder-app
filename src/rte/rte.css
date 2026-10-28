@@ -284,17 +284,23 @@
   display: flex;
 }
 
-.bynder-rte-toolbar button {
+.bynder-rte-node .bynder-rte-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   position: relative;
   width: 28px;
   height: 28px;
   padding: 0;
+  line-height: 0;
 }
 
-.bynder-rte-toolbar button svg {
+.bynder-rte-node .bynder-rte-toolbar button svg {
   display: block;
   width: 20px;
   height: 20px;
+  flex: 0 0 auto;
 }
 
 .bynder-rte-toolbar button::after {
