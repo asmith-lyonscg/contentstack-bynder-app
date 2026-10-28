@@ -239,7 +239,7 @@ export function BynderRteNode({
             <ExternalIcon />
           </button>
           <button type="button" aria-label="Edit image properties" title="Edit image properties" data-tip="Edit image properties" onClick={editImage}>
-            <ImageIcon />
+            <PencilIcon />
           </button>
           {canToggle ? (
             <button
@@ -295,7 +295,7 @@ export function BynderRteNode({
 
 function EyeIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+    <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden>
       <path fill="currentColor" d="M8 3.5C4.5 3.5 2 6.2 1 8c1 1.8 3.5 4.5 7 4.5s6-2.7 7-4.5c-1-1.8-3.5-4.5-7-4.5zm0 7.2A2.7 2.7 0 1 1 8 5.3a2.7 2.7 0 0 1 0 5.4z" />
     </svg>
   );
@@ -303,23 +303,26 @@ function EyeIcon() {
 
 function ExternalIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+    <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden>
       <path fill="currentColor" d="M4 4h4v1.4H5.4V11.6h6.2V8H13v5H4V4zm5 .1h3.1V7.2h-1.4V6.5L7.4 9.8 6.4 8.8l3.3-3.3h-.7V4.1z" />
     </svg>
   );
 }
 
-function ImageIcon() {
+function PencilIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
-      <path fill="currentColor" d="M2 3.5h12v9H2v-9zm1.4 7.6h9.2l-2.4-3-1.8 2.2-1.2-1.4-3.8 2.2zM6 7.2a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4z" />
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"
+      />
     </svg>
   );
 }
 
 function MinusIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+    <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden>
       <path fill="currentColor" d="M3 7.2h10v1.6H3z" />
     </svg>
   );
@@ -327,7 +330,7 @@ function MinusIcon() {
 
 function PhoneIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+    <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden>
       <path fill="currentColor" d="M6 1.5h4c.6 0 1 .4 1 1v11c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-11c0-.6.4-1 1-1zm.3 1.3v.5h3.4v-.5H6.3zM8 12.2a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6z" />
     </svg>
   );
@@ -335,7 +338,7 @@ function PhoneIcon() {
 
 function ResetIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
+    <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden>
       <path fill="currentColor" d="M8 2.2V.6L4.8 3.2 8 5.8V4.2a3.8 3.8 0 1 1-3.3 1.9l-1.3-.7A5.2 5.2 0 1 0 8 2.2z" />
     </svg>
   );

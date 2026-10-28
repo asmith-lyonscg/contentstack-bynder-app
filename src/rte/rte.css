@@ -291,6 +291,12 @@
   padding: 0;
 }
 
+.bynder-rte-toolbar button svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
 .bynder-rte-toolbar button::after {
   content: attr(data-tip);
   position: absolute;
