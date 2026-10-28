@@ -100,6 +100,16 @@ describe("buildBynderSources", () => {
     expect(sources?.objectPosition).toBe("25% 75%");
   });
 
+  it("mirrors left to right after the crop and flips the CSS position", () => {
+    const mirrored = {
+      ...entry,
+      assets: [{ ...entry.assets[0], mirror: true }],
+    };
+    const sources = buildBynderSources(mirrored);
+    expect(sources?.src).toContain("io=transform:fill,width:2000,height:1125&io=transform:mirror&focuspoint=0.25,0.75");
+    expect(sources?.objectPosition).toBe("75% 75%");
+  });
+
   it("caps a caller width list and uses the mobile aspect", () => {
     const mobile = buildBynderSources(entry, { viewport: "mobile" });
     expect(mobile?.width).toBe(2000);

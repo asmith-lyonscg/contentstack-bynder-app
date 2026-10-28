@@ -71,6 +71,26 @@ describe("buildSettingsPayload", () => {
     expect(saved.assets[0].mobile).toBeUndefined();
     expect(saved.assets[0]).not.toHaveProperty("transform");
     expect(saved.assets[0]).not.toHaveProperty("dat");
+    expect(saved.assets[0]).not.toHaveProperty("mirror");
+  });
+
+  it("saves mirror only when the image is mirrored", () => {
+    const current = emptySettings();
+    current.mirror = true;
+    current.assets = [
+      {
+        id: "a",
+        transformBaseUrl: "https://x/t/a",
+        focalPoint: { x: 0.5, y: 0.5 },
+        transform: { ...DEFAULT_TRANSFORM },
+        mirror: true,
+      },
+    ];
+    const saved = persistedPayload(buildSettingsPayload(current, { assets: current.assets, profileSettings: HERO })) as {
+      assets: Record<string, unknown>[];
+    };
+    expect(saved.assets[0].mirror).toBe(true);
+    expect(parseSavedSettings(saved).assets?.[0].mirror).toBe(true);
   });
 
   it("round-trips profile: { id, settings } and keeps settings when there is no id", () => {

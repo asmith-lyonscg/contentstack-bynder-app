@@ -64,6 +64,15 @@
   cursor: crosshair;
 }
 
+.crop-mirror {
+  position: absolute;
+  inset: 0;
+}
+
+.crop-mirror.is-mirrored {
+  transform: scaleX(-1);
+}
+
 .crop-image-layer {
   position: absolute;
   left: 0;

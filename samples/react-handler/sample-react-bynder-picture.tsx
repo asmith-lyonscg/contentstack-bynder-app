@@ -28,7 +28,9 @@ import field from "../payload/sample-payload-large-hero.json";
  * the helper shrinks the step first.
  *
  * Each URL is `{transformBaseUrl}?io=transform:fill,width:{w},height:{h}&focuspoint={x},{y}&format=webp&quality=80`.
- * A missing focal point is `0.5,0.5`. `src` is the largest remaining step.
+ * When the asset has `mirror: true`, `buildBynderSources` inserts `&io=transform:mirror` after the fill.
+ * A missing focal point is `0.5,0.5`. A missing `mirror` is off. The largeHero sample mirrors the desktop file only.
+ * `src` is the largest remaining step.
  */
 export const STANDARD_WIDTHS = [640, 960, 1280, 1600, 1920, 2560, 3200, 3840] as const;
 

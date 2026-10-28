@@ -29,6 +29,7 @@ export function viewportCrop(
   return {
     focalPoint: crop.focalPoint,
     transform: crop.transform,
+    ...(crop.mirror ? { mirror: true } : {}),
   };
 }
 
@@ -43,6 +44,7 @@ export function cropSliceForAsset(
   const live: ViewportCropSettings = {
     focalPoint: settings.focalPoint,
     transform: settings.transform,
+    ...(settings.mirror ? { mirror: true } : {}),
   };
 
   if (!assetId) return live;
@@ -70,13 +72,14 @@ export function withoutMobileCrop(crop: AssetCropSettings | undefined): AssetCro
   return desktop;
 }
 
-/** True when mobile still follows desktop. The focal point is the only author choice that can differ. */
+/** True when mobile still follows desktop. The focal point and mirror are the author choices that can differ. */
 export function viewportCropsEqual(a: ViewportCropSettings, b: ViewportCropSettings): boolean {
   const ax = a.focalPoint?.x ?? 0.5;
   const ay = a.focalPoint?.y ?? 0.5;
   const bx = b.focalPoint?.x ?? 0.5;
   const by = b.focalPoint?.y ?? 0.5;
-  return Math.round(ax * 1000) === Math.round(bx * 1000) && Math.round(ay * 1000) === Math.round(by * 1000);
+  const sameFocal = Math.round(ax * 1000) === Math.round(bx * 1000) && Math.round(ay * 1000) === Math.round(by * 1000);
+  return sameFocal && (a.mirror === true) === (b.mirror === true);
 }
 
 /**

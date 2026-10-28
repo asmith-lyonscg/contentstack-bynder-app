@@ -81,6 +81,15 @@ describe("viewportCropsEqual", () => {
     expect(viewportCropsEqual(desktop, { ...desktop, focalPoint: { x: 0.6, y: 0.3 } })).toBe(false);
     expect(viewportCropsEqual(desktop, { focalPoint: desktop.focalPoint, transform: { ...DEFAULT_TRANSFORM } })).toBe(true);
   });
+
+  it("treats mirror as its own difference", () => {
+    expect(viewportCropsEqual(desktop, { ...desktop, mirror: true })).toBe(false);
+    const kept = stripMatchingMobile({
+      ...desktop,
+      mobile: { focalPoint: desktop.focalPoint, transform: desktop.transform, mirror: true },
+    });
+    expect(kept.mobile?.mirror).toBe(true);
+  });
 });
 
 describe("stripMatchingMobile", () => {

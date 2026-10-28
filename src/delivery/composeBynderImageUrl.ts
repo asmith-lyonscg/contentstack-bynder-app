@@ -48,6 +48,7 @@ interface ResolvedSlice {
   base?: string;
   webImage?: string;
   focalPoint: FocalPoint;
+  mirror: boolean;
   profile: ProfileSettings;
   image: ViewportImageSize;
 }
@@ -66,7 +67,7 @@ function resolveSlice(value: unknown, options?: BynderImageOptions): ResolvedSli
 
   const viewport = options?.viewport ?? "desktop";
   const mobile = viewport === "mobile" ? asRecord(asset.mobile) : undefined;
-  const crop = mobile && (mobile.operation || mobile.focalPoint) ? mobile : asset;
+  const crop = mobile && (mobile.operation || mobile.focalPoint || mobile.mirror === true) ? mobile : asset;
   const file = mobile?.id ? mobile : asset;
   const point = asRecord(crop.focalPoint);
   const nested = asRecord(root?.profile);
@@ -79,6 +80,7 @@ function resolveSlice(value: unknown, options?: BynderImageOptions): ResolvedSli
     base: asString(file.transformBaseUrl),
     webImage: asString(asRecord(file.webImage)?.url),
     focalPoint: normalizeFocalPoint({ x: Number(point?.x ?? 0.5), y: Number(point?.y ?? 0.5) }),
+    mirror: crop.mirror === true,
     profile,
     image,
   };
@@ -92,6 +94,7 @@ function urlForWidth(slice: ResolvedSlice, width: number): string | undefined {
     datQueryForWidth(
       {
         focalPoint: slice.focalPoint,
+        mirror: slice.mirror,
       },
       { aspectRatio: slice.image.aspectRatio, format: slice.profile.format, quality: slice.profile.quality },
       width
@@ -121,7 +124,7 @@ export function composeBynderImageUrl(value: unknown, options?: BynderImageOptio
 export function buildBynderSources(value: unknown, options?: BynderSourcesOptions): BynderSources | undefined {
   const slice = resolveSlice(value, options);
   if (!slice) return undefined;
-  const objectPosition = focalPointToObjectPosition(slice.focalPoint);
+  const objectPosition = focalPointToObjectPosition(slice.focalPoint, slice.mirror);
   const maxDimension = slice.profile.maxDimension ?? DEFAULT_MAX_DIMENSION;
   const widths = srcsetWidths(slice.image.aspectRatio, maxDimension, options?.widths);
   const widest = widths[widths.length - 1];
@@ -141,7 +144,8 @@ export function buildBynderSources(value: unknown, options?: BynderSourcesOption
   };
 }
 
-export function focalPointToObjectPosition(focalPoint: FocalPoint | null | undefined): string {
+export function focalPointToObjectPosition(focalPoint: FocalPoint | null | undefined, mirror = false): string {
   const point = normalizeFocalPoint(focalPoint);
-  return `${point.x * 100}% ${point.y * 100}%`;
+  const x = mirror ? 1 - point.x : point.x;
+  return `${x * 100}% ${point.y * 100}%`;
 }

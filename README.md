@@ -4,9 +4,9 @@ Written by **Anthony Smith**. Owned by **Capgemini**.
 
 # OVERVIEW
 
-Contentstack custom field for Bynder Universal Compact View. An author picks an asset and a focal point. The field saves one JSON object: the chosen render profile as a snapshot, plus each asset. The website reads that object from the entry and builds Bynder DAT URLs from it.
+Contentstack custom field for Bynder Universal Compact View. An author picks an asset, places a focal point, and can mirror the image left to right. The field saves one JSON object: the chosen render profile as a snapshot, plus each asset. The website reads that object from the entry and builds Bynder DAT URLs from it.
 
-Use it when image crops should be fixed by a profile (aspect, format, quality) while authors only place the focal point. **Fill** is the only transform. The site chooses the widths. Delivery caps each request so neither side passes `maxDimension` (2000 unless App Configuration sets another limit).
+Use it when image crops should be fixed by a profile (aspect, format, quality) while authors place the focal point and can mirror an image left to right. **Fill** is the only transform. The site chooses the widths. Delivery caps each request so neither side passes `maxDimension` (2000 unless App Configuration sets another limit).
 
 The official Bynder Marketplace app is not required, and this field does not read a sibling Bynder field. App Configuration is not available to the website, so each entry stores the profile it used.
 
@@ -22,7 +22,7 @@ Create a private app in Developer Hub and point it at this app. The sections bel
    | Field | Value |
    |---|---|
    | Name | `Bynder + Focal Point` |
-   | Description | Companion custom field for Bynder fields which lets authors set a focal point, and live-previews the transformed image. |
+   | Description | Companion custom field for Bynder fields which lets authors set a focal point and mirror an image left to right, and live-previews the transformed image. |
 3. Open **Hosting → Custom Hosting**.
 4. Set **App URL** to the hosted build, with no trailing slash:
 
@@ -325,9 +325,9 @@ The list shows desktop and mobile thumbs unless `desktopMobileMode` is false. Ea
 
 The **Render profile** dropdown is hidden when `"profile"` is set. Otherwise it stays visible after a selection. **Original aspect ratio** is a choice when the field sets no `defaultProfile`. **Customize** is a choice only when `allowCustomAspect` is true. It starts each viewport at that file’s own ratio. Dragging the right edge of the preview sets a new ratio. The choice applies to every asset in the field.
 
-The crop header shows **Image Profile:** and the assigned name, or **Original aspect ratio**, then **Aspect Ratio:** for the viewport being edited. The link between the desktop and mobile thumbnails means those viewports are the same asset with the same crop. A profile with different desktop and mobile aspects shows no link. **Match desktop** and **Match mobile** copy the focal point across and hide once the two already match. **Reset center** hides at 50%, 50%. A different mobile asset hides the link and both match actions. Picking the desktop file again for mobile, with the same crop and alt text, removes `mobile` from the saved JSON.
+The crop header shows **Image Profile:** and the assigned name, or **Original aspect ratio**, then **Aspect Ratio:** for the viewport being edited. The link between the desktop and mobile thumbnails means those viewports are the same asset with the same crop. A profile with different desktop and mobile aspects shows no link. **Match desktop** and **Match mobile** copy the focal point and mirror across and hide once the two already match. **Reset center** hides at 50%, 50%. **Mirror** flips that viewport left to right. A different mobile asset hides the link and both match actions. Picking the desktop file again for mobile, with the same crop and alt text, removes `mobile` from the saved JSON.
 
-Hovering a thumbnail shows the aspect ratio and file type, for example `16:9 · WebP`, or `16:9 · JPG · 2.1 MB` when the file has no transform URL. **Edit** opens the crop editor. Copy URL composes the active tab’s largest default srcset step with the same code the site uses. Click or drag the red dot to set the focal point.
+Hovering a thumbnail shows the aspect ratio and file type, for example `16:9 · WebP`, or `16:9 · JPG · 2.1 MB` when the file has no transform URL. **Edit** opens the crop editor. Copy URL composes the active tab’s largest default srcset step with the same code the site uses. Click or drag the red dot to set the focal point. **Mirror** flips the preview left to right. The same editor is the JSON RTE image-properties dialog.
 
 On load, the field normalizes the stored value the same way a save does and compares the result, ignoring key order. When nothing differs, opening the entry leaves it clean. When something differs, the field writes the updated value and shows **Unsaved changes** until the entry is saved. That happens when the entry’s profile changed in App Configuration, the saved profile left this field’s `profiles` list, `desktopMobileMode` turned off, `suppressMetadata` turned on, a new boolean `additionalFields` item added its `false` default, or original pixel size was filled in because `origWidth` and `origHeight` were missing.
 
@@ -335,13 +335,13 @@ On load, the field normalizes the stored value the same way a save does and comp
 
 Read the custom field from the entry. Its UID is the one on the content type. The Delivery API returns the object below (`v`, `profile`, `assets`). When a client gives you a string, parse it once.
 
-The entry stores no DAT URLs. It stores the profile snapshot and each asset’s focal point and Fill. The site composes every URL. **Fill** is `io=transform:fill,width:W,height:H&focuspoint=x,y`. A missing focal point is the center, `0.5,0.5`.
+The entry stores no DAT URLs. It stores the profile snapshot and each asset’s focal point, Fill, and mirror. The site composes every URL. **Fill** is `io=transform:fill,width:W,height:H&focuspoint=x,y`. When `mirror` is true the site adds `&io=transform:mirror` after the fill and before the focus point, so the focal point still refers to the original file and the cropped result is flipped left to right. A missing focal point is the center, `0.5,0.5`. A missing `mirror` is off.
 
 `profile` is `{ id, settings }`. `id` is the profile name. `settings.desktop` and `settings.mobile` are aspect-ratio strings. `settings` also has `quality` and `format`. **Customize** saves `id: "custom"`. With no profile, `id`, `desktop`, and `mobile` are omitted and the site uses `origWidth` / `origHeight`. `maxDimension` is on the snapshot only when it is not 2000.
 
-Each asset has `id`, `name`, `type`, `transformBaseUrl`, `alt`, `origWidth`, `origHeight`, and `operation` (`"fill"`). `focalPoint` is saved only when it is not `0.5`, `0.5`. Those pixels are the Bynder original. A video also stores `video` (`autoplay`, `muted`, `controls`, `loop`, `controlsTheme`) and no focal point. `controlsTheme` is `"light"` or `"dark"`. Light is the default. An older video that omits it is light. Play `webImage.url` when it is present and leave that URL unchanged. See [`sample-payload-video.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-video.json). A document stores `url` (open in the browser), `downloadUrl` (the same file with `download=true`), and `thumbnail` when the preview URL can be built. See [`sample-payload-document.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-document.json). `webImage` is saved only when an image has no `transformBaseUrl`. Configured `additionalFields` values are on `additional`.
+Each asset has `id`, `name`, `type`, `transformBaseUrl`, `alt`, `origWidth`, `origHeight`, and `operation` (`"fill"`). `focalPoint` is saved only when it is not `0.5`, `0.5`. `mirror` is saved only when it is true. Those pixels are the Bynder original. Videos and documents have no mirror. A video also stores `video` (`autoplay`, `muted`, `controls`, `loop`, `controlsTheme`) and no focal point. `controlsTheme` is `"light"` or `"dark"`. Light is the default. An older video that omits it is light. Play `webImage.url` when it is present and leave that URL unchanged. See [`sample-payload-video.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-video.json). A document stores `url` (open in the browser), `downloadUrl` (the same file with `download=true`), and `thumbnail` when the preview URL can be built. See [`sample-payload-document.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-document.json). `webImage` is saved only when an image has no `transformBaseUrl`. Configured `additionalFields` values are on `additional`.
 
-Mobile that still matches desktop is omitted. A mobile with its own focal point, or a different file, is `assets[n].mobile`. A different file also has its own `id`, `transformBaseUrl`, `origWidth`, `origHeight`, and `alt`.
+Mobile that still matches desktop is omitted. A mobile with its own focal point, its own mirror, or a different file, is `assets[n].mobile`. A different file also has its own `id`, `transformBaseUrl`, `origWidth`, `origHeight`, and `alt`.
 
 ```json
 {
@@ -380,7 +380,7 @@ The image samples are the same two Bynder files under three profiles. The video 
 
 | File | Saved as |
 |---|---|
-| [`sample-payload-large-hero.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-large-hero.json) | `largeHero`, desktop `16:9`, mobile `5:3` |
+| [`sample-payload-large-hero.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-large-hero.json) | `largeHero`, desktop `16:9` with `mirror: true`, mobile `5:3` unmirrored |
 | [`sample-payload-split-left-right.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-split-left-right.json) | `splitLeftRight`, desktop `7:4`, mobile `16:9` |
 | [`sample-payload-custom.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-custom.json) | `id` `"custom"`, desktop `2:1`, mobile `3:2` |
 | [`sample-payload-video.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-video.json) | No crop. `video.controlsTheme` is `"dark"`, with autoplay on, muted on, controls on, and loop off. `webImage.url` is the file |
@@ -393,7 +393,7 @@ The image samples are the same two Bynder files under three profiles. The video 
 |---|---|
 | [`sample-react-bynder-picture.tsx`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/react-handler/sample-react-bynder-picture.tsx) | React `<picture>` that calls `buildBynderSources`. The default `value` is the largeHero sample payload. Copy it and point the import at your copy of `src/delivery`. |
 
-A centered focal point is omitted in the payload and requested as `focuspoint=0.5,0.5`.
+A centered focal point is omitted in the payload and requested as `focuspoint=0.5,0.5`. `mirror` is omitted when it is off. The largeHero sample turns it on for the desktop file only, so that picture shows both URL shapes.
 
 #### Sample HTML output
 
@@ -445,7 +445,7 @@ const thumb = composeBynderImageUrl(value, { width: 400 });
 
 `sizes` is the CSS width of the slot (`"100vw"` for a full-bleed hero, `"40vw"` for a split column). `widths` is the file widths to request. The default list is 640, 960, 1280, 1600, 1920, 2560, 3200, 3840. A narrower slot passes a shorter list. Leave `maxDimension` unset: the helper reads `profile.settings.maxDimension`, or 2000 when the snapshot omits it, and drops any step that would make either side larger. `src` and the `img` `width` / `height` are the largest remaining desktop step.
 
-`alt` is `assets[].alt`. An empty string stays empty. Set CSS `object-position` from `objectPosition` so an asset that only has `webImage` uses the same focal point. With no `transformBaseUrl`, `buildBynderSources` returns `src` and `objectPosition` only. Without a profile, the image uses `origWidth` / `origHeight`. When those pixels were never recorded, the helper requests `io=transform:scale,width:W` and returns no `height`.
+`alt` is `assets[].alt`. An empty string stays empty. Set CSS `object-position` from `objectPosition`. When `mirror` is true the helper flips the horizontal percentage, so a further CSS crop matches the flipped file. A centered point stays `50% 50%`. With no `transformBaseUrl`, `buildBynderSources` returns `src` and `objectPosition` only. Without a profile, the image uses `origWidth` / `origHeight`. When those pixels were never recorded, the helper requests `io=transform:scale,width:W` and, when mirrored, `io=transform:mirror`. It returns no `height`.
 
 A JSON RTE Bynder node is one field payload plus `display`. Pass `v`, `profile`, and `assets` to the same helper. `display.width` and `display.height` are the author-set pixel size. Dragging either edge on the desktop image writes that pair, and the mobile image uses the same width until the author scales the mobile image. `display.mobile.width` and `display.mobile.height` are that separate mobile size. `display.alignment` is `left`, `center`, `right`, `floatLeft`, or `floatRight`. A float is inline, with text wrapping on that side. `display.inline` without a float sits in the line. Alignment and inline follow desktop until the author changes them on the Mobile tab, which stores `display.mobile.alignment` and `display.mobile.inline`. Turning off “Use a different asset for mobile” removes those two mobile keys and leaves a separate mobile scale in place. `display.caption` and `display.link` wrap the asset when they are set. `display.linkNewTab` opens that link in a new tab. Alt text is `assets[0].alt`. See [`sample-payload-rte.json`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/payload/sample-payload-rte.json) and [`sample-html-rte.html`](https://github.com/asmith-lyonscg/contentstack-bynder-app/blob/main/samples/html-output/sample-html-rte.html). The sample omits `display.mobile` because that asset’s scale, alignment, and inline are still shared.
 

@@ -81,6 +81,17 @@ describe("composeDatUrl", () => {
     );
   });
 
+  it("adds a horizontal mirror after the fill", () => {
+    const url = composeDatUrl(base, {
+      focalPoint: { x: 0.5, y: 0.5 },
+      mirror: true,
+      transform: { ...DEFAULT_TRANSFORM, operation: "fill", width: 1600, height: 900, format: "webp", quality: 80 },
+    });
+    expect(url).toBe(
+      "https://portal.bynder.com/transform/abc123/hero.jpg?io=transform:fill,width:1600,height:900&io=transform:mirror&focuspoint=0.5,0.5&format=webp&quality=80"
+    );
+  });
+
   it("omits quality for png", () => {
     const url = composeDatUrl(base, {
       focalPoint: { x: 0.5, y: 0.5 },
@@ -108,6 +119,12 @@ describe("datQueryForWidth", () => {
   it("sizes one query to the requested width at the profile aspect", () => {
     expect(datQueryForWidth({ focalPoint: { x: 0.25, y: 0.75 } }, profile, 640)).toBe(
       "io=transform:fill,width:640,height:360&focuspoint=0.25,0.75&format=webp&quality=80"
+    );
+  });
+
+  it("mirrors a proportional scale when there is no aspect ratio", () => {
+    expect(datQueryForWidth({ mirror: true }, { format: "webp", quality: 80 }, 640)).toContain(
+      "io=transform:scale,width:640&io=transform:mirror&format=webp"
     );
   });
 

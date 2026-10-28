@@ -87,6 +87,10 @@ function authorValues(asset: SavedBynderAsset | undefined): Record<string, strin
   return asset?.additional;
 }
 
+function savedMirror(crop: { mirror?: boolean } | null | undefined): true | undefined {
+  return crop?.mirror === true ? true : undefined;
+}
+
 function percent(value: number): string {
   return String(Math.round(value * 1000) / 10);
 }
@@ -377,7 +381,9 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
   const [mobilePickRequest, setMobilePickRequest] = useState<{ id: string; nonce: number }>();
   const [desktopPickRequest, setDesktopPickRequest] = useState<{ id: string; nonce: number }>();
   const heldMobile = useRef(new Map<string, NonNullable<SavedBynderAsset["mobile"]>>());
-  const heldSameCrop = useRef(new Map<string, { focalPoint: FocalPoint; transform: BynderImageSettings["transform"] }>());
+  const heldSameCrop = useRef(
+    new Map<string, { focalPoint: FocalPoint; transform: BynderImageSettings["transform"]; mirror?: true }>()
+  );
   const shellRef = useRef<HTMLDivElement>(null);
   const lastSaved = useRef("");
   const hydrated = useRef(false);
@@ -402,7 +408,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
   const focusedSaved = savedAssetById(settings, focused?.id);
   const sameMobileAsset = desktopMobileMode && !focusedSaved?.differentMobileAsset;
   const mobileDiverged = Boolean(sameMobileAsset && focusedSaved?.mobile);
-  const liveCrop = { focalPoint: settings.focalPoint, transform: settings.transform };
+  const liveCrop = { focalPoint: settings.focalPoint, transform: settings.transform, mirror: settings.mirror };
   const cropsLinked =
     sameMobileAsset &&
     viewportCropsEqual(
@@ -712,6 +718,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
           focalPoint: focusedAsset
             ? savedCrop?.focalPoint ?? (isNewAsset ? { x: 0.5, y: 0.5 } : source.focalPoint)
             : source.focalPoint,
+          mirror: focusedAsset ? (isNewAsset ? undefined : savedMirror(savedCrop)) : source.mirror,
         },
         {
           assets: nextAssets,
@@ -802,6 +809,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
         activeViewport: nextViewport === "mobile" ? "mobile" : undefined,
         alt: typeof storedAlt === "string" ? storedAlt : fallbackAlt,
         focalPoint: crop?.focalPoint ?? { x: 0.5, y: 0.5 },
+        mirror: savedMirror(crop),
         transform: applyCropConfig(crop?.transform ?? source.transform, cropConfig, nextViewport),
       });
     },
@@ -834,6 +842,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
       assets: nextAssets,
       activeViewport: "mobile",
       focalPoint: desktop?.focalPoint ?? { x: 0.5, y: 0.5 },
+      mirror: savedMirror(desktop),
       transform: applyCropConfig(desktop?.transform ?? source.transform, cropConfig, "mobile"),
     });
   }, [cropConfig, focused, persist]);
@@ -851,6 +860,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
       return {
         ...(cleared ?? asset),
         focalPoint,
+        mirror: savedMirror(mobile),
         transform: mobile?.transform ?? asset.transform,
       } as SavedBynderAsset;
     });
@@ -859,6 +869,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
       assets: nextAssets,
       activeViewport: undefined,
       focalPoint,
+      mirror: savedMirror(mobile),
       transform: applyCropConfig(mobile?.transform ?? source.transform, cropConfig, "desktop"),
     });
   }, [cropConfig, focused, persist]);
@@ -885,6 +896,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
         assets: nextAssets,
         activeViewport: viewingRow ? "desktop" : source.activeViewport,
         focalPoint: viewingRow ? desktop?.focalPoint ?? source.focalPoint : source.focalPoint,
+        mirror: viewingRow ? savedMirror(desktop) : source.mirror,
         transform: viewingRow ? desktop?.transform ?? source.transform : source.transform,
       });
     },
@@ -899,6 +911,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
     const desktopCrop = {
       focalPoint: current?.focalPoint ?? source.focalPoint,
       transform: current?.transform ?? source.transform,
+      mirror: savedMirror(current),
     };
     if (useDifferent) heldSameCrop.current.set(focused.id, desktopCrop);
     if (!useDifferent && current?.mobile?.id) {
@@ -914,6 +927,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
         return {
           ...(cleared ?? asset),
           focalPoint: restored.focalPoint,
+          mirror: savedMirror(restored),
           transform: restored.transform,
         } as SavedBynderAsset;
       }
@@ -921,7 +935,13 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
         return { ...asset, differentMobileAsset: true as const, mobile: remembered };
       }
       const { mobile: _mobile, ...rest } = asset;
-      return { ...rest, focalPoint: desktopCrop.focalPoint, transform: desktopCrop.transform, differentMobileAsset: true as const };
+      return {
+        ...rest,
+        focalPoint: desktopCrop.focalPoint,
+        mirror: desktopCrop.mirror,
+        transform: desktopCrop.transform,
+        differentMobileAsset: true as const,
+      };
     });
     const clearedTransform = {
       ...source.transform,
@@ -938,6 +958,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
           ? remembered.focalPoint ?? { x: 0.5, y: 0.5 }
           : { x: 0.5, y: 0.5 }
         : sameCrop.focalPoint ?? { x: 0.5, y: 0.5 },
+      mirror: useDifferent ? (remembered?.id ? savedMirror(remembered) : undefined) : savedMirror(sameCrop),
       transform: useDifferent
         ? remembered?.id
           ? remembered.transform ?? clearedTransform
@@ -1002,6 +1023,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
           : {
               activeViewport: "desktop" as const,
               focalPoint,
+              mirror: undefined,
               transform: seeded.transform ?? defaultTransform(),
             }),
       });
@@ -1053,6 +1075,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
         activeAssetId: rowId,
         activeViewport: "mobile",
         focalPoint: mobile?.focalPoint ?? { x: 0.5, y: 0.5 },
+        mirror: savedMirror(mobile),
         transform: mobile?.transform ?? source.transform,
         alt: mobile?.alt ?? "",
       });
@@ -1701,6 +1724,26 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
                     onChange={(event) => onPercentChange("y", event.target.value)}
                   />
                 </label>
+                <label className="asset-switch">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={settings.mirror === true}
+                    onChange={(event) => {
+                      const next = { ...settings, mirror: event.target.checked ? (true as const) : undefined };
+                      if (!next.mirror) delete next.mirror;
+                      persist(stashActiveCrop(next, focused?.id));
+                    }}
+                    aria-label="Mirror image"
+                  />
+                  <span>
+                    Mirror
+                    <InfoTooltip>
+                      Flips the image left to right, across the vertical axis. Desktop and mobile stay in sync
+                      until you change one of them. The site requests Bynder’s horizontal mirror after the crop.
+                    </InfoTooltip>
+                  </span>
+                </label>
                 {!focalCentered || (sameMobileAsset && !cropsLinked) ? (
                 <div className="focal-reset-row">
                   {!focalCentered ? (
@@ -1771,6 +1814,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
                 alt={panel?.name}
                 focalPoint={settings.focalPoint}
                 transform={editorTransform}
+                mirror={settings.mirror === true}
                 customAspect={isCustomProfile(cropConfig.profile)}
                 onAspectChange={onCustomAspect}
                 onChange={onFocalChange}

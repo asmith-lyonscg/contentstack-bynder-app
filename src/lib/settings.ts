@@ -71,6 +71,7 @@ function asViewportCrop(value: unknown): ViewportCropSettings | undefined {
   return {
     focalPoint: asFocalPoint(value.focalPoint),
     transform: asTransform(nested ?? value),
+    ...(value.mirror === true ? { mirror: true } : {}),
   };
 }
 
@@ -110,6 +111,7 @@ function asMobileViewport(value: unknown): MobileViewportSettings | undefined {
   return {
     focalPoint: crop?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
     transform: crop?.transform ?? { ...DEFAULT_TRANSFORM },
+    ...(crop?.mirror ? { mirror: true as const } : {}),
     ...identity,
     alt: typeof value.alt === "string" ? value.alt : undefined,
   };
@@ -166,6 +168,7 @@ export function asSavedAsset(raw: unknown, additionalProperties?: readonly strin
     ...asOriginalSize(record, raw),
     focalPoint: crop?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
     transform: crop?.transform ?? { ...DEFAULT_TRANSFORM },
+    ...(crop?.mirror ? { mirror: true as const } : {}),
     mobile,
     differentMobileAsset: record.differentMobileAsset === true ? true : undefined,
   };
@@ -242,13 +245,14 @@ export function emptySettings(): BynderImageSettings {
 
 function liveFromAsset(asset: SavedBynderAsset | undefined, viewport: "desktop" | "mobile"): Pick<
   BynderImageSettings,
-  "focalPoint" | "transform" | "alt" | "activeAssetId"
+  "focalPoint" | "transform" | "mirror" | "alt" | "activeAssetId"
 > {
   const slice = viewport === "mobile" ? asset?.mobile ?? asset : asset;
   return {
     activeAssetId: asset?.id,
     focalPoint: slice?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
     transform: slice?.transform ?? defaultTransform(),
+    ...(slice?.mirror ? { mirror: true } : {}),
     alt:
       viewport === "mobile" && asset?.mobile?.id
         ? typeof asset.mobile.alt === "string"
@@ -286,11 +290,12 @@ function readSavedProfile(raw: Record<string, unknown>): { profile?: string; pro
   };
 }
 
-/** Saved per viewport: Fill, and a focal point only when it is not the center. */
+/** Saved per viewport: Fill, a focal point only when it is not the center, and mirror only when on. */
 function persistedCrop(slice: ViewportCropSettings): Record<string, unknown> {
   const focalPoint = normalizeFocalPoint(slice.focalPoint);
   const out: Record<string, unknown> = { operation: "fill" };
   if (focalPoint.x !== 0.5 || focalPoint.y !== 0.5) out.focalPoint = focalPoint;
+  if (slice.mirror) out.mirror = true;
   return out;
 }
 
@@ -411,6 +416,7 @@ export function buildSettingsPayload(
     : {
         focalPoint: settings.focalPoint,
         transform: settings.transform,
+        ...(settings.mirror ? { mirror: true as const } : {}),
         alt: settings.alt,
       };
 
@@ -422,6 +428,7 @@ export function buildSettingsPayload(
     activeAssetId: focused?.id,
     activeViewport,
     focalPoint: live.focalPoint,
+    ...(live.mirror ? { mirror: true as const } : {}),
     transform: applyProfileTransform(
       live.transform,
       profileSettings,
@@ -437,6 +444,7 @@ export function buildSettingsPayload(
   if (!next.activeAssetId) delete next.activeAssetId;
   if (!next.activeViewport) delete next.activeViewport;
   if (next.alt == null) delete next.alt;
+  if (!next.mirror) delete next.mirror;
 
   return next;
 }
@@ -547,13 +555,20 @@ export function stashActiveCrop(settings: BynderImageSettings, assetId?: string)
   const live: ViewportCropSettings = {
     focalPoint: { ...settings.focalPoint },
     transform: { ...settings.transform },
+    ...(settings.mirror ? { mirror: true } : {}),
   };
   const viewport = resolveActiveViewport(settings);
   const assets = settings.assets.map((asset) => {
     if (asset.id !== assetId) return asset;
     const existing = asset;
     const desktop: ViewportCropSettings =
-      viewport === "mobile" ? { focalPoint: existing.focalPoint, transform: existing.transform } : live;
+      viewport === "mobile"
+        ? {
+            focalPoint: existing.focalPoint,
+            transform: existing.transform,
+            ...(existing.mirror ? { mirror: true } : {}),
+          }
+        : live;
     const mobileIdentity = existing.mobile?.id
       ? {
           id: existing.mobile.id,

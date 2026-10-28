@@ -113,10 +113,13 @@ function buildIoParam(width?: number, height?: number): string {
 export function composeDatQuery(options: {
   focalPoint?: FocalPoint | null;
   transform: TransformSettings;
+  /** Left-right mirror, applied after Fill so the focal point still refers to the original. */
+  mirror?: boolean;
 }): string {
   const { width, height } = resolveDimensions(options.transform);
   const focal = options.focalPoint ? normalizeFocalPoint(options.focalPoint) : null;
   const fragments: string[] = [buildIoParam(width, height)];
+  if (options.mirror) fragments.push("io=transform:mirror");
   if (focal) fragments.push(`focuspoint=${focal.x},${focal.y}`);
   const format = options.transform.format;
   if (format) fragments.push(`format=${format}`);
@@ -128,6 +131,7 @@ export function composeDatQuery(options: {
 /** Focal point for one DAT request. A missing point is the center. */
 export interface DatCrop {
   focalPoint?: FocalPoint | null;
+  mirror?: boolean;
 }
 
 /**
@@ -142,12 +146,15 @@ export function datQueryForWidth(
   const w = Math.max(1, Math.round(width));
   const parsed = parseAspect(profile.aspectRatio);
   if (!parsed) {
-    const fragments = [`io=transform:scale,width:${w}`, `format=${profile.format}`];
+    const fragments = [`io=transform:scale,width:${w}`];
+    if (crop.mirror) fragments.push("io=transform:mirror");
+    fragments.push(`format=${profile.format}`);
     if (profile.format !== "png") fragments.push(`quality=${Math.min(100, Math.max(1, Math.round(profile.quality)))}`);
     return fragments.join("&");
   }
   return composeDatQuery({
     focalPoint: crop.focalPoint ?? DEFAULT_FOCAL,
+    mirror: crop.mirror,
     transform: {
       operation: "fill",
       width: w,
@@ -170,6 +177,7 @@ export function composeDatUrl(
   options: {
     focalPoint?: FocalPoint | null;
     transform: TransformSettings;
+    mirror?: boolean;
   }
 ): string {
   const base = stripTrailingSlash(transformBaseUrl.trim());

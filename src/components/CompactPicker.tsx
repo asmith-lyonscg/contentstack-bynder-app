@@ -64,10 +64,12 @@ function ThumbImage({
   src,
   fallback,
   objectPosition,
+  mirror = false,
 }: {
   src: string;
   fallback: string;
   objectPosition: string;
+  mirror?: boolean;
 }) {
   const [shown, setShown] = useState(src);
   const shownRef = useRef(shown);
@@ -103,7 +105,7 @@ function ThumbImage({
         alt=""
         draggable={false}
         className={loading ? "is-loading" : undefined}
-        style={{ objectPosition }}
+        style={{ objectPosition, ...(mirror ? { transform: "scaleX(-1)" } : {}) }}
         onLoad={() => {
           setLoadedSrc(shown);
           setFailed(false);
@@ -748,6 +750,7 @@ export function CompactPicker({
                           src={desktopThumb?.url ?? asset.sourceUrl}
                           fallback={asset.sourceUrl}
                           objectPosition={desktopThumb?.objectPosition ?? "50% 50%"}
+                          mirror={desktopThumb?.mirror}
                         />
                       )}
                       {thumbMark}
@@ -833,6 +836,7 @@ export function CompactPicker({
                           src={mobileThumb?.url ?? asset.sourceUrl}
                           fallback={asset.sourceUrl}
                           objectPosition={mobileThumb?.objectPosition ?? "50% 50%"}
+                          mirror={mobileThumb?.mirror}
                         />
                       )}
                       {thumbMark}

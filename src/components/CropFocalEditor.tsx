@@ -9,7 +9,7 @@ import {
   ratioNumber,
 } from "../lib/bynder/customAspect";
 import { fitPreviewBox } from "../lib/bynder/composeDatUrl";
-import { coverLayout, imagePointFromPointer, offsetFromFocal } from "../lib/bynder/coverLayout";
+import { coverLayout, focalPointFromFramePointer, offsetFromFocal } from "../lib/bynder/coverLayout";
 import { ImageSpinner } from "./ImageSpinner";
 import "./FocalPointCanvas.css";
 import "./CropFocalEditor.css";
@@ -19,6 +19,8 @@ interface CropFocalEditorProps {
   alt?: string;
   focalPoint: FocalPoint;
   transform: TransformSettings;
+  /** Left-right mirror. The stored focal point stays in the original file's coordinates. */
+  mirror?: boolean;
   onChange: (point: FocalPoint) => void;
   /** Right-edge drag sets the aspect ratio. The bottom edge stays fixed. */
   customAspect?: boolean;
@@ -30,6 +32,7 @@ export function CropFocalEditor({
   alt,
   focalPoint,
   transform,
+  mirror = false,
   onChange,
   customAspect = false,
   onAspectChange,
@@ -126,9 +129,20 @@ export function CropFocalEditor({
   };
 
   const placeFocal = (event: PointerEvent<HTMLDivElement>) => {
-    const img = imageRef.current;
-    if (!img) return;
-    onChange(imagePointFromPointer(event.clientX, event.clientY, img.getBoundingClientRect()));
+    const frame = frameRef.current;
+    if (!frame) return;
+    onChange(
+      focalPointFromFramePointer(
+        event.clientX,
+        event.clientY,
+        frame.getBoundingClientRect(),
+        layout,
+        frameW,
+        frameH,
+        offset,
+        mirror
+      )
+    );
   };
 
   const onMarkerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -182,6 +196,7 @@ export function CropFocalEditor({
         onPointerCancel={onPointerUp}
       >
         {src && !loaded ? <ImageSpinner /> : null}
+        <div className={mirror ? "crop-mirror is-mirrored" : "crop-mirror"}>
         <div
           className={`crop-image-layer${loaded ? "" : " is-loading"}`}
           style={{
@@ -210,6 +225,7 @@ export function CropFocalEditor({
             onPointerDown={onMarkerDown}
             aria-hidden
           />
+        </div>
         </div>
       </div>
       {customFrame ? (

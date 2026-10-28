@@ -18,6 +18,8 @@ export interface ListThumb {
   width: number;
   height: number;
   objectPosition: string;
+  /** Left-right mirror of the thumb. The URL stays the original file. */
+  mirror?: boolean;
   caption?: string;
   /** Crop pixel size used to fit the thumb inside its max box. */
   aspectW?: number;
@@ -41,6 +43,7 @@ export function listThumbForAsset(input: {
   live?: {
     focalPoint?: FocalPoint;
     transform?: TransformSettings;
+    mirror?: boolean;
     url?: string;
   };
   datAllowed: boolean;
@@ -49,6 +52,7 @@ export function listThumbForAsset(input: {
 }): ListThumb {
   const transform = input.live?.transform ?? input.crop?.transform ?? input.fallbackTransform;
   const focal = input.live?.focalPoint ?? input.crop?.focalPoint ?? DEFAULT_FOCAL_POINT;
+  const mirror = input.live?.mirror === true || input.crop?.mirror === true;
   const datOn = Boolean(input.datAllowed && input.asset.transformBaseUrl);
   const size = input.slot ?? LIST_THUMB_SLOT;
   const document = input.asset.type?.trim().toUpperCase() === "DOCUMENT";
@@ -64,6 +68,7 @@ export function listThumbForAsset(input: {
     ...size,
     url: input.asset.sourceUrl,
     objectPosition: document ? "0% 0%" : objectPosition(focal),
+    ...(document || !mirror ? {} : { mirror: true }),
     caption,
     aspectW: aspect?.w,
     aspectH: aspect?.h,

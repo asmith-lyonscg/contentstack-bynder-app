@@ -21,6 +21,7 @@
         "origWidth": 8000,
         "origHeight": 6000,
         "operation": "fill",
+        "mirror": true,
         "mobile": {
           "operation": "fill",
           "id": "D3E57CF2-6BE6-4F16-A85A5599AB54DA27",

@@ -103,6 +103,11 @@ export interface ViewportCropSettings {
   focalPoint?: FocalPoint;
   /** In memory only. The entry saves `operation` flat on the asset instead. */
   transform?: TransformSettings;
+  /**
+   * Left-right mirror (Bynder `io=transform:mirror`), a flip across the vertical axis.
+   * Omitted when off. Desktop and mobile stay linked until one of them changes.
+   */
+  mirror?: boolean;
 }
 
 /** Original file size from Bynder, saved so the site can lay out without an API call. */
@@ -178,6 +183,8 @@ export interface BynderImageSettings {
   /** UI-only live editor snapshot for the focused asset + viewport. */
   focalPoint: FocalPoint;
   transform: TransformSettings;
+  /** Live mirror for the focused asset and viewport. Saved on the asset as `mirror: true`. */
+  mirror?: boolean;
   alt?: string;
 }
 

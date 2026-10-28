@@ -53,3 +53,27 @@ export function imagePointFromPointer(
     y: clamp01((clientY - imageRect.top) / imageRect.height),
   };
 }
+
+/**
+ * Focal point from a click on the crop frame. `mirror` flips the frame across
+ * its vertical center, so the stored x stays in the original file's coordinates.
+ */
+export function focalPointFromFramePointer(
+  clientX: number,
+  clientY: number,
+  frameRect: { left: number; top: number; width: number; height: number },
+  layout: CoverLayout,
+  frameW: number,
+  frameH: number,
+  offset: { x: number; y: number },
+  mirror = false
+): FocalPoint {
+  if (!frameRect.width || !frameRect.height || !layout.dispW || !layout.dispH) return { x: 0.5, y: 0.5 };
+  const visualX = (clientX - frameRect.left) / frameRect.width;
+  const visualY = (clientY - frameRect.top) / frameRect.height;
+  const layoutX = mirror ? 1 - visualX : visualX;
+  return {
+    x: clamp01((layoutX * frameW - offset.x) / layout.dispW),
+    y: clamp01((visualY * frameH - offset.y) / layout.dispH),
+  };
+}
