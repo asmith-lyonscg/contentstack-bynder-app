@@ -88,6 +88,13 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, "index.html"),
       },
+      output: {
+        // Stable names so a publish overwrites the custom-field script instead of
+        // deleting the hashed file an open entry is still requesting.
+        entryFileNames: "assets/[name].js",
+        chunkFileNames: "assets/[name].js",
+        assetFileNames: "assets/[name][extname]",
+      },
     },
   },
   server: {
