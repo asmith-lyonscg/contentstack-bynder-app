@@ -36,9 +36,7 @@ const COMPLEX_FIELD = `{
     "autoplay": true,
     "muted": true,
     "controls": true,
-    "loop": false,
-    "controlsTheme": "light",
-    "showControlsTheme": true
+    "loop": false
   },
   "additionalFields": [
     {
@@ -81,7 +79,7 @@ const KEYS: { key: string; type: string; defaultValue: string }[] = [
   { key: "maxNumberOfAssets", type: "number", defaultValue: "1" },
   { key: "suppressMetadata", type: "boolean", defaultValue: "false" },
   { key: "compactLanguage", type: "string", defaultValue: "en_US" },
-  { key: "video", type: "object", defaultValue: "autoplay: true, muted: true, controls: true, controlsTheme: light" },
+  { key: "video", type: "object", defaultValue: "autoplay: true, muted: true, controls: true, loop: false" },
   { key: "additionalFields", type: "object[]", defaultValue: "—" },
   { key: "compactViewConfig", type: "object", defaultValue: "—" },
 ];

@@ -518,7 +518,6 @@ export function cleanVideoPlayback(value: unknown): {
   muted: boolean;
   controls: boolean;
   loop: boolean;
-  controlsTheme?: "light" | "dark";
 } | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
@@ -527,19 +526,16 @@ export function cleanVideoPlayback(value: unknown): {
     muted?: boolean;
     controls?: boolean;
     loop?: boolean;
-    controlsTheme?: "light" | "dark";
   } = {};
   if (typeof record.autoplay === "boolean") next.autoplay = record.autoplay;
   if (typeof record.muted === "boolean") next.muted = record.muted;
   if (typeof record.controls === "boolean") next.controls = record.controls;
   if (typeof record.loop === "boolean") next.loop = record.loop;
-  if (record.controlsTheme === "light" || record.controlsTheme === "dark") next.controlsTheme = record.controlsTheme;
   if (
     next.autoplay === undefined &&
     next.muted === undefined &&
     next.controls === undefined &&
-    next.loop === undefined &&
-    next.controlsTheme === undefined
+    next.loop === undefined
   ) {
     return undefined;
   }
@@ -548,7 +544,6 @@ export function cleanVideoPlayback(value: unknown): {
     muted: next.muted ?? false,
     controls: next.controls ?? true,
     loop: next.loop ?? false,
-    ...(next.controlsTheme ? { controlsTheme: next.controlsTheme } : {}),
   };
 }
 

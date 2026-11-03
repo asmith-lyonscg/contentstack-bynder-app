@@ -596,7 +596,6 @@ describe("resolveVideoDefaults", () => {
       muted: true,
       controls: true,
       loop: false,
-      controlsTheme: "light",
     });
   });
 
@@ -607,15 +606,7 @@ describe("resolveVideoDefaults", () => {
         { video: { autoplay: true, muted: true }, videoLoop: true },
         { video: { autoplay: false, controls: false, loop: true }, videoMuted: true }
       )
-    ).toEqual({ autoplay: true, muted: true, controls: false, loop: true, controlsTheme: "light" });
-  });
-
-  it("defaults control appearance to light and lets the field hide the toggle", async () => {
-    const { resolveVideoDefaults, showVideoControlsTheme } = await import("./fieldConfig");
-    expect(showVideoControlsTheme({}, {})).toBe(true);
-    expect(showVideoControlsTheme({ video: { showControlsTheme: false } }, { showControlsTheme: true })).toBe(false);
-    expect(resolveVideoDefaults({ video: { controlsTheme: "dark" } }, {}).controlsTheme).toBe("dark");
-    expect(resolveVideoDefaults({ video: { controlsTheme: "sepia" } }, {}).controlsTheme).toBe("light");
+    ).toEqual({ autoplay: true, muted: true, controls: false, loop: true });
   });
 });
 

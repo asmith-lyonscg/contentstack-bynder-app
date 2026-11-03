@@ -35,7 +35,6 @@ import {
   resolveCompactViewConfig,
   resolveCropConfig,
   resolveVideoDefaults,
-  showVideoControlsTheme,
   seedAssetCrop,
   withActiveProfile,
 } from "../../lib/fieldConfig";
@@ -353,7 +352,6 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
     [fieldConfig, appConfig]
   );
   const videoDefaults = useMemo(() => resolveVideoDefaults(fieldConfig, appConfig), [fieldConfig, appConfig]);
-  const showControlsTheme = useMemo(() => showVideoControlsTheme(fieldConfig, appConfig), [fieldConfig, appConfig]);
   const additionalFields = useMemo(
     () => resolveAdditionalFields(fieldConfig, appConfig),
     [fieldConfig, appConfig]
@@ -1282,7 +1280,7 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
     });
   };
 
-  const patchVideo = (key: keyof VideoPlayback, value: boolean | "light" | "dark") => {
+  const patchVideo = (key: keyof VideoPlayback, value: boolean) => {
     if (!focusedIsVideo) return;
     patchFocusedAsset((asset) => ({
       ...asset,
@@ -1511,29 +1509,6 @@ export default function CustomField({ editorHost }: { editorHost?: EditorHost } 
                     {label}
                   </label>
                 ))}
-                {showControlsTheme ? (
-                  <div className="video-theme" role="group" aria-label="Control appearance">
-                    <span className="video-theme-label">Control appearance</span>
-                    <label className="video-option">
-                      <input
-                        type="radio"
-                        name="video-controls-theme"
-                        checked={playback.controlsTheme !== "dark"}
-                        onChange={() => patchVideo("controlsTheme", "light")}
-                      />
-                      Light
-                    </label>
-                    <label className="video-option">
-                      <input
-                        type="radio"
-                        name="video-controls-theme"
-                        checked={playback.controlsTheme === "dark"}
-                        onChange={() => patchVideo("controlsTheme", "dark")}
-                      />
-                      Dark
-                    </label>
-                  </div>
-                ) : null}
               </fieldset>
               <fieldset className="video-options">
                 <legend>Initial Playback Settings</legend>

@@ -283,20 +283,6 @@
   accent-color: #6c5ce7;
 }
 
-.video-theme {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 14px;
-  margin-top: 4px;
-}
-
-.video-theme-label {
-  flex: 1 0 100%;
-  font: 13px/1.4 Inter, system-ui, sans-serif;
-  color: #243044;
-}
-
 .additional-fields {
   display: flex;
   flex-direction: column;

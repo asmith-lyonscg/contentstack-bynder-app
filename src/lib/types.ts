@@ -251,15 +251,11 @@ export interface AppInstallationConfig {
   profiles?: Record<string, RenderProfile>;
 }
 
-export type VideoControlsTheme = "light" | "dark";
-
 export interface VideoPlayback {
   autoplay: boolean;
   muted: boolean;
   controls: boolean;
   loop: boolean;
-  /** Player controls for the content behind the video. Omitted on older saves, which means light. */
-  controlsTheme?: VideoControlsTheme;
 }
 
 export type AdditionalFieldType = "string" | "number" | "boolean";
