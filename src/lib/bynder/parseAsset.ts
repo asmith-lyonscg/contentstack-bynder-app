@@ -682,7 +682,7 @@ export function isVideoAsset(
   return VIDEO_EXT.test(asset.sourceUrl ?? "") || VIDEO_EXT.test(asset.name ?? "");
 }
 
-/** Images are the only assets that can use a separate mobile file. */
+/** True for Bynder IMAGE assets (and unlabeled image URLs). */
 export function isImageAsset(
   asset?: { type?: string; fileType?: string; sourceUrl?: string; name?: string; url?: string } | null
 ): boolean {
@@ -692,8 +692,18 @@ export function isImageAsset(
 }
 
 /**
+ * Images and videos may use a separate desktop/mobile file.
+ * Documents never do. A mobile video stays a video; a mobile image stays an image.
+ */
+export function supportsSeparateMobileAsset(
+  asset?: { type?: string; fileType?: string; sourceUrl?: string; name?: string; url?: string } | null
+): boolean {
+  return isImageAsset(asset) || isVideoAsset(asset);
+}
+
+/**
  * Compact View `DOCUMENT` covers PDFs and office files. They have no DAT crop
- * and no desktop/mobile pair.
+ * and no desktop/mobile pair. Only images and videos may split desktop/mobile.
  */
 export function isDocumentAsset(
   asset?: { type?: string; fileType?: string; sourceUrl?: string; name?: string; url?: string } | null

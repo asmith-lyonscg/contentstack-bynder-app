@@ -98,6 +98,13 @@ export interface CompactViewConfig {
 
 export type ViewportKind = "desktop" | "mobile";
 
+export interface VideoPlayback {
+  autoplay: boolean;
+  muted: boolean;
+  controls: boolean;
+  loop: boolean;
+}
+
 export interface ViewportCropSettings {
   /** Omitted on document assets (no crop editor). */
   focalPoint?: FocalPoint;
@@ -117,9 +124,10 @@ export interface OriginalAssetSize {
 }
 
 /**
- * Mobile crop. When mobile is a different Bynder file, `id`, `name`, `type`,
- * and `transformBaseUrl` sit here in the same shape as the desktop asset.
- * When those are omitted, mobile uses the desktop file.
+ * Mobile file or crop. When mobile is a different Bynder file, `id`, `name`, `type`,
+ * and `transformBaseUrl` / `webImage` sit here in the same shape as the desktop asset.
+ * When those are omitted, mobile uses the desktop file. Videos store identity and optional
+ * playback (`video`) with no focal point or Fill. Images may also store crop settings.
  */
 export interface MobileViewportSettings extends ViewportCropSettings, OriginalAssetSize {
   id?: string;
@@ -129,6 +137,8 @@ export interface MobileViewportSettings extends ViewportCropSettings, OriginalAs
   webImage?: { url: string };
   /** Alt text for the separate mobile file. Omitted when mobile uses the desktop image. */
   alt?: string;
+  /** Playback for a separate mobile video. Omitted when mobile uses the desktop file. */
+  video?: VideoPlayback;
 }
 
 export interface AssetCropSettings extends ViewportCropSettings {
@@ -249,13 +259,6 @@ export interface AppInstallationConfig {
   maxDimension?: number;
   /** Named render profiles. Without one, assets keep their original aspect ratio. */
   profiles?: Record<string, RenderProfile>;
-}
-
-export interface VideoPlayback {
-  autoplay: boolean;
-  muted: boolean;
-  controls: boolean;
-  loop: boolean;
 }
 
 export type AdditionalFieldType = "string" | "number" | "boolean";

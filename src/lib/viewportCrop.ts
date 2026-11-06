@@ -86,12 +86,14 @@ export function viewportCropsEqual(a: ViewportCropSettings, b: ViewportCropSetti
  * Drop `mobile` when it still matches desktop. Presence of `mobile` means unmatched.
  * A "different" mobile file that is the desktop file with the same crop and alt is relinked.
  */
-export function stripMatchingMobile<T extends AssetCropSettings & { id?: string }>(crop: T): T {
+export function stripMatchingMobile<T extends AssetCropSettings & { id?: string; video?: unknown }>(crop: T): T {
   const mobile = crop.mobile;
   if (!mobile) return crop;
   const sameFile = mobile.id ? mobile.id === crop.id : !crop.differentMobileAsset;
   if (!sameFile || !viewportCropsEqual(crop, mobile)) return crop;
   if (mobile.id && mobile.alt && mobile.alt !== (crop.alt ?? "")) return crop;
+  const mobileVideo = (mobile as { video?: unknown }).video;
+  if (mobileVideo && JSON.stringify(mobileVideo) !== JSON.stringify(crop.video ?? null)) return crop;
   const { mobile: _mobile, differentMobileAsset: _flag, ...desktop } = crop;
   return desktop as T;
 }

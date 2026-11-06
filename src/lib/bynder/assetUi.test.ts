@@ -66,6 +66,29 @@ describe("listThumbForAsset", () => {
     expect(thumb.objectPosition).toBe("25% 75%");
   });
 
+  it("frames a video at the file's natural aspect, ignoring any profile transform", () => {
+    const thumb = listThumbForAsset({
+      asset: {
+        id: "clip",
+        type: "VIDEO",
+        sourceUrl: "https://cdn.example/clip.mp4",
+        fileType: "mp4",
+        fileSize: 4_000_000,
+        width: 1920,
+        height: 1080,
+      },
+      datAllowed: false,
+      live: {
+        transform: { ...DEFAULT_TRANSFORM, aspect: "1:1" },
+      },
+      slot: { width: 300, height: 200 },
+      naturalSize: { width: 1080, height: 1920 },
+    });
+    expect(thumb.aspectW).toBe(9);
+    expect(thumb.aspectH).toBe(16);
+    expect(thumb.caption).toBe("9:16 · MP4 · 3.8 MB");
+  });
+
   it("frames a document as a letter page and does not use the image profile", () => {
     const thumb = listThumbForAsset({
       asset: { id: "pdf", type: "DOCUMENT", sourceUrl: "https://cdn.example/spec.pdf" },

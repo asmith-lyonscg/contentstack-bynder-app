@@ -273,15 +273,15 @@ export function relinkDisplayPlacement(display: RteDisplay): RteDisplay {
   return normalizeRteDisplay({ ...display, mobile });
 }
 
-/** True when the mobile image would not match the desktop image. */
+/** True when the mobile file or crop would not match the desktop one. */
 export function imageViewportsDiffer(payload: Record<string, unknown>, display?: RteDisplay): boolean {
   const settings = parseSavedSettings(payload);
   const asset = settings.assets?.[0];
-  if (!asset || !isImageAsset(asset)) return false;
+  if (!asset || isDocumentAsset(asset)) return false;
   if (display?.mobile?.width || display?.mobile?.height) return true;
   if (asset.mobile?.id && asset.mobile.id !== asset.id) return true;
-  if (asset.mobile && !viewportCropsEqual(asset, asset.mobile)) return true;
-  if (settings.profileSettings && !profileCropsCanMatch(settings.profileSettings)) return true;
+  if (isImageAsset(asset) && asset.mobile && !viewportCropsEqual(asset, asset.mobile)) return true;
+  if (isImageAsset(asset) && settings.profileSettings && !profileCropsCanMatch(settings.profileSettings)) return true;
   return false;
 }
 
@@ -309,7 +309,10 @@ export function rtePreviewUrl(payload: Record<string, unknown>, viewport: Viewpo
   if (isDocumentAsset(asset)) {
     return asset.thumbnail || documentThumbnailUrl({ url: asset.url, name: asset.name }) || "";
   }
-  if (isVideoAsset(asset)) return asset.webImage?.url ?? "";
+  if (isVideoAsset(asset)) {
+    const file = viewport === "mobile" && asset.mobile?.id ? asset.mobile : asset;
+    return file.webImage?.url ?? asset.webImage?.url ?? "";
+  }
   return composeBynderImageUrl(payload, { viewport, assetId: asset.id });
 }
 

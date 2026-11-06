@@ -490,12 +490,21 @@ describe("documentThumbnailUrl", () => {
 });
 
 describe("isImageAsset", () => {
-  it("treats an image, and only an image, as eligible for a separate mobile file", () => {
+  it("recognizes images and rejects video, document, and audio", () => {
     expect(isImageAsset({ type: "IMAGE", sourceUrl: "https://cdn.example/a.jpg" })).toBe(true);
     expect(isImageAsset({ sourceUrl: "https://cdn.example/a.jpg" })).toBe(true);
     expect(isImageAsset({ type: "VIDEO", sourceUrl: "https://cdn.example/a.mp4" })).toBe(false);
     expect(isImageAsset({ type: "DOCUMENT", sourceUrl: "https://cdn.example/a.pdf" })).toBe(false);
     expect(isImageAsset({ type: "AUDIO", sourceUrl: "https://cdn.example/a.mp3" })).toBe(false);
+  });
+});
+
+describe("supportsSeparateMobileAsset", () => {
+  it("allows images and videos, and rejects documents", async () => {
+    const { supportsSeparateMobileAsset } = await import("./parseAsset");
+    expect(supportsSeparateMobileAsset({ type: "IMAGE", sourceUrl: "https://cdn.example/a.jpg" })).toBe(true);
+    expect(supportsSeparateMobileAsset({ type: "VIDEO", sourceUrl: "https://cdn.example/a.mp4" })).toBe(true);
+    expect(supportsSeparateMobileAsset({ type: "DOCUMENT", sourceUrl: "https://cdn.example/a.pdf" })).toBe(false);
   });
 });
 

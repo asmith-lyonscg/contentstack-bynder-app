@@ -34,7 +34,8 @@ describe("composeBynderImageUrl", () => {
     expect(composeBynderImageUrl(entry)).toBe(
       `${base}?io=transform:fill,width:2000,height:1125&focuspoint=0.25,0.75&format=webp&quality=80`
     );
-    expect(composeBynderImageUrl(entry, { viewport: "mobile" })).toContain("width:2000,height:1500&focuspoint=0.25,0.75");
+    // Base DAT for 4000×2667 is 2000×1333, so a 4:3 fill cannot be 2000×1500.
+    expect(composeBynderImageUrl(entry, { viewport: "mobile" })).toContain("width:1777,height:1333&focuspoint=0.25,0.75");
   });
 
   it("limits a request so neither side passes the Bynder max dimension", () => {
@@ -48,9 +49,19 @@ describe("composeBynderImageUrl", () => {
           maxDimension: 2000,
         },
       },
+      assets: [{ ...entry.assets[0], origWidth: 2667, origHeight: 4000 }],
     };
     expect(composeBynderImageUrl(tall)).toContain("width:1125,height:2000");
     expect(composeBynderImageUrl(entry, { width: 4000 })).toContain("width:2000,height:1125");
+  });
+
+  it("shrinks a landscape fill so it fits a portrait file's base DAT size", () => {
+    const portrait = {
+      ...entry,
+      assets: [{ ...entry.assets[0], origWidth: 2000, origHeight: 3000 }],
+    };
+    // Base DAT is 1333×2000. A 16:9 fill at width 2000 would exceed it and Bynder would return the original.
+    expect(composeBynderImageUrl(portrait)).toContain("width:1333,height:750");
   });
 
   it("composes any width and keeps the focal point", () => {
@@ -112,8 +123,8 @@ describe("buildBynderSources", () => {
 
   it("caps a caller width list and uses the mobile aspect", () => {
     const mobile = buildBynderSources(entry, { viewport: "mobile" });
-    expect(mobile?.width).toBe(2000);
-    expect(mobile?.height).toBe(1500);
+    expect(mobile?.width).toBe(1777);
+    expect(mobile?.height).toBe(1333);
     const custom = buildBynderSources(entry, { widths: [320, 3000] });
     expect(custom?.srcset?.split(", ").map((part) => part.split(" ")[1])).toEqual(["320w", "2000w"]);
   });
@@ -126,7 +137,7 @@ describe("buildBynderSources", () => {
     expect(buildBynderSources(css)).toEqual({ src: "https://cdn.example/web.jpg", objectPosition: "25% 75%" });
   });
 
-  it("uses the original aspect ratio without a profile, capped only by maxDimension", () => {
+  it("uses the original aspect ratio without a profile, capped by the file and maxDimension", () => {
     const original = {
       v: 2,
       profile: {
@@ -135,15 +146,13 @@ describe("buildBynderSources", () => {
       assets: [{ ...entry.assets[0], origWidth: 1500, origHeight: 1000 }],
     };
     const desktop = buildBynderSources(original);
-    expect(desktop).toMatchObject({ width: 2000, height: 1333 });
-    expect(desktop?.src).toContain("io=transform:fill,width:2000,height:1333");
+    expect(desktop).toMatchObject({ width: 1500, height: 1000 });
+    expect(desktop?.src).toContain("io=transform:fill,width:1500,height:1000");
     expect(desktop?.srcset?.split(", ").map((part) => part.split(" ")[1])).toEqual([
       "640w",
       "960w",
       "1280w",
-      "1600w",
-      "1920w",
-      "2000w",
+      "1500w",
     ]);
 
     const unknownSize = { ...original, assets: [{ ...entry.assets[0], origWidth: undefined, origHeight: undefined }] };

@@ -120,6 +120,22 @@ describe("stripMatchingMobile", () => {
     const next = stripMatchingMobile({ id: "a", ...crop, differentMobileAsset: true, mobile: { ...crop } });
     expect(next.differentMobileAsset).toBe(true);
   });
+
+  it("keeps the split when mobile video playback differs", () => {
+    const desktopVideo = { autoplay: true, muted: true, controls: true, loop: false };
+    const next = stripMatchingMobile({
+      id: "a",
+      ...crop,
+      video: desktopVideo,
+      differentMobileAsset: true,
+      mobile: {
+        ...crop,
+        id: "a",
+        video: { ...desktopVideo, loop: true, controls: false },
+      },
+    });
+    expect(next.mobile?.video).toEqual({ ...desktopVideo, loop: true, controls: false });
+  });
 });
 
 describe("withoutDesktopMobile", () => {

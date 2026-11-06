@@ -6,6 +6,7 @@ import {
   type TransformSettings,
 } from "../types";
 import { normalizeFocalPoint, parseAspect } from "./composeDatUrl";
+import { isDocumentAsset, isVideoAsset } from "./parseAsset";
 
 export const LIST_THUMB_MOBILE = { width: 200, height: 200 };
 export const LIST_THUMB_DESKTOP = { width: 300, height: 200 };
@@ -36,6 +37,14 @@ function objectPosition(focal: FocalPoint): string {
   return `${point.x * 100}% ${point.y * 100}%`;
 }
 
+function naturalAspect(width?: number, height?: number): { w: number; h: number } | undefined {
+  if (!width || !height || width <= 0 || height <= 0) return undefined;
+  const w = Math.max(1, Math.round(width));
+  const h = Math.max(1, Math.round(height));
+  const g = gcd(w, h);
+  return { w: w / g, h: h / g };
+}
+
 /** List-row thumbnail: DAT URL when available, otherwise the original. */
 export function listThumbForAsset(input: {
   asset: ParsedBynderAsset;
@@ -49,19 +58,25 @@ export function listThumbForAsset(input: {
   datAllowed: boolean;
   fallbackTransform?: TransformSettings;
   slot?: { width: number; height: number };
+  /** Original file pixels. Videos always use these (or `asset.width` / `height`) for the thumb frame. */
+  naturalSize?: { width?: number; height?: number };
 }): ListThumb {
   const transform = input.live?.transform ?? input.crop?.transform ?? input.fallbackTransform;
   const focal = input.live?.focalPoint ?? input.crop?.focalPoint ?? DEFAULT_FOCAL_POINT;
   const mirror = input.live?.mirror === true || input.crop?.mirror === true;
   const datOn = Boolean(input.datAllowed && input.asset.transformBaseUrl);
   const size = input.slot ?? LIST_THUMB_SLOT;
-  const document = input.asset.type?.trim().toUpperCase() === "DOCUMENT";
-  const aspect = document ? DOCUMENT_THUMB_ASPECT : parseAspect(transform?.aspect);
+  const document = isDocumentAsset(input.asset);
+  const video = isVideoAsset(input.asset);
+  const natural = video
+    ? naturalAspect(input.naturalSize?.width ?? input.asset.width, input.naturalSize?.height ?? input.asset.height)
+    : undefined;
+  const aspect = document ? DOCUMENT_THUMB_ASPECT : natural ?? parseAspect(transform?.aspect);
   const caption = thumbCaption({
-    aspect: document ? undefined : cropAspectLabel(transform),
-    format: datOn ? transform?.format : input.asset.fileType,
+    aspect: document ? undefined : video ? (natural ? `${natural.w}:${natural.h}` : undefined) : cropAspectLabel(transform),
+    format: datOn && !video ? transform?.format : undefined,
     fileType: input.asset.fileType,
-    fileSize: datOn ? undefined : input.asset.fileSize,
+    fileSize: datOn && !video ? undefined : input.asset.fileSize,
   });
 
   return {

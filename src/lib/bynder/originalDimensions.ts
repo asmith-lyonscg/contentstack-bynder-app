@@ -1,4 +1,4 @@
-import { assetPixelSize, isDocumentAsset, isVideoAsset } from "./parseAsset";
+import { assetPixelSize, isDocumentAsset } from "./parseAsset";
 import { compactViewGraphqlId } from "./preselect";
 import type { SavedBynderAsset } from "../types";
 
@@ -138,11 +138,11 @@ export function originalPixelSizeFromNode(node: unknown): OriginalPixelSize | un
   return pair(assetPixelSize(node));
 }
 
-/** Image ids (and a different mobile file) that do not yet have both original dimensions. */
+/** Image and video ids (and a different mobile file) that do not yet have both original dimensions. */
 export function missingOriginalSizeIds(assets: SavedBynderAsset[] | undefined): string[] {
   const ids: string[] = [];
   const push = (asset?: { id?: string; type?: string; name?: string; url?: string; origWidth?: number; origHeight?: number }) => {
-    if (!asset?.id || isDocumentAsset(asset) || isVideoAsset(asset)) return;
+    if (!asset?.id || isDocumentAsset(asset)) return;
     if (asset.origWidth && asset.origHeight) return;
     ids.push(asset.id);
   };
@@ -223,6 +223,10 @@ export async function fetchOriginalPixelSizes(
               databaseId
               files
               ... on Image {
+                width
+                height
+              }
+              ... on Video {
                 width
                 height
               }

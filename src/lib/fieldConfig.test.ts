@@ -314,6 +314,7 @@ describe("parseRenderProfiles", () => {
     expect(profiles.poster.desktop).toBe("9:16");
     expect(viewportImageSize(profileSettingsFrom(profiles.poster).desktop)).toEqual({ aspectRatio: "9:16" });
     expect(widthWithinMaxDimension(2000, "9:16", 2000)).toBe(1125);
+    expect(widthWithinMaxDimension(2000, "16:9", 2000, { width: 2000, height: 3000 })).toBe(1333);
   });
 
   it("rejects a profile name used twice in the JSON text", () => {

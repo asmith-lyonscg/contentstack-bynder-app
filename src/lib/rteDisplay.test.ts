@@ -12,6 +12,7 @@ import {
   scaleIsCustom,
   normalizeRteDisplay,
   payloadWithAlt,
+  rtePreviewUrl,
   splitRteAttrs,
 } from "./rteDisplay";
 
@@ -172,5 +173,44 @@ describe("desktop and mobile display", () => {
     ).toBe(true);
     expect(imageViewportsDiffer(same, { mobile: { width: 140, height: 140 } })).toBe(true);
     expect(displayAspect(imagePayload, "mobile")).toBeCloseTo(5 / 3);
+  });
+
+  it("toggles a video preview when the mobile file differs", () => {
+    const video = {
+      v: 2,
+      profile: { settings: { quality: 80, format: "webp" } },
+      assets: [
+        {
+          id: "desk-clip",
+          type: "VIDEO",
+          webImage: { url: "https://cdn.example/desk.mp4" },
+          origWidth: 1920,
+          origHeight: 1080,
+          video: { autoplay: true, muted: true, controls: true, loop: false },
+        },
+      ],
+    };
+    expect(imageViewportsDiffer(video)).toBe(false);
+    expect(rtePreviewUrl(video, "desktop")).toBe("https://cdn.example/desk.mp4");
+    expect(rtePreviewUrl(video, "mobile")).toBe("https://cdn.example/desk.mp4");
+    const split = {
+      ...video,
+      assets: [
+        {
+          ...video.assets[0],
+          differentMobileAsset: true,
+          mobile: {
+            id: "mob-clip",
+            type: "VIDEO",
+            webImage: { url: "https://cdn.example/mob.mp4" },
+            origWidth: 1080,
+            origHeight: 1920,
+          },
+        },
+      ],
+    };
+    expect(imageViewportsDiffer(split)).toBe(true);
+    expect(rtePreviewUrl(split, "mobile")).toBe("https://cdn.example/mob.mp4");
+    expect(displayAspect(split, "mobile")).toBeCloseTo(1080 / 1920);
   });
 });

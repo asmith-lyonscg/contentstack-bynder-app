@@ -1,17 +1,32 @@
 <!--
   Markup for samples/payload/sample-payload-video.json.
   Videos do not use buildBynderSources or a <picture>. Play webImage.url and
-  apply the stored video flags. autoplay, muted, and controls are on. loop is
-  off, so that attribute is absent.
+  apply the stored video flags. There is no crop, focal point, or DAT URL.
+
+  The desktop file is Product-launch. The mobile file is a separate video
+  (Product-launch-mobile) under assets[0].mobile. The site picks which
+  webImage.url to play from the viewport. Desktop playback is assets[0].video
+  (controls on, loop off). Mobile playback is assets[0].mobile.video
+  (controls off, loop on). autoplay and muted are on for both.
 
   Image pictures are samples/html-output/sample-html-large-hero.html.
   The document example is samples/html-output/sample-html-document.html.
 -->
 <video
+  class="bynder-video is-desktop"
   src="https://assets.deltafaucet.com/asset/a1b2c3d4-e5f6-7890-abcd-ef1234567890/Product-launch.mp4"
   controls
   muted
   autoplay
   width="1920"
   height="1080"
+></video>
+<video
+  class="bynder-video is-mobile"
+  src="https://assets.deltafaucet.com/asset/b2c3d4e5-f6a7-8901-bcde-f12345678901/Product-launch-mobile.mp4"
+  muted
+  autoplay
+  loop
+  width="1080"
+  height="1920"
 ></video>

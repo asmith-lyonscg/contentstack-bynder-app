@@ -59,13 +59,15 @@ describe("CompactPicker actions column", () => {
     expect(block.split('class="pair-line"')).toHaveLength(3);
     expect(rowActionLabels(html)).toEqual([
       "Edit desktop crop",
-      "Preview",
+      "Preview transformed image",
       "Open in Bynder",
+      "Copy URL of the transformed Bynder asset.",
       "Change desktop asset",
       "Remove desktop and mobile assets",
       "Edit mobile crop",
-      "Preview",
+      "Preview transformed image",
       "Open in Bynder",
+      "Copy URL of the transformed Bynder asset.",
       "Change mobile asset",
       "Remove mobile asset (Use desktop for both.)",
     ]);
@@ -115,14 +117,16 @@ describe("CompactPicker actions column", () => {
     expect(html).not.toContain('src="https://cdn.example/brief.pdf"');
   });
 
-  it("says a separate mobile asset is not supported for video and documents", () => {
-    const video = render({
+  it("shows a mobile column for video and blocks a separate mobile file only for documents", () => {
+    const videoOnly = render({
       desktopMobileMode: true,
-      assets: [
-        image,
-        { ...image, id: "clip", name: "Clip", type: "VIDEO", sourceUrl: "https://cdn.example/clip.mp4" },
-      ],
+      assets: [{ ...image, id: "clip", name: "Clip", type: "VIDEO", sourceUrl: "https://cdn.example/clip.mp4" }],
     });
+    expect(videoOnly).toContain("Desktop");
+    expect(videoOnly).toContain("Mobile");
+    expect(videoOnly).toContain("Edit desktop video");
+    expect(videoOnly).not.toContain("(Separate mobile asset not supported.)");
+
     const document = render({
       desktopMobileMode: true,
       assets: [
@@ -130,8 +134,6 @@ describe("CompactPicker actions column", () => {
         { ...image, id: "brief", name: "Brief", type: "DOCUMENT", sourceUrl: "https://cdn.example/brief.pdf" },
       ],
     });
-    expect(video).toContain("(Separate mobile asset not supported.)");
-    expect(video).not.toContain("Same as desktop");
     expect(document).toContain("(Separate mobile asset not supported.)");
     expect(document).not.toContain("Same as desktop");
   });
@@ -139,8 +141,9 @@ describe("CompactPicker actions column", () => {
   it("shows the thumbnail hover actions in desktop-only mode", () => {
     expect(rowActionLabels(render({ desktopMobileMode: false }))).toEqual([
       "Edit",
-      "Preview",
+      "Preview transformed image",
       "Open in Bynder",
+      "Copy URL of the transformed Bynder asset.",
       "Change Asset",
       "Remove",
     ]);
@@ -151,7 +154,14 @@ describe("CompactPicker actions column", () => {
           assets: [{ ...image, id: "clip", type: "VIDEO", sourceUrl: "https://cdn.example/clip.mp4" }],
         })
       )
-    ).toEqual(["Edit", "Preview", "Open in Bynder", "Change Asset", "Remove"]);
+    ).toEqual([
+      "Edit",
+      "Preview transformed image",
+      "Open in Bynder",
+      "Copy URL of the transformed Bynder asset.",
+      "Change Asset",
+      "Remove",
+    ]);
     expect(
       rowActionLabels(
         render({

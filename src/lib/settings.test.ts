@@ -196,6 +196,52 @@ describe("buildSettingsPayload", () => {
     expect(next.assets?.[1].mobile?.transform).toMatchObject({ width: null, height: null, aspect: "4:3" });
   });
 
+  it("saves a separate mobile video file without crop or focal point", () => {
+    const current = emptySettings();
+    current.assets = [
+      {
+        id: "desk-clip",
+        type: "VIDEO",
+        webImage: { url: "https://cdn.example/desk.mp4" },
+        origWidth: 1920,
+        origHeight: 1080,
+        video: { autoplay: true, muted: true, controls: true, loop: false },
+        differentMobileAsset: true,
+        mobile: {
+          id: "mob-clip",
+          name: "Mobile clip",
+          type: "VIDEO",
+          webImage: { url: "https://cdn.example/mob.mp4" },
+          origWidth: 1080,
+          origHeight: 1920,
+          video: { autoplay: true, muted: true, controls: false, loop: true },
+        },
+      },
+    ];
+    const saved = persistedPayload(buildSettingsPayload(current, { assets: current.assets })) as {
+      assets: Record<string, unknown>[];
+    };
+    expect(saved.assets[0]).toMatchObject({
+      id: "desk-clip",
+      type: "VIDEO",
+      differentMobileAsset: true,
+      video: { autoplay: true, muted: true, controls: true, loop: false },
+      mobile: {
+        id: "mob-clip",
+        name: "Mobile clip",
+        type: "VIDEO",
+        webImage: { url: "https://cdn.example/mob.mp4" },
+        origWidth: 1080,
+        origHeight: 1920,
+        video: { autoplay: true, muted: true, controls: false, loop: true },
+      },
+    });
+    expect(saved.assets[0]).not.toHaveProperty("operation");
+    expect(saved.assets[0]).not.toHaveProperty("focalPoint");
+    expect(saved.assets[0].mobile).not.toHaveProperty("operation");
+    expect(saved.assets[0].mobile).not.toHaveProperty("focalPoint");
+  });
+
   it("drops webImage from a different mobile file that has a transform base", () => {
     const current = emptySettings();
     current.assets = [
@@ -365,6 +411,36 @@ describe("stashActiveCrop", () => {
     const next = stashActiveCrop(settings, "desk");
     expect(next.assets?.[0].differentMobileAsset).toBe(true);
     expect(next.assets?.[0].mobile).toMatchObject({ id: "mob", focalPoint: { x: 0.5, y: 0.5 } });
+  });
+
+  it("keeps mobile video playback when stashing from the mobile viewport", () => {
+    const settings = emptySettings();
+    settings.activeViewport = "mobile";
+    settings.focalPoint = { x: 0.5, y: 0.5 };
+    settings.transform = { ...DEFAULT_TRANSFORM };
+    settings.assets = [
+      {
+        id: "desk-clip",
+        type: "VIDEO",
+        webImage: { url: "https://cdn.example/desk.mp4" },
+        video: { autoplay: true, muted: true, controls: true, loop: false },
+        differentMobileAsset: true,
+        mobile: {
+          id: "mob-clip",
+          type: "VIDEO",
+          webImage: { url: "https://cdn.example/mob.mp4" },
+          video: { autoplay: true, muted: true, controls: false, loop: true },
+        },
+      },
+    ];
+    const next = stashActiveCrop(settings, "desk-clip");
+    expect(next.assets?.[0].video).toEqual({ autoplay: true, muted: true, controls: true, loop: false });
+    expect(next.assets?.[0].mobile?.video).toEqual({
+      autoplay: true,
+      muted: true,
+      controls: false,
+      loop: true,
+    });
   });
 
   it("does not unsync mobile just because its profile size differs from desktop", () => {

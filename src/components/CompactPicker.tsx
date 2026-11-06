@@ -6,6 +6,7 @@ import {
   isDocumentAsset,
   isImageAsset,
   isVideoAsset,
+  supportsSeparateMobileAsset,
   parseBynderAssets,
   stripBynderDownloadParam,
   withBynderDownloadParam,
@@ -58,6 +59,11 @@ interface CompactPickerProps {
   onReplaceDesktop?: (id: string, assets: unknown[], additionalInfo?: unknown) => void;
   /** Separate mobile files keyed by the desktop row id. */
   mobileFiles?: Record<string, { id: string; name?: string; type?: string; sourceUrl?: string }>;
+  /**
+   * Delivery URLs for the copy action under each thumb. Images use the largest DAT
+   * step; videos use `webImage.url`. Keyed by desktop asset id.
+   */
+  deliveryUrls?: Record<string, { desktop?: string; mobile?: string }>;
 }
 
 function ThumbImage({
@@ -372,6 +378,7 @@ export function CompactPicker({
   onSelectMobile,
   onReplaceDesktop,
   mobileFiles,
+  deliveryUrls,
 }: CompactPickerProps) {
   const [openError, setOpenError] = useState<string>();
   const [blockedMessage, setBlockedMessage] = useState<string>();
@@ -460,14 +467,15 @@ export function CompactPicker({
 
     const pickingOne = Boolean(mobileForId || replaceDesktopId);
     const desktopForMobile = mobileForId ? assets.find((asset) => asset.id === mobileForId) : undefined;
-    if (mobileForId && !isImageAsset(desktopForMobile)) return;
+    if (mobileForId && !supportsSeparateMobileAsset(desktopForMobile)) return;
     const compactPayload = pickingOne ? { ...compact, mode: "SingleSelect" as const, maxLimit: 1 } : { ...compact };
     if (mobileForId) {
-      compactPayload.assetTypes = ["IMAGE"];
+      const mobileType = isVideoAsset(desktopForMobile) ? "VIDEO" : "IMAGE";
+      compactPayload.assetTypes = [mobileType];
       compactPayload.assetFilter = {
         ...(compactPayload.assetFilter ?? {}),
         showToolbar: compactPayload.assetFilter?.showToolbar ?? true,
-        predefinedAssetType: ["IMAGE"],
+        predefinedAssetType: [mobileType],
       };
     }
     const mobileFile = mobileForId ? mobileFiles?.[mobileForId] : undefined;
@@ -524,12 +532,19 @@ export function CompactPicker({
         );
         if (mobileForId && onSelectMobile) {
           const chosen = parseBynderAssets(data.assets)[0];
-          if (!chosen || !isImageAsset(chosen)) {
+          const desktop = assets.find((asset) => asset.id === mobileForId);
+          const expectVideo = isVideoAsset(desktop);
+          const ok = expectVideo ? isVideoAsset(chosen) : isImageAsset(chosen);
+          if (!chosen || !ok) {
             const label = chosen && isDocumentAsset(chosen)
               ? "this file is a PDF or other document."
-              : chosen && isVideoAsset(chosen)
-                ? "this file is a video."
-                : "this file is not an image.";
+              : expectVideo
+                ? chosen && isImageAsset(chosen)
+                  ? "this file is an image. Pick a video for mobile."
+                  : "this file is not a video."
+                : chosen && isVideoAsset(chosen)
+                  ? "this file is a video. Pick an image for mobile."
+                  : "this file is not an image.";
             setBlockedMessage(label);
             return;
           }
@@ -600,9 +615,11 @@ export function CompactPicker({
   const assetWord = canPickMultiple ? "Asset(s)" : "Asset";
   const reselectLabel = `Change ${assetWord}`;
   const canReorder = ordered.length > 1;
-  const hasImage = ordered.some((asset) => isImageAsset(asset));
-  const acceptsImages = compact.assetTypes.includes("IMAGE");
-  const showMobileColumn = desktopMobileMode && (hasImage || (ordered.length === 0 && acceptsImages));
+  const hasMobilePairable = ordered.some((asset) => supportsSeparateMobileAsset(asset));
+  const acceptsMobilePairable =
+    compact.assetTypes.includes("IMAGE") || compact.assetTypes.includes("VIDEO");
+  const showMobileColumn =
+    desktopMobileMode && (hasMobilePairable || (ordered.length === 0 && acceptsMobilePairable));
   const hasSplitAssets = ordered.some((asset) => {
     if (!separateMobileIds?.includes(asset.id) || emptyMobileIds?.includes(asset.id)) return false;
     return Boolean(mobileFiles?.[asset.id]);
@@ -664,8 +681,8 @@ export function CompactPicker({
               const image = isImageAsset(asset);
               const selectable = !document;
               const rowFocused = focused && selectable;
-              const showMobile = showMobileColumn && image;
-              const mobileAssetUnsupported = showMobileColumn && !image;
+              const showMobile = showMobileColumn && (image || video);
+              const mobileAssetUnsupported = showMobileColumn && document;
               const separateMobile = Boolean(separateMobileIds?.includes(asset.id));
               const linked = Boolean(showMobile && !separateMobile && linkedIds?.includes(asset.id));
               const emptyMobile = Boolean(emptyMobileIds?.includes(asset.id));
@@ -763,15 +780,22 @@ export function CompactPicker({
                     <ThumbCaption caption={desktopThumb?.caption}>
                       {selectable ? (
                         <IconButton
-                          label={showMobile ? "Edit desktop crop" : "Edit"}
+                          label={
+                            showMobile
+                              ? video
+                                ? "Edit desktop video"
+                                : "Edit desktop crop"
+                              : "Edit"
+                          }
                           onClick={() => onFocus(asset.id, showMobile ? "desktop" : undefined)}
                         >
                           <EditIcon />
                         </IconButton>
                       ) : null}
                       <AssetIconSet
-                        previewUrl={asset.sourceUrl}
+                        previewUrl={deliveryUrls?.[asset.id]?.desktop || asset.sourceUrl}
                         bynderUrl={bynderMediaUrl(portalUrl, asset)}
+                        copyUrl={document ? undefined : deliveryUrls?.[asset.id]?.desktop ?? asset.sourceUrl ?? ""}
                         copyLinks={document ? documentCopyLinks(asset) : undefined}
                         changeLabel={pairActions ? "Change desktop asset" : reselectLabel}
                         onChange={() => (pairActions ? openPicker(undefined, asset.id) : openPicker())}
@@ -802,7 +826,7 @@ export function CompactPicker({
                         openPicker(asset.id);
                       }}
                     >
-                      Choose mobile image
+                      {video ? "Choose mobile video" : "Choose mobile image"}
                     </button>
                   ) : showMobile ? (
                   <figure className="asset-preview is-mobile">
@@ -842,14 +866,18 @@ export function CompactPicker({
                       {thumbMark}
                     </span>
                     <ThumbCaption caption={mobileThumb?.caption}>
-                      <IconButton label="Edit mobile crop" onClick={() => onFocus(asset.id, "mobile")}>
+                      <IconButton
+                        label={video ? "Edit mobile video" : "Edit mobile crop"}
+                        onClick={() => onFocus(asset.id, "mobile")}
+                      >
                         <EditIcon />
                       </IconButton>
                       {separateMobile ? (
                         <>
                           <AssetIconSet
-                            previewUrl={mobileFile?.sourceUrl}
+                            previewUrl={deliveryUrls?.[asset.id]?.mobile || mobileFile?.sourceUrl}
                             bynderUrl={mobileFile ? bynderMediaUrl(portalUrl, { id: mobileFile.id }) : undefined}
+                            copyUrl={deliveryUrls?.[asset.id]?.mobile ?? mobileFile?.sourceUrl ?? ""}
                             changeLabel="Change mobile asset"
                             onChange={() => openPicker(asset.id)}
                           />
@@ -867,9 +895,15 @@ export function CompactPicker({
                           </IconButton>
                         </>
                       ) : (
-                        <IconButton label="Use a different asset for mobile" onClick={() => openPicker(asset.id)}>
-                          <SwapIcon />
-                        </IconButton>
+                        <>
+                          <AssetIconSet
+                            previewUrl={deliveryUrls?.[asset.id]?.mobile || asset.sourceUrl}
+                            bynderUrl={bynderMediaUrl(portalUrl, asset)}
+                            copyUrl={deliveryUrls?.[asset.id]?.mobile ?? asset.sourceUrl ?? ""}
+                            changeLabel="Use a different asset for mobile"
+                            onChange={() => openPicker(asset.id)}
+                          />
+                        </>
                       )}
                     </ThumbCaption>
                   </figure>
@@ -915,8 +949,9 @@ export function CompactPicker({
                           </IconButton>
                         ) : null}
                         <AssetIconSet
-                          previewUrl={asset.sourceUrl}
+                          previewUrl={deliveryUrls?.[asset.id]?.desktop || asset.sourceUrl}
                           bynderUrl={bynderMediaUrl(portalUrl, asset)}
+                          copyUrl={document ? undefined : deliveryUrls?.[asset.id]?.desktop ?? asset.sourceUrl ?? ""}
                           copyLinks={document ? documentCopyLinks(asset) : undefined}
                           changeLabel={reselectLabel}
                           onChange={() => openPicker()}
@@ -940,8 +975,9 @@ export function CompactPicker({
                             </IconButton>
                           ) : null}
                           <AssetIconSet
-                            previewUrl={asset.sourceUrl}
+                            previewUrl={deliveryUrls?.[asset.id]?.desktop || asset.sourceUrl}
                             bynderUrl={bynderMediaUrl(portalUrl, asset)}
+                            copyUrl={deliveryUrls?.[asset.id]?.desktop ?? asset.sourceUrl ?? ""}
                             changeLabel="Change desktop asset"
                             onChange={() => openPicker(undefined, asset.id)}
                           />
@@ -964,8 +1000,9 @@ export function CompactPicker({
                             <EditIcon />
                           </IconButton>
                           <AssetIconSet
-                            previewUrl={mobileFile?.sourceUrl}
+                            previewUrl={deliveryUrls?.[asset.id]?.mobile || mobileFile?.sourceUrl}
                             bynderUrl={mobileFile ? bynderMediaUrl(portalUrl, { id: mobileFile.id }) : undefined}
+                            copyUrl={deliveryUrls?.[asset.id]?.mobile ?? mobileFile?.sourceUrl ?? ""}
                             changeLabel="Change mobile asset"
                             onChange={() => openPicker(asset.id)}
                           />

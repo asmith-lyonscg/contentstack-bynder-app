@@ -51,6 +51,8 @@ interface ResolvedSlice {
   mirror: boolean;
   profile: ProfileSettings;
   image: ViewportImageSize;
+  origWidth?: number;
+  origHeight?: number;
 }
 
 function positive(value: unknown): number | undefined {
@@ -83,6 +85,8 @@ function resolveSlice(value: unknown, options?: BynderImageOptions): ResolvedSli
     mirror: crop.mirror === true,
     profile,
     image,
+    origWidth: positive(file.origWidth),
+    origHeight: positive(file.origHeight),
   };
 }
 
@@ -110,10 +114,11 @@ export function composeBynderImageUrl(value: unknown, options?: BynderImageOptio
   const slice = resolveSlice(value, options);
   if (!slice) return "";
   const maxDimension = slice.profile.maxDimension ?? DEFAULT_MAX_DIMENSION;
-  const widths = srcsetWidths(slice.image.aspectRatio, maxDimension);
+  const orig = { width: slice.origWidth, height: slice.origHeight };
+  const widths = srcsetWidths(slice.image.aspectRatio, maxDimension, undefined, orig);
   const requested = options?.width ?? widths[widths.length - 1];
   if (!requested) return slice.webImage ?? "";
-  const width = widthWithinMaxDimension(requested, slice.image.aspectRatio, maxDimension);
+  const width = widthWithinMaxDimension(requested, slice.image.aspectRatio, maxDimension, orig);
   return urlForWidth(slice, width) ?? slice.webImage ?? "";
 }
 
@@ -126,7 +131,8 @@ export function buildBynderSources(value: unknown, options?: BynderSourcesOption
   if (!slice) return undefined;
   const objectPosition = focalPointToObjectPosition(slice.focalPoint, slice.mirror);
   const maxDimension = slice.profile.maxDimension ?? DEFAULT_MAX_DIMENSION;
-  const widths = srcsetWidths(slice.image.aspectRatio, maxDimension, options?.widths);
+  const orig = { width: slice.origWidth, height: slice.origHeight };
+  const widths = srcsetWidths(slice.image.aspectRatio, maxDimension, options?.widths, orig);
   const widest = widths[widths.length - 1];
   const src = widest ? urlForWidth(slice, widest) : undefined;
   if (!src || !widest) {

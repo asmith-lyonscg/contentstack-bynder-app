@@ -57,17 +57,46 @@ export function resolveMaxDimension(appConfig: unknown): number {
 }
 
 /**
- * Largest width at `aspectRatio` whose width and height are both within `maxDimension`.
+ * Size of Bynder's base DAT derivative: the original fitted so neither side
+ * passes `maxDimension`. Fill requests above this return the uncropped original.
+ */
+export function datBaseSize(
+  origWidth: number | undefined,
+  origHeight: number | undefined,
+  maxDimension: number
+): { width: number; height: number } | undefined {
+  const max = Math.max(1, Math.round(maxDimension));
+  if (!origWidth || !origHeight || origWidth <= 0 || origHeight <= 0) return undefined;
+  const scale = Math.min(1, max / origWidth, max / origHeight);
+  return {
+    width: Math.max(1, Math.floor(origWidth * scale)),
+    height: Math.max(1, Math.floor(origHeight * scale)),
+  };
+}
+
+/**
+ * Largest width at `aspectRatio` whose width and height stay within `maxDimension`
+ * and within the asset's base DAT size when original pixels are known.
  * Without an aspect, only the width is capped.
  */
-export function widthWithinMaxDimension(width: number, aspectRatio: string | undefined, maxDimension: number): number {
+export function widthWithinMaxDimension(
+  width: number,
+  aspectRatio: string | undefined,
+  maxDimension: number,
+  orig?: { width?: number; height?: number }
+): number {
   const max = Math.max(1, Math.round(maxDimension));
-  let next = Math.max(1, Math.min(Math.round(width), max));
-  if (!aspectRatio || heightForWidth(aspectRatio, next) <= max) return next;
+  const base = datBaseSize(orig?.width, orig?.height, max);
+  const maxW = base ? Math.min(max, base.width) : max;
+  const maxH = base ? Math.min(max, base.height) : max;
+  let next = Math.max(1, Math.min(Math.round(width), maxW));
+  if (!aspectRatio) return next;
+  if (heightForWidth(aspectRatio, next) <= maxH) return next;
   const parsed = parseAspect(aspectRatio);
   if (!parsed) return next;
-  next = Math.max(1, Math.floor((max * parsed.w) / parsed.h));
-  while (next > 1 && heightForWidth(aspectRatio, next) > max) next -= 1;
+  next = Math.max(1, Math.floor((maxH * parsed.w) / parsed.h));
+  next = Math.min(next, maxW);
+  while (next > 1 && heightForWidth(aspectRatio, next) > maxH) next -= 1;
   return next;
 }
 
@@ -514,16 +543,18 @@ export function profileSelectOptions(
 }
 
 /**
- * Request widths, each shrunk so width and height stay within `maxDimension`. Duplicates from that
- * shrink are dropped. The last width is the largest file.
+ * Request widths, each shrunk so width and height stay within `maxDimension` and the
+ * asset's base DAT size when original pixels are known. Duplicates from that shrink are
+ * dropped. The last width is the largest file.
  */
 export function srcsetWidths(
   aspectRatio?: string,
   maxDimension = DEFAULT_MAX_DIMENSION,
-  widths: readonly number[] = SRCSET_WIDTHS
+  widths: readonly number[] = SRCSET_WIDTHS,
+  orig?: { width?: number; height?: number }
 ): number[] {
   const capped = widths
-    .map((width) => widthWithinMaxDimension(Math.round(width), aspectRatio, maxDimension))
+    .map((width) => widthWithinMaxDimension(Math.round(width), aspectRatio, maxDimension, orig))
     .filter((width) => width > 0);
   return [...new Set(capped)].sort((a, b) => a - b);
 }

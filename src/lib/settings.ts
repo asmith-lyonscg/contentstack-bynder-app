@@ -107,13 +107,15 @@ function asMobileViewport(value: unknown): MobileViewportSettings | undefined {
   if (!isRecord(value)) return undefined;
   const crop = asViewportCrop(value);
   const identity = asMobileIdentity(value) ?? asMobileIdentity(value.asset);
-  if (!crop && !identity) return undefined;
+  const video = cleanVideoPlayback(value.video);
+  if (!crop && !identity && !video) return undefined;
   return {
     focalPoint: crop?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
     transform: crop?.transform ?? { ...DEFAULT_TRANSFORM },
     ...(crop?.mirror ? { mirror: true as const } : {}),
     ...identity,
     alt: typeof value.alt === "string" ? value.alt : undefined,
+    ...(video ? { video } : {}),
   };
 }
 
@@ -318,9 +320,11 @@ function persistedAsset(asset: SavedBynderAsset): Record<string, unknown> {
   const out = persistedIdentity(asset);
   if (image) Object.assign(out, persistedCrop(asset));
   if (asset.mobile) {
+    const mobileVideo = !image ? cleanVideoPlayback(asset.mobile.video) : undefined;
     const mobile = {
       ...(image ? persistedCrop(asset.mobile) : {}),
       ...(asset.mobile.id ? persistedIdentity(asset.mobile) : {}),
+      ...(mobileVideo ? { video: mobileVideo } : {}),
     };
     if (Object.keys(mobile).length) out.mobile = mobile;
   }
@@ -580,7 +584,12 @@ export function stashActiveCrop(settings: BynderImageSettings, assetId?: string)
           origHeight: existing.mobile.origHeight,
         }
       : {};
-    const mobileLive: MobileViewportSettings = { ...live, ...mobileIdentity };
+    const mobileVideo = cleanVideoPlayback(existing.mobile?.video);
+    const mobileLive: MobileViewportSettings = {
+      ...live,
+      ...mobileIdentity,
+      ...(mobileVideo ? { video: mobileVideo } : {}),
+    };
     const linkedToDesktop = { ...existing, ...desktop };
     delete linkedToDesktop.mobile;
     const withLive: SavedBynderAsset =

@@ -21,7 +21,24 @@
         "muted": true,
         "controls": true,
         "loop": false
-      }
+      },
+      "mobile": {
+        "id": "B2C3D4E5-F6A7-8901-BCDE-F12345678901",
+        "name": "Product launch mobile",
+        "type": "VIDEO",
+        "webImage": {
+          "url": "https://assets.deltafaucet.com/asset/b2c3d4e5-f6a7-8901-bcde-f12345678901/Product-launch-mobile.mp4"
+        },
+        "origWidth": 1080,
+        "origHeight": 1920,
+        "video": {
+          "autoplay": true,
+          "muted": true,
+          "controls": false,
+          "loop": true
+        }
+      },
+      "differentMobileAsset": true
     }
   ]
 }
