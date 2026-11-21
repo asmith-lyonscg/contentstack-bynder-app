@@ -4,6 +4,7 @@ import {
   cleanAdditionalValues,
   cleanVideoPlayback,
   isDocumentAsset,
+  isManualUrlAsset,
   isVideoAsset,
   documentThumbnailUrl,
   resolveDocumentFileUrl,
@@ -87,7 +88,7 @@ function asOriginalSize(record: Record<string, unknown>, raw?: unknown): Origina
 
 type MobileIdentity = Pick<
   MobileViewportSettings,
-  "id" | "name" | "type" | "transformBaseUrl" | "webImage"
+  "id" | "name" | "type" | "transformBaseUrl" | "webImage" | "url" | "source"
 > &
   OriginalAssetSize;
 
@@ -97,7 +98,9 @@ function asMobileIdentity(value: unknown): MobileIdentity | undefined {
   const next: MobileIdentity = { id: value.id };
   if (typeof value.name === "string" && value.name) next.name = value.name;
   if (typeof value.type === "string" && value.type) next.type = value.type;
+  if (value.source === "url") next.source = "url";
   if (typeof value.transformBaseUrl === "string" && value.transformBaseUrl) next.transformBaseUrl = value.transformBaseUrl;
+  if (typeof value.url === "string" && value.url) next.url = value.url;
   if (webImage && !next.transformBaseUrl) next.webImage = webImage;
   Object.assign(next, asOriginalSize(value));
   return next;
@@ -132,6 +135,7 @@ export function asSavedAsset(raw: unknown, additionalProperties?: readonly strin
   const record = isRecord(raw) ? raw : {};
 
   if (isDocumentAsset(parsed) || isDocumentAsset(record as unknown as SavedBynderAsset)) {
+    const manual = record.source === "url" || parsed.source === "url";
     const fileUrl =
       (typeof record.url === "string" && record.url) ||
       resolveDocumentFileUrl(raw) ||
@@ -140,12 +144,18 @@ export function asSavedAsset(raw: unknown, additionalProperties?: readonly strin
       id: parsed.id,
       name: parsed.name,
       type: "DOCUMENT",
+      ...(manual ? { source: "url" as const } : {}),
     };
     if (fileUrl) {
-      next.url = stripBynderDownloadParam(fileUrl);
+      next.url = manual ? fileUrl : stripBynderDownloadParam(fileUrl);
     }
-    if (typeof record.downloadUrl === "string" && record.downloadUrl) next.downloadUrl = record.downloadUrl;
+    if (!manual && typeof record.downloadUrl === "string" && record.downloadUrl) {
+      next.downloadUrl = record.downloadUrl;
+    }
     if (typeof record.thumbnail === "string" && record.thumbnail) next.thumbnail = record.thumbnail;
+    if (manual && typeof record.alt === "string") next.alt = record.alt;
+    if (manual && isRecord(record.mobile)) next.mobile = asMobileViewport(record.mobile);
+    if (manual && record.differentMobileAsset === true) next.differentMobileAsset = true;
     copyAuthorProperties(next, record, additionalProperties);
     return next;
   }
@@ -160,17 +170,23 @@ export function asSavedAsset(raw: unknown, additionalProperties?: readonly strin
     (typeof record.transformBaseUrl === "string" && record.transformBaseUrl) ||
     (typeof files.transformBaseUrl === "string" && files.transformBaseUrl) ||
     parsed.transformBaseUrl;
+  const manual = record.source === "url" || parsed.source === "url";
   const next: SavedBynderAsset = {
     id: parsed.id,
     name: parsed.name,
     type: parsed.type,
+    ...(manual ? { source: "url" as const } : {}),
     alt: typeof record.alt === "string" ? record.alt : parsed.alt,
-    transformBaseUrl,
+    transformBaseUrl: manual ? undefined : transformBaseUrl,
     webImage,
     ...asOriginalSize(record, raw),
-    focalPoint: crop?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
-    transform: crop?.transform ?? { ...DEFAULT_TRANSFORM },
-    ...(crop?.mirror ? { mirror: true as const } : {}),
+    ...(manual
+      ? {}
+      : {
+          focalPoint: crop?.focalPoint ?? { ...DEFAULT_FOCAL_POINT },
+          transform: crop?.transform ?? { ...DEFAULT_TRANSFORM },
+          ...(crop?.mirror ? { mirror: true as const } : {}),
+        }),
     mobile,
     differentMobileAsset: record.differentMobileAsset === true ? true : undefined,
   };
@@ -306,9 +322,12 @@ function persistedIdentity(asset: SavedBynderAsset | MobileViewportSettings): Re
   if (asset.id) out.id = asset.id;
   if (asset.name) out.name = asset.name;
   if (asset.type) out.type = asset.type;
+  if (asset.source === "url") out.source = "url";
   if (asset.transformBaseUrl) out.transformBaseUrl = asset.transformBaseUrl;
   if (asset.webImage?.url) out.webImage = { url: asset.webImage.url };
-  if (typeof asset.alt === "string") out.alt = asset.alt;
+  if ("url" in asset && typeof asset.url === "string" && asset.url) out.url = asset.url;
+  // Videos do not store alt text (no meaningful image-style alt for embeds / playback).
+  if (!isVideoAsset(asset) && typeof asset.alt === "string") out.alt = asset.alt;
   if (asset.origWidth) out.origWidth = asset.origWidth;
   if (asset.origHeight) out.origHeight = asset.origHeight;
   return out;
@@ -317,12 +336,13 @@ function persistedIdentity(asset: SavedBynderAsset | MobileViewportSettings): Re
 function persistedAsset(asset: SavedBynderAsset): Record<string, unknown> {
   if (isDocumentAsset(asset)) return { ...asDocumentAsset(asset) };
   const image = !isVideoAsset(asset);
+  const manual = isManualUrlAsset(asset);
   const out = persistedIdentity(asset);
-  if (image) Object.assign(out, persistedCrop(asset));
+  if (image && !manual) Object.assign(out, persistedCrop(asset));
   if (asset.mobile) {
     const mobileVideo = !image ? cleanVideoPlayback(asset.mobile.video) : undefined;
     const mobile = {
-      ...(image ? persistedCrop(asset.mobile) : {}),
+      ...(image && !manual ? persistedCrop(asset.mobile) : {}),
       ...(asset.mobile.id ? persistedIdentity(asset.mobile) : {}),
       ...(mobileVideo ? { video: mobileVideo } : {}),
     };
@@ -353,7 +373,7 @@ export function persistedPayload(settings: BynderImageSettings): Record<string, 
 }
 
 function withProfileSizes(asset: SavedBynderAsset, profile: ProfileSettings): SavedBynderAsset {
-  if (isDocumentAsset(asset)) return asset;
+  if (isDocumentAsset(asset) || isManualUrlAsset(asset)) return asset;
   const next: SavedBynderAsset = {
     ...asset,
     transform: applyProfileTransform(asset.transform ?? DEFAULT_TRANSFORM, profile, "desktop", true, asset),
@@ -517,19 +537,29 @@ function mergeIdentityAndCrops(
 }
 
 function asDocumentAsset(asset: SavedBynderAsset): SavedBynderAsset {
+  const manual = isManualUrlAsset(asset);
   const rawUrl = asset.url || (asset.downloadUrl ? stripBynderDownloadParam(asset.downloadUrl) : undefined);
   const next: SavedBynderAsset = {
     id: asset.id,
     type: "DOCUMENT",
+    ...(manual ? { source: "url" as const } : {}),
   };
   if (asset.name) next.name = asset.name;
   if (rawUrl) {
-    const view = stripBynderDownloadParam(rawUrl);
-    next.url = view;
-    next.downloadUrl = withBynderDownloadParam(view);
-    const thumb = asset.thumbnail || documentThumbnailUrl({ url: view, name: asset.name });
-    if (thumb) next.thumbnail = thumb;
+    if (manual) {
+      next.url = rawUrl;
+      if (asset.thumbnail) next.thumbnail = asset.thumbnail;
+    } else {
+      const view = stripBynderDownloadParam(rawUrl);
+      next.url = view;
+      next.downloadUrl = withBynderDownloadParam(view);
+      const thumb = asset.thumbnail || documentThumbnailUrl({ url: view, name: asset.name });
+      if (thumb) next.thumbnail = thumb;
+    }
   }
+  if (manual && typeof asset.alt === "string") next.alt = asset.alt;
+  if (manual && asset.mobile) next.mobile = asset.mobile;
+  if (manual && asset.differentMobileAsset) next.differentMobileAsset = true;
   if (asset.additional) next.additional = asset.additional;
   return next;
 }
@@ -580,13 +610,15 @@ export function stashActiveCrop(settings: BynderImageSettings, assetId?: string)
           type: existing.mobile.type,
           transformBaseUrl: existing.mobile.transformBaseUrl,
           webImage: existing.mobile.webImage,
+          url: existing.mobile.url,
+          ...(existing.mobile.source === "url" ? { source: "url" as const } : {}),
           origWidth: existing.mobile.origWidth,
           origHeight: existing.mobile.origHeight,
         }
       : {};
     const mobileVideo = cleanVideoPlayback(existing.mobile?.video);
     const mobileLive: MobileViewportSettings = {
-      ...live,
+      ...(isManualUrlAsset(existing) ? {} : live),
       ...mobileIdentity,
       ...(mobileVideo ? { video: mobileVideo } : {}),
     };

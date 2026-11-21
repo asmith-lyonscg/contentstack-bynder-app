@@ -141,8 +141,16 @@ export function originalPixelSizeFromNode(node: unknown): OriginalPixelSize | un
 /** Image and video ids (and a different mobile file) that do not yet have both original dimensions. */
 export function missingOriginalSizeIds(assets: SavedBynderAsset[] | undefined): string[] {
   const ids: string[] = [];
-  const push = (asset?: { id?: string; type?: string; name?: string; url?: string; origWidth?: number; origHeight?: number }) => {
-    if (!asset?.id || isDocumentAsset(asset)) return;
+  const push = (asset?: {
+    id?: string;
+    type?: string;
+    name?: string;
+    url?: string;
+    source?: string;
+    origWidth?: number;
+    origHeight?: number;
+  }) => {
+    if (!asset?.id || isDocumentAsset(asset) || asset.source === "url") return;
     if (asset.origWidth && asset.origHeight) return;
     ids.push(asset.id);
   };

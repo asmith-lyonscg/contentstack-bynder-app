@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import CustomField from "../locations/CustomField/CustomField";
+import { isVideoAsset } from "../lib/bynder/parseAsset";
 import type { AppInstallationConfig } from "../lib/types";
 import {
   RTE_ALIGNMENTS,
@@ -83,6 +84,7 @@ function AssetEditorModal({
   const splitMobile = useRef(usesDifferentMobile(record(initialValue)));
   const [empty, setEmpty] = useState(false);
   const [alt, setAlt] = useState(() => assetAlt(record(initialValue)));
+  const [isVideo, setIsVideo] = useState(() => firstAssetIsVideo(record(initialValue)));
   const [display, setDisplay] = useState<RteDisplay>(initialDisplay ?? {});
   const [editorViewport, setEditorViewport] = useState<ViewportKind>("desktop");
   const placement = placementFor(display, editorViewport);
@@ -108,6 +110,7 @@ function AssetEditorModal({
               onDraft: (payload) => {
                 const split = usesDifferentMobile(payload);
                 draft.current = payload;
+                setIsVideo(firstAssetIsVideo(payload));
                 if (splitMobile.current && !split) setDisplay((current) => relinkDisplayPlacement(current));
                 splitMobile.current = split;
                 const nextId = firstAssetId(payload);
@@ -122,7 +125,8 @@ function AssetEditorModal({
           {empty ? <p className="notice">Choose an asset first.</p> : null}
         </div>
         <section className="bynder-rte-display">
-            <h3>Image properties</h3>
+            <h3>{isVideo ? "Video properties" : "Image properties"}</h3>
+            {isVideo ? null : (
             <label>
               Alt text
               <textarea
@@ -135,6 +139,7 @@ function AssetEditorModal({
                 }}
               />
             </label>
+            )}
             <label>
               Alignment
               <span className="bynder-rte-viewport">{editorViewport === "mobile" ? "Mobile" : "Desktop"}</span>
@@ -200,7 +205,8 @@ function AssetEditorModal({
                 setEmpty(true);
                 return;
               }
-              onSave(joinRteAttrs(payloadWithAlt(draft.current, alt), display));
+              const field = isVideo ? draft.current : payloadWithAlt(draft.current, alt);
+              onSave(joinRteAttrs(field, display));
             }}
           >
             {confirmLabel}
@@ -213,6 +219,13 @@ function AssetEditorModal({
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function firstAssetIsVideo(payload: Record<string, unknown>): boolean {
+  const assets = payload.assets;
+  if (!Array.isArray(assets) || !assets.length) return false;
+  const first = assets[0];
+  return Boolean(first && typeof first === "object" && isVideoAsset(first as { type?: string }));
 }
 
 function firstAssetId(payload: Record<string, unknown>): string | undefined {

@@ -1,0 +1,27 @@
+<!--
+  Markup for samples/payload/sample-payload-url-image.json.
+  Manual URL images have no DAT, crop, focal point, or render-profile Fill.
+  Use each viewport’s webImage.url as-is. Alt text is on the asset (desktop)
+  or mobile.alt when a separate mobile URL is assigned. origWidth / origHeight
+  are the measured file pixels when the editor could load them.
+
+  Desktop and mobile may both be source: "url", or one side may be Bynder and
+  the other a URL (see sample-payload-url-mixed.json). Do not call
+  buildBynderSources for source: "url" files.
+
+  Bynder DAT pictures are samples/html-output/sample-html-large-hero.html.
+-->
+<img
+  class="bynder-image is-desktop"
+  src="https://cdn.example.com/migrated/hero.jpg"
+  alt="Chrome faucet on marble"
+  width="2400"
+  height="1600"
+/>
+<img
+  class="bynder-image is-mobile"
+  src="https://cdn.example.com/migrated/hero-mobile.jpg"
+  alt="Chrome faucet, mobile crop"
+  width="1080"
+  height="1350"
+/>

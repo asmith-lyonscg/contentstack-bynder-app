@@ -1,0 +1,38 @@
+{
+  "v": 2,
+  "profile": {
+    "id": "largeHero",
+    "settings": {
+      "desktop": "16:9",
+      "mobile": "5:3",
+      "quality": 80,
+      "format": "webp"
+    }
+  },
+  "assets": [
+    {
+      "id": "09C73413-5F93-4D0D-B1594DDB817E06CA",
+      "name": "AVS3-WQ2101-SS_MODEL_WATER_09",
+      "type": "IMAGE",
+      "transformBaseUrl": "https://assets.deltafaucet.com/transform/09c73413-5f93-4d0d-b159-4ddb817e06ca/AVS3-WQ2101-SS_MODEL_WATER_09",
+      "alt": "Pull-down faucet at a sink",
+      "origWidth": 8000,
+      "origHeight": 6000,
+      "operation": "fill",
+      "mirror": true,
+      "mobile": {
+        "id": "url-sample-mob-mixed",
+        "name": "Migrated hero-mobile.jpg",
+        "type": "IMAGE",
+        "source": "url",
+        "alt": "Pull-down faucet, mobile",
+        "webImage": {
+          "url": "https://cdn.example.com/migrated/hero-mobile.jpg"
+        },
+        "origWidth": 1080,
+        "origHeight": 1350
+      },
+      "differentMobileAsset": true
+    }
+  ]
+}

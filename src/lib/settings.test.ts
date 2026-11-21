@@ -196,6 +196,49 @@ describe("buildSettingsPayload", () => {
     expect(next.assets?.[1].mobile?.transform).toMatchObject({ width: null, height: null, aspect: "4:3" });
   });
 
+  it("saves a manual URL image without crop and with a mobile file", () => {
+    const current = emptySettings();
+    current.assets = [
+      {
+        id: "url-desk",
+        name: "Hero.jpg",
+        type: "IMAGE",
+        source: "url",
+        alt: "Desk",
+        webImage: { url: "https://cdn.example.com/desk.jpg" },
+        differentMobileAsset: true,
+        mobile: {
+          id: "url-mob",
+          name: "Hero-mobile.jpg",
+          type: "IMAGE",
+          source: "url",
+          alt: "Mobile",
+          webImage: { url: "https://cdn.example.com/mob.jpg" },
+        },
+      },
+    ];
+    const saved = persistedPayload(buildSettingsPayload(current, { assets: current.assets })) as {
+      assets: Record<string, unknown>[];
+    };
+    expect(saved.assets[0]).toMatchObject({
+      id: "url-desk",
+      source: "url",
+      type: "IMAGE",
+      alt: "Desk",
+      webImage: { url: "https://cdn.example.com/desk.jpg" },
+      differentMobileAsset: true,
+      mobile: {
+        id: "url-mob",
+        source: "url",
+        alt: "Mobile",
+        webImage: { url: "https://cdn.example.com/mob.jpg" },
+      },
+    });
+    expect(saved.assets[0]).not.toHaveProperty("operation");
+    expect(saved.assets[0]).not.toHaveProperty("focalPoint");
+    expect(saved.assets[0]).not.toHaveProperty("transform");
+  });
+
   it("saves a separate mobile video file without crop or focal point", () => {
     const current = emptySettings();
     current.assets = [

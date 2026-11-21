@@ -225,6 +225,32 @@
   border-color: #cfc8f0;
 }
 
+.dat-badge.is-url {
+  color: #4338ca;
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.video-settings .manual-url-field,
+.video-settings .alt-field {
+  display: grid;
+  gap: 6px;
+  font: 600 12px/1.3 Inter, system-ui, sans-serif;
+  color: #475161;
+}
+
+.video-settings .manual-url-field input,
+.video-settings .alt-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #c5cde0;
+  border-radius: 6px;
+  font: 13px/1.3 Inter, system-ui, sans-serif;
+  color: #1a202c;
+  background: #fff;
+}
+
 .dat-error {
   margin: 0;
   font: 600 12px/1.45 Inter, system-ui, sans-serif;
@@ -303,6 +329,12 @@
   font: 600 12px/1.3 Inter, system-ui, sans-serif;
   color: #475161;
   cursor: pointer;
+}
+
+.asset-switch > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .asset-switch input {
@@ -396,6 +428,12 @@
   padding: 12px 36px 12px 12px;
 }
 
+.mobile-asset-cta-wrap {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
 .mobile-asset-cta {
   display: flex;
   flex-direction: column;
@@ -410,6 +448,47 @@
   color: #6c5ce7;
   font: 700 14px/1.3 Inter, system-ui, sans-serif;
   cursor: pointer;
+}
+
+.mobile-asset-cta-wrap .asset-add-url {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.mobile-asset-cta-wrap .asset-add-url-lead {
+  font: 500 11px/1.3 Inter, system-ui, sans-serif;
+  color: #9ca3af;
+}
+
+.mobile-asset-cta-wrap .asset-add-url-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: 500 11px/1.3 Inter, system-ui, sans-serif;
+  color: #9ca3af;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.mobile-asset-cta-wrap .asset-add-url-btn:hover {
+  color: #6b7280;
+}
+
+.mobile-asset-cta-wrap .asset-add-url .info-tooltip-btn {
+  width: 11px;
+  height: 11px;
+  border-color: #c5c9d4;
+  color: #9ca3af;
+  font: 600 8px/11px Inter, system-ui, sans-serif;
+}
+
+.mobile-asset-cta-wrap .asset-add-url .info-tooltip-btn:hover,
+.mobile-asset-cta-wrap .asset-add-url .info-tooltip-btn:focus-visible {
+  border-color: #9ca3af;
+  color: #6b7280;
 }
 
 .mobile-asset-cta-icon {

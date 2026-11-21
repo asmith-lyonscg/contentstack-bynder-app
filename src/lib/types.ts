@@ -135,6 +135,13 @@ export interface MobileViewportSettings extends ViewportCropSettings, OriginalAs
   type?: string;
   transformBaseUrl?: string;
   webImage?: { url: string };
+  /** Document / PDF view URL when the mobile file is a linked document. */
+  url?: string;
+  /**
+   * `"url"` when this mobile file was entered by hand (migrated / non-Bynder).
+   * Omitted for Compact View picks.
+   */
+  source?: "url";
   /** Alt text for the separate mobile file. Omitted when mobile uses the desktop image. */
   alt?: string;
   /** Playback for a separate mobile video. Omitted when mobile uses the desktop file. */
@@ -159,6 +166,11 @@ export interface SavedBynderAsset extends AssetCropSettings, OriginalAssetSize {
   name?: string;
   /** Compact View media type, e.g. IMAGE, VIDEO, or DOCUMENT. Always saved. */
   type?: string;
+  /**
+   * `"url"` when the author pasted a direct file URL (migrated / non-Bynder media).
+   * Omitted for Compact View picks. Manual assets have no DAT crop or render profile.
+   */
+  source?: "url";
   transformBaseUrl?: string;
   /** Original/web image. Persisted only when the asset has no transform URL. */
   webImage?: { url: string };
@@ -205,6 +217,8 @@ export interface ParsedBynderAsset {
   pickerId?: string;
   name?: string;
   type?: string;
+  /** `"url"` for manually entered file URLs. */
+  source?: "url";
   transformBaseUrl?: string;
   sourceUrl: string;
   /** Stored document thumbnail, when the payload includes one. */

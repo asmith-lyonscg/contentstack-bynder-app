@@ -6,7 +6,8 @@ import {
   type TransformSettings,
 } from "../types";
 import { normalizeFocalPoint, parseAspect } from "./composeDatUrl";
-import { isDocumentAsset, isVideoAsset } from "./parseAsset";
+import { embedPosterUrl, isVideoEmbedUrl } from "../manualUrl";
+import { isDocumentAsset, isManualUrlAsset, isVideoAsset } from "./parseAsset";
 
 export const LIST_THUMB_MOBILE = { width: 200, height: 200 };
 export const LIST_THUMB_DESKTOP = { width: 300, height: 200 };
@@ -58,7 +59,10 @@ export function listThumbForAsset(input: {
   datAllowed: boolean;
   fallbackTransform?: TransformSettings;
   slot?: { width: number; height: number };
-  /** Original file pixels. Videos always use these (or `asset.width` / `height`) for the thumb frame. */
+  /**
+   * Original file pixels. Videos and manual URL images use these (or `asset.width` /
+   * `height`) for the thumb frame instead of a render-profile crop.
+   */
   naturalSize?: { width?: number; height?: number };
 }): ListThumb {
   const transform = input.live?.transform ?? input.crop?.transform ?? input.fallbackTransform;
@@ -68,20 +72,36 @@ export function listThumbForAsset(input: {
   const size = input.slot ?? LIST_THUMB_SLOT;
   const document = isDocumentAsset(input.asset);
   const video = isVideoAsset(input.asset);
-  const natural = video
+  const manual = isManualUrlAsset(input.asset);
+  const embed = Boolean(input.asset.sourceUrl && isVideoEmbedUrl(input.asset.sourceUrl));
+  const useNatural = video || manual || Boolean(input.naturalSize);
+  const natural = useNatural
     ? naturalAspect(input.naturalSize?.width ?? input.asset.width, input.naturalSize?.height ?? input.asset.height)
     : undefined;
-  const aspect = document ? DOCUMENT_THUMB_ASPECT : natural ?? parseAspect(transform?.aspect);
+  // YouTube/Vimeo have no measured file size; default the frame to 16:9.
+  const aspect = document
+    ? DOCUMENT_THUMB_ASPECT
+    : natural ?? (embed ? { w: 16, h: 9 } : undefined) ?? parseAspect(transform?.aspect);
   const caption = thumbCaption({
-    aspect: document ? undefined : video ? (natural ? `${natural.w}:${natural.h}` : undefined) : cropAspectLabel(transform),
-    format: datOn && !video ? transform?.format : undefined,
+    aspect: document
+      ? undefined
+      : useNatural
+        ? natural
+          ? `${natural.w}:${natural.h}`
+          : embed
+            ? "16:9"
+            : undefined
+        : cropAspectLabel(transform),
+    format: datOn && !video && !manual ? transform?.format : undefined,
     fileType: input.asset.fileType,
-    fileSize: datOn && !video ? undefined : input.asset.fileSize,
+    fileSize: datOn && !video && !manual ? undefined : input.asset.fileSize,
   });
 
+  const poster = input.asset.sourceUrl ? embedPosterUrl(input.asset.sourceUrl) : undefined;
   return {
     ...size,
-    url: input.asset.sourceUrl,
+    // Never use a YouTube/Vimeo watch URL as <img src> — it is not an image.
+    url: poster ?? (embed ? "" : input.asset.sourceUrl),
     objectPosition: document ? "0% 0%" : objectPosition(focal),
     ...(document || !mirror ? {} : { mirror: true }),
     caption,

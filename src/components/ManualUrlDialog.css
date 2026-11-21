@@ -1,0 +1,107 @@
+.manual-url-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(20, 28, 45, 0.45);
+}
+
+.manual-url-dialog {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px 14px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(20, 28, 45, 0.22);
+  font: 14px/1.4 Inter, system-ui, sans-serif;
+  color: #2d3748;
+}
+
+.manual-url-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.manual-url-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a202c;
+}
+
+.manual-url-lead {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #5a6577;
+}
+
+.manual-url-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475161;
+}
+
+.manual-url-field input,
+.manual-url-field select,
+.manual-url-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #c5cde0;
+  border-radius: 6px;
+  font: 13px/1.3 Inter, system-ui, sans-serif;
+  color: #1a202c;
+  background: #fff;
+  resize: vertical;
+}
+
+.manual-url-field input:focus,
+.manual-url-field select:focus,
+.manual-url-field textarea:focus {
+  outline: 2px solid #6c5ce7;
+  outline-offset: 1px;
+}
+
+.manual-url-type-locked {
+  margin: 0;
+  font-size: 12px;
+  color: #5a6577;
+}
+
+.manual-url-error {
+  margin: 0;
+  font-size: 12px;
+  color: #c0392b;
+}
+
+.manual-url-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.manual-url-actions button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid #c5cde0;
+  border-radius: 6px;
+  background: #fff;
+  font: 600 13px/1 Inter, system-ui, sans-serif;
+  color: #2d3748;
+  cursor: pointer;
+}
+
+.manual-url-actions button.is-primary {
+  border-color: #6c5ce7;
+  background: #6c5ce7;
+  color: #fff;
+}
+

@@ -1,0 +1,30 @@
+{
+  "v": 2,
+  "profile": {
+    "settings": {
+      "quality": 80,
+      "format": "webp"
+    }
+  },
+  "assets": [
+    {
+      "id": "url-sample-yt-video",
+      "name": "YouTube dQw4w9WgXcQ",
+      "type": "VIDEO",
+      "source": "url",
+      "webImage": {
+        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      },
+      "mobile": {
+        "id": "url-sample-vimeo-video",
+        "name": "Vimeo 76979871",
+        "type": "VIDEO",
+        "source": "url",
+        "webImage": {
+          "url": "https://vimeo.com/76979871"
+        }
+      },
+      "differentMobileAsset": true
+    }
+  ]
+}

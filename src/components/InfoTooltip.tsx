@@ -6,7 +6,7 @@ interface InfoTooltipProps {
   children: ReactNode;
 }
 
-const PANEL_WIDTH = 240;
+const PANEL_WIDTH = 280;
 const MARGIN = 8;
 
 export function InfoTooltip({ children }: InfoTooltipProps) {

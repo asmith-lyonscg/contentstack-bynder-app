@@ -505,6 +505,9 @@ describe("supportsSeparateMobileAsset", () => {
     expect(supportsSeparateMobileAsset({ type: "IMAGE", sourceUrl: "https://cdn.example/a.jpg" })).toBe(true);
     expect(supportsSeparateMobileAsset({ type: "VIDEO", sourceUrl: "https://cdn.example/a.mp4" })).toBe(true);
     expect(supportsSeparateMobileAsset({ type: "DOCUMENT", sourceUrl: "https://cdn.example/a.pdf" })).toBe(false);
+    expect(
+      supportsSeparateMobileAsset({ type: "DOCUMENT", source: "url", sourceUrl: "https://cdn.example/a.pdf" })
+    ).toBe(true);
   });
 });
 

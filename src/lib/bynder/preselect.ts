@@ -52,6 +52,7 @@ export function compactPreselectFromParsed(assets: ParsedBynderAsset[]): Compact
   const seen = new Set<string>();
   const preselect: CompactPreselectAsset[] = [];
   for (const asset of assets) {
+    if (asset.source === "url") continue;
     const mediaId = compactAssetIds([asset])[0];
     if (!mediaId || seen.has(mediaId)) continue;
     seen.add(mediaId);

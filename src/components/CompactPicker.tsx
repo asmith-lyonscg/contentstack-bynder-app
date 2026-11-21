@@ -5,6 +5,7 @@ import {
   documentThumbnailUrl,
   isDocumentAsset,
   isImageAsset,
+  isManualUrlAsset,
   isVideoAsset,
   supportsSeparateMobileAsset,
   parseBynderAssets,
@@ -13,6 +14,8 @@ import {
 } from "../lib/bynder/parseAsset";
 import { selectedAssetsForPicker } from "../lib/bynder/preselect";
 import { ImageSpinner } from "./ImageSpinner";
+import { InfoTooltip } from "./InfoTooltip";
+import { MANUAL_URL_LIMITATIONS } from "./ManualUrlDialog";
 import { isPickerReady, isPickerResult, PICKER_INIT } from "../lib/picker/protocol";
 import { appHref } from "../lib/appBase";
 import type { CompactViewConfig, ParsedBynderAsset, ViewportKind } from "../lib/types";
@@ -64,6 +67,15 @@ interface CompactPickerProps {
    * step; videos use `webImage.url`. Keyed by desktop asset id.
    */
   deliveryUrls?: Record<string, { desktop?: string; mobile?: string }>;
+  /** Open the quiet “Add by URL” dialog for a new row. */
+  onAddByUrl?: () => void;
+  /**
+   * Quiet “Add by URL” for an empty mobile slot. Primary mobile choose always
+   * opens Bynder; this stays easy to miss, like desktop Add by URL.
+   */
+  onSelectMobileUrl?: (id: string) => void;
+  /** Replace the desktop file URL on a URL-sourced row. */
+  onReplaceDesktopUrl?: (id: string) => void;
 }
 
 function ThumbImage({
@@ -102,6 +114,10 @@ function ThumbImage({
 
   const loading = Boolean(shown) && loadedSrc !== shown && !failed;
 
+  if (!shown || failed) {
+    return <span className="asset-thumb-empty" aria-hidden />;
+  }
+
   return (
     <>
       {loading ? <ImageSpinner /> : null}
@@ -117,7 +133,7 @@ function ThumbImage({
           setFailed(false);
         }}
         onError={(event) => {
-          if (fallback && event.currentTarget.src !== fallback) {
+          if (fallback && fallback !== shown && event.currentTarget.src !== fallback) {
             event.currentTarget.src = fallback;
             setShown(fallback);
             return;
@@ -377,6 +393,9 @@ export function CompactPicker({
   desktopPickRequest,
   onSelectMobile,
   onReplaceDesktop,
+  onAddByUrl,
+  onSelectMobileUrl,
+  onReplaceDesktopUrl,
   mobileFiles,
   deliveryUrls,
 }: CompactPickerProps) {
@@ -534,17 +553,24 @@ export function CompactPicker({
           const chosen = parseBynderAssets(data.assets)[0];
           const desktop = assets.find((asset) => asset.id === mobileForId);
           const expectVideo = isVideoAsset(desktop);
-          const ok = expectVideo ? isVideoAsset(chosen) : isImageAsset(chosen);
+          const expectDocument = isDocumentAsset(desktop);
+          const ok = expectVideo
+            ? isVideoAsset(chosen)
+            : expectDocument
+              ? isDocumentAsset(chosen)
+              : isImageAsset(chosen);
           if (!chosen || !ok) {
-            const label = chosen && isDocumentAsset(chosen)
-              ? "this file is a PDF or other document."
-              : expectVideo
-                ? chosen && isImageAsset(chosen)
-                  ? "this file is an image. Pick a video for mobile."
-                  : "this file is not a video."
-                : chosen && isVideoAsset(chosen)
-                  ? "this file is a video. Pick an image for mobile."
-                  : "this file is not an image.";
+            const label = expectVideo
+              ? chosen && isImageAsset(chosen)
+                ? "this file is an image. Pick a video for mobile."
+                : "this file is not a video."
+              : expectDocument
+                ? "this file is not a document. Pick a document for mobile."
+                : chosen && isDocumentAsset(chosen)
+                  ? "this file is a PDF or other document."
+                  : chosen && isVideoAsset(chosen)
+                    ? "this file is a video. Pick an image for mobile."
+                    : "this file is not an image.";
             setBlockedMessage(label);
             return;
           }
@@ -668,6 +694,15 @@ export function CompactPicker({
                 </span>
                 {`Choose ${assetWord}`}
               </button>
+              {onAddByUrl ? (
+                <div className="asset-add-url is-trailing">
+                  <span className="asset-add-url-lead">Or add by </span>
+                  <button type="button" className="asset-add-url-btn" onClick={onAddByUrl}>
+                    URL
+                  </button>
+                  <InfoTooltip>{MANUAL_URL_LIMITATIONS}</InfoTooltip>
+                </div>
+              ) : null}
             </li>
           ) : (
           ordered.map((asset) => {
@@ -678,19 +713,24 @@ export function CompactPicker({
               const mobileThumb = pair?.mobile;
               const video = isVideoAsset(asset);
               const document = isDocumentAsset(asset);
-              const image = isImageAsset(asset);
-              const selectable = !document;
+              const manual = isManualUrlAsset(asset);
+              const selectable = !document || manual;
               const rowFocused = focused && selectable;
-              const showMobile = showMobileColumn && (image || video);
-              const mobileAssetUnsupported = showMobileColumn && document;
+              const showMobile = showMobileColumn && supportsSeparateMobileAsset(asset);
+              const mobileAssetUnsupported = showMobileColumn && document && !manual;
               const separateMobile = Boolean(separateMobileIds?.includes(asset.id));
               const linked = Boolean(showMobile && !separateMobile && linkedIds?.includes(asset.id));
               const emptyMobile = Boolean(emptyMobileIds?.includes(asset.id));
               const mobileFile = mobileFiles?.[asset.id];
               const pairActions = Boolean(separateMobile && !emptyMobile && mobileFile);
-              const desktopName = asset.name ?? "Bynder image";
+              const desktopName = asset.name ?? (manual ? "Linked file" : "Bynder image");
               const mobileName = mobileFile?.name || mobileFile?.id || "Mobile image";
-              const thumbMark = video ? (
+              const openBynderUrl = manual ? undefined : bynderMediaUrl(portalUrl, asset);
+              const thumbMark = manual ? (
+                <span className="asset-dat-warn is-url" title="Linked by URL — no Bynder crop or profiles">
+                  URL
+                </span>
+              ) : video ? (
                 <span className="asset-dat-warn is-video" title="Bynder video asset">
                   Video
                 </span>
@@ -794,11 +834,15 @@ export function CompactPicker({
                       ) : null}
                       <AssetIconSet
                         previewUrl={deliveryUrls?.[asset.id]?.desktop || asset.sourceUrl}
-                        bynderUrl={bynderMediaUrl(portalUrl, asset)}
-                        copyUrl={document ? undefined : deliveryUrls?.[asset.id]?.desktop ?? asset.sourceUrl ?? ""}
-                        copyLinks={document ? documentCopyLinks(asset) : undefined}
+                        bynderUrl={openBynderUrl}
+                        copyUrl={document && !manual ? undefined : deliveryUrls?.[asset.id]?.desktop ?? asset.sourceUrl ?? ""}
+                        copyLinks={document && !manual ? documentCopyLinks(asset) : undefined}
                         changeLabel={pairActions ? "Change desktop asset" : reselectLabel}
-                        onChange={() => (pairActions ? openPicker(undefined, asset.id) : openPicker())}
+                        onChange={() => {
+                          if (manual && onReplaceDesktopUrl) onReplaceDesktopUrl(asset.id);
+                          else if (pairActions) openPicker(undefined, asset.id);
+                          else openPicker();
+                        }}
                       />
                       <IconButton
                         label={pairActions ? "Remove desktop and mobile assets" : "Remove"}
@@ -818,16 +862,38 @@ export function CompactPicker({
                     </ThumbCaption>
                   </figure>
                   {showMobile && emptyMobile ? (
-                    <button
-                      type="button"
-                      className="asset-preview is-mobile mobile-choose"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openPicker(asset.id);
-                      }}
-                    >
-                      {video ? "Choose mobile video" : "Choose mobile image"}
-                    </button>
+                    <div className="asset-preview is-mobile mobile-choose-wrap">
+                      <button
+                        type="button"
+                        className="mobile-choose"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openPicker(asset.id);
+                        }}
+                      >
+                        {video
+                          ? "Choose mobile video"
+                          : document
+                            ? "Choose mobile document"
+                            : "Choose mobile image"}
+                      </button>
+                      {onSelectMobileUrl ? (
+                        <div className="asset-add-url is-trailing">
+                          <span className="asset-add-url-lead">Or add by </span>
+                          <button
+                            type="button"
+                            className="asset-add-url-btn"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onSelectMobileUrl(asset.id);
+                            }}
+                          >
+                            URL
+                          </button>
+                          <InfoTooltip>{MANUAL_URL_LIMITATIONS}</InfoTooltip>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : showMobile ? (
                   <figure className="asset-preview is-mobile">
                     <span
@@ -867,7 +933,7 @@ export function CompactPicker({
                     </span>
                     <ThumbCaption caption={mobileThumb?.caption}>
                       <IconButton
-                        label={video ? "Edit mobile video" : "Edit mobile crop"}
+                        label={manual || video ? "Edit mobile settings" : "Edit mobile crop"}
                         onClick={() => onFocus(asset.id, "mobile")}
                       >
                         <EditIcon />
@@ -876,10 +942,14 @@ export function CompactPicker({
                         <>
                           <AssetIconSet
                             previewUrl={deliveryUrls?.[asset.id]?.mobile || mobileFile?.sourceUrl}
-                            bynderUrl={mobileFile ? bynderMediaUrl(portalUrl, { id: mobileFile.id }) : undefined}
+                            bynderUrl={
+                              manual || !mobileFile ? undefined : bynderMediaUrl(portalUrl, { id: mobileFile.id })
+                            }
                             copyUrl={deliveryUrls?.[asset.id]?.mobile ?? mobileFile?.sourceUrl ?? ""}
                             changeLabel="Change mobile asset"
-                            onChange={() => openPicker(asset.id)}
+                            onChange={() => {
+                              openPicker(asset.id);
+                            }}
                           />
                           <IconButton
                             label="Remove mobile asset (Use desktop for both.)"
@@ -898,10 +968,12 @@ export function CompactPicker({
                         <>
                           <AssetIconSet
                             previewUrl={deliveryUrls?.[asset.id]?.mobile || asset.sourceUrl}
-                            bynderUrl={bynderMediaUrl(portalUrl, asset)}
+                            bynderUrl={openBynderUrl}
                             copyUrl={deliveryUrls?.[asset.id]?.mobile ?? asset.sourceUrl ?? ""}
                             changeLabel="Use a different asset for mobile"
-                            onChange={() => openPicker(asset.id)}
+                            onChange={() => {
+                              openPicker(asset.id);
+                            }}
                           />
                         </>
                       )}
@@ -950,11 +1022,14 @@ export function CompactPicker({
                         ) : null}
                         <AssetIconSet
                           previewUrl={deliveryUrls?.[asset.id]?.desktop || asset.sourceUrl}
-                          bynderUrl={bynderMediaUrl(portalUrl, asset)}
-                          copyUrl={document ? undefined : deliveryUrls?.[asset.id]?.desktop ?? asset.sourceUrl ?? ""}
-                          copyLinks={document ? documentCopyLinks(asset) : undefined}
+                          bynderUrl={openBynderUrl}
+                          copyUrl={document && !manual ? undefined : deliveryUrls?.[asset.id]?.desktop ?? asset.sourceUrl ?? ""}
+                          copyLinks={document && !manual ? documentCopyLinks(asset) : undefined}
                           changeLabel={reselectLabel}
-                          onChange={() => openPicker()}
+                          onChange={() => {
+                            if (manual && onReplaceDesktopUrl) onReplaceDesktopUrl(asset.id);
+                            else openPicker();
+                          }}
                         />
                         <IconButton
                           label="Remove"
@@ -970,16 +1045,22 @@ export function CompactPicker({
                       <>
                         <span className="pair-line">
                           {selectable ? (
-                            <IconButton label="Edit desktop crop" onClick={() => onFocus(asset.id, "desktop")}>
+                            <IconButton
+                              label={manual || video ? "Edit desktop settings" : "Edit desktop crop"}
+                              onClick={() => onFocus(asset.id, "desktop")}
+                            >
                               <EditIcon />
                             </IconButton>
                           ) : null}
                           <AssetIconSet
                             previewUrl={deliveryUrls?.[asset.id]?.desktop || asset.sourceUrl}
-                            bynderUrl={bynderMediaUrl(portalUrl, asset)}
+                            bynderUrl={openBynderUrl}
                             copyUrl={deliveryUrls?.[asset.id]?.desktop ?? asset.sourceUrl ?? ""}
                             changeLabel="Change desktop asset"
-                            onChange={() => openPicker(undefined, asset.id)}
+                            onChange={() => {
+                              if (manual && onReplaceDesktopUrl) onReplaceDesktopUrl(asset.id);
+                              else openPicker(undefined, asset.id);
+                            }}
                           />
                           <IconButton
                             label="Remove desktop and mobile assets"
@@ -996,15 +1077,22 @@ export function CompactPicker({
                           </IconButton>
                         </span>
                         <span className="pair-line">
-                          <IconButton label="Edit mobile crop" onClick={() => onFocus(asset.id, "mobile")}>
+                          <IconButton
+                            label={manual || video ? "Edit mobile settings" : "Edit mobile crop"}
+                            onClick={() => onFocus(asset.id, "mobile")}
+                          >
                             <EditIcon />
                           </IconButton>
                           <AssetIconSet
                             previewUrl={deliveryUrls?.[asset.id]?.mobile || mobileFile?.sourceUrl}
-                            bynderUrl={mobileFile ? bynderMediaUrl(portalUrl, { id: mobileFile.id }) : undefined}
+                            bynderUrl={
+                              manual || !mobileFile ? undefined : bynderMediaUrl(portalUrl, { id: mobileFile.id })
+                            }
                             copyUrl={deliveryUrls?.[asset.id]?.mobile ?? mobileFile?.sourceUrl ?? ""}
                             changeLabel="Change mobile asset"
-                            onChange={() => openPicker(asset.id)}
+                            onChange={() => {
+                              openPicker(asset.id);
+                            }}
                           />
                           <IconButton
                             label="Remove mobile asset (Use desktop for both.)"
@@ -1022,15 +1110,23 @@ export function CompactPicker({
                       </>
                     ) : (
                       <>
-                        <IconButton label={reselectLabel} onClick={() => openPicker()}>
+                        <IconButton
+                          label={reselectLabel}
+                          onClick={() => {
+                            if (manual && onReplaceDesktopUrl) onReplaceDesktopUrl(asset.id);
+                            else openPicker();
+                          }}
+                        >
                           <SwapIcon />
                         </IconButton>
+                        {openBynderUrl ? (
                         <IconButton
                           label="Open in Bynder"
-                          onClick={() => window.open(bynderMediaUrl(portalUrl, asset), "_blank", "noopener")}
+                          onClick={() => window.open(openBynderUrl, "_blank", "noopener")}
                         >
                           <ExternalIcon />
                         </IconButton>
+                        ) : null}
                         <IconButton
                           label="Remove"
                           danger
@@ -1054,6 +1150,15 @@ export function CompactPicker({
                 </span>
                 {`Add ${assetWord}`}
               </button>
+              {onAddByUrl ? (
+                <div className="asset-add-url is-trailing">
+                  <span className="asset-add-url-lead">Or add by </span>
+                  <button type="button" className="asset-add-url-btn" onClick={onAddByUrl}>
+                    URL
+                  </button>
+                  <InfoTooltip>{MANUAL_URL_LIMITATIONS}</InfoTooltip>
+                </div>
+              ) : null}
             </li>
           ) : null}
           </ul>

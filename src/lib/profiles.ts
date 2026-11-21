@@ -385,7 +385,8 @@ export function profileSettingsEqual(a: ProfileSettings | undefined, b: ProfileS
   );
 }
 
-function sameAspect(a?: string, b?: string): boolean {
+/** True when both strings are the same ratio (e.g. `"16:9"` and `"32:18"`). */
+export function sameAspect(a?: string, b?: string): boolean {
   if (!a && !b) return true;
   const left = parseAspect(a);
   const right = parseAspect(b);

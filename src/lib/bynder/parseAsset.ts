@@ -429,29 +429,38 @@ function slimAuthorAdditional(
   return Object.keys(additional).length ? additional : undefined;
 }
 
-/** Documents: identity + view URL + download URL. No crop / DAT / alt / mobile. */
+/** Documents: identity + view URL + download URL. No crop / DAT. Manual URL docs may keep alt / mobile. */
 function slimDocumentAsset(
   raw: unknown,
   parsed: ParsedBynderAsset,
   options?: { omitName?: boolean; additionalProperties?: readonly string[] }
 ): Record<string, unknown> {
   const asset = firstAsset(raw) ?? {};
+  const manual = asset.source === "url";
   const next: Record<string, unknown> = {
     id: parsed.databaseId ?? parsed.id,
     type: "DOCUMENT",
   };
+  if (manual) next.source = "url";
   if (!options?.omitName && parsed.name) next.name = parsed.name;
   const fileUrl =
     resolveDocumentFileUrl(raw) ??
     (typeof asset.url === "string" && asset.url ? asset.url : undefined);
-    if (fileUrl) {
-    const view = stripBynderDownloadParam(fileUrl);
+  if (fileUrl) {
+    const view = manual ? fileUrl : stripBynderDownloadParam(fileUrl);
     next.url = view;
-    next.downloadUrl = withBynderDownloadParam(view);
-    const stored = typeof asset.thumbnail === "string" ? asset.thumbnail : "";
-    const thumb = stored || documentThumbnailUrl({ url: view, name: parsed.name });
-    if (thumb) next.thumbnail = thumb;
+    if (!manual) {
+      next.downloadUrl = withBynderDownloadParam(view);
+      const stored = typeof asset.thumbnail === "string" ? asset.thumbnail : "";
+      const thumb = stored || documentThumbnailUrl({ url: view, name: parsed.name });
+      if (thumb) next.thumbnail = thumb;
+    } else if (typeof asset.thumbnail === "string" && asset.thumbnail) {
+      next.thumbnail = asset.thumbnail;
+    }
   }
+  if (manual && typeof asset.alt === "string") next.alt = asset.alt;
+  if (manual && asRecord(asset.mobile)) next.mobile = asset.mobile;
+  if (manual && asset.differentMobileAsset === true) next.differentMobileAsset = true;
   const additional = slimAuthorAdditional(asset, options?.additionalProperties);
   if (additional) next.additional = additional;
   return next;
@@ -473,6 +482,7 @@ export function slimPersistedAsset(
   next.id = mediaId;
   if (!options?.omitName && parsed.name) next.name = parsed.name;
   if (parsed.type) next.type = parsed.type;
+  if (asset.source === "url") next.source = "url";
   if (parsed.transformBaseUrl) next.transformBaseUrl = parsed.transformBaseUrl;
   const webImage =
     slimWebImage(filesIn, parsed.transformBaseUrl ? undefined : parsed.sourceUrl) ??
@@ -505,7 +515,7 @@ export function slimPersistedAsset(
     next.mobile = mobile;
   }
   if (asset.differentMobileAsset === true) next.differentMobileAsset = true;
-  if (typeof asset.alt === "string") next.alt = asset.alt;
+  if (!isVideoAsset(parsed) && typeof asset.alt === "string") next.alt = asset.alt;
   const video = cleanVideoPlayback(asset.video);
   if (video && isVideoAsset(parsed)) next.video = video;
   const additional = slimAuthorAdditional(asset, options?.additionalProperties);
@@ -617,6 +627,7 @@ export function parseBynderAsset(raw: unknown): ParsedBynderAsset | null {
     pickerId: graphqlId ?? databaseId ?? id,
     name: pickString(asset.name) ?? pickString(asset.title),
     type: resolveAssetType(asset, files, selectedFile),
+    ...(asset.source === "url" ? { source: "url" as const } : {}),
     transformBaseUrl,
     sourceUrl,
     thumbnail: pickString(asset.thumbnail),
@@ -691,14 +702,30 @@ export function isImageAsset(
   return !type || type === "IMAGE";
 }
 
+/** True when the asset was entered as a direct file URL (`source: "url"`). */
+export function isManualUrlAsset(
+  asset?: { source?: string | null } | null
+): boolean {
+  return asset?.source === "url";
+}
+
 /**
  * Images and videos may use a separate desktop/mobile file.
- * Documents never do. A mobile video stays a video; a mobile image stays an image.
+ * Bynder documents never do. Manual URL documents may (migrated pairs).
+ * A mobile video stays a video; a mobile image stays an image.
  */
 export function supportsSeparateMobileAsset(
-  asset?: { type?: string; fileType?: string; sourceUrl?: string; name?: string; url?: string } | null
+  asset?: {
+    type?: string;
+    fileType?: string;
+    sourceUrl?: string;
+    name?: string;
+    url?: string;
+    source?: string;
+  } | null
 ): boolean {
-  return isImageAsset(asset) || isVideoAsset(asset);
+  if (isImageAsset(asset) || isVideoAsset(asset)) return true;
+  return Boolean(isDocumentAsset(asset) && isManualUrlAsset(asset));
 }
 
 /**

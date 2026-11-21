@@ -66,6 +66,28 @@ describe("listThumbForAsset", () => {
     expect(thumb.objectPosition).toBe("25% 75%");
   });
 
+  it("frames a manual URL image at the file's natural aspect, ignoring any profile transform", () => {
+    const thumb = listThumbForAsset({
+      asset: {
+        id: "url-a",
+        source: "url",
+        type: "IMAGE",
+        sourceUrl: "https://cdn.example/hero.jpg",
+        width: 1200,
+        height: 1200,
+      },
+      datAllowed: false,
+      live: {
+        transform: { ...DEFAULT_TRANSFORM, aspect: "16:9" },
+      },
+      slot: { width: 300, height: 200 },
+      naturalSize: { width: 1200, height: 1200 },
+    });
+    expect(thumb.aspectW).toBe(1);
+    expect(thumb.aspectH).toBe(1);
+    expect(thumb.caption).toBe("1:1");
+  });
+
   it("frames a video at the file's natural aspect, ignoring any profile transform", () => {
     const thumb = listThumbForAsset({
       asset: {
@@ -87,6 +109,22 @@ describe("listThumbForAsset", () => {
     expect(thumb.aspectW).toBe(9);
     expect(thumb.aspectH).toBe(16);
     expect(thumb.caption).toBe("9:16 · MP4 · 3.8 MB");
+  });
+
+  it("uses a YouTube poster image instead of the watch URL", () => {
+    const thumb = listThumbForAsset({
+      asset: {
+        id: "yt",
+        type: "VIDEO",
+        source: "url",
+        sourceUrl: "https://www.youtube.com/watch?v=FezVApPddqU",
+      },
+      datAllowed: false,
+      slot: { width: 300, height: 200 },
+    });
+    expect(thumb.url).toBe("https://img.youtube.com/vi/FezVApPddqU/hqdefault.jpg");
+    expect(thumb.aspectW).toBe(16);
+    expect(thumb.aspectH).toBe(9);
   });
 
   it("frames a document as a letter page and does not use the image profile", () => {

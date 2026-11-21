@@ -1,0 +1,28 @@
+{
+  "v": 2,
+  "profile": {
+    "settings": {
+      "quality": 80,
+      "format": "webp"
+    }
+  },
+  "assets": [
+    {
+      "id": "url-sample-desk-document",
+      "name": "Migrated-spec.pdf",
+      "type": "DOCUMENT",
+      "source": "url",
+      "alt": "Product spec sheet",
+      "url": "https://cdn.example.com/migrated/spec.pdf",
+      "mobile": {
+        "id": "url-sample-mob-document",
+        "name": "Migrated-spec-mobile.pdf",
+        "type": "DOCUMENT",
+        "source": "url",
+        "alt": "Product spec sheet, mobile",
+        "url": "https://cdn.example.com/migrated/spec-mobile.pdf"
+      },
+      "differentMobileAsset": true
+    }
+  ]
+}
